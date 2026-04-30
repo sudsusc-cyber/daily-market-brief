@@ -331,6 +331,7 @@ dev = [
 [package.dev-dependencies]
 dev = [
     { name = "pillow" },
+    { name = "pytest" },
 ]
 
 [package.metadata]
@@ -352,7 +353,10 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pillow", specifier = ">=12.2.0" }]
+dev = [
+    { name = "pillow", specifier = ">=12.2.0" },
+    { name = "pytest", specifier = ">=9.0.3" },
+]
 
 [[package]]
 name = "distro"

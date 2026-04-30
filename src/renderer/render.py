@@ -48,7 +48,7 @@ def _filter_pct(value: float | None) -> str:
 
 
 def _filter_metric_num(value: float | None, unit: str = "") -> str:
-    """情绪指标当前值/一周前值,带单位。None → '—'"""
+    """情绪指标当前值/前一日值,带单位。None → '—'"""
     if value is None:
         return "—"
     try:
