@@ -109,18 +109,23 @@ def render_email(
     signals: list[StockSignal],
     generated_at: datetime,
     logo_cids: dict[str, str] | None = None,
-    sentiment: Any | None = None,            # SentimentBundle(M3 起填)
-    company_news: list[Any] | None = None,    # list[CompanyNewsBundle](M3 起填)
-    figures: list[Any] | None = None,         # list[FigureBundle](M3 起填)
-    macro_news: list[Any] | None = None,      # list[MacroFeedBundle](M3 起填)
-    buffett_13f: Any | None = None,           # BuffettBundle(M3 起填,is_new=True 才显示)
+    # M3 原始数据(始终渲染指标小表 / 错误兜底)
+    sentiment: Any | None = None,            # SentimentBundle
+    company_news: list[Any] | None = None,    # list[CompanyNewsBundle]
+    figures: list[Any] | None = None,         # list[FigureBundle]
+    macro_news: list[Any] | None = None,      # list[MacroFeedBundle]
+    buffett_13f: Any | None = None,           # BuffettBundle
+    # M4 LLM 加工产物(若为 None,模板自动降级到 M3 原始数据)
+    sentiment_verdict: dict | None = None,           # {verdict, argument}
+    company_news_paragraph: str | None = None,       # 200-400 字段落
+    figure_summaries: list[Any] | None = None,        # list[FigureSummary]
+    macro_news_paragraph: str | None = None,         # 150-300 字段落
 ) -> str:
     """
     渲染完整邮件 HTML。
 
     logo_cids: ticker -> CID 映射,如 {"NVDA": "logo_NVDA"}。
-    模板里只有 ticker 命中此映射时才会渲染 <img cid:...>;
-    其余 ticker 走文字 fallback(适用于 BRK.B 这类无 logo 的)。
+    M4 加工产物若为 None,模板降级渲染 M3 原始数据列表。
     """
     env = _build_env()
     template = env.get_template("email.html.j2")
@@ -129,8 +134,12 @@ def render_email(
         generated_at=generated_at,
         logo_cids=logo_cids or {},
         sentiment=sentiment,
+        sentiment_verdict=sentiment_verdict,
         company_news=company_news,
+        company_news_paragraph=company_news_paragraph,
         figures=figures,
+        figure_summaries=figure_summaries,
         macro_news=macro_news,
+        macro_news_paragraph=macro_news_paragraph,
         buffett_13f=buffett_13f,
     )

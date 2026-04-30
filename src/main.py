@@ -1,18 +1,24 @@
 """
-每日晨报主入口(M3 端到端,5 大模块原始数据)。
+每日晨报主入口(M4 端到端,5 大模块原始数据 + LLM 加工)。
 
 链路:
     config.HOLDINGS  →  collectors:
                           stocks / company_news / figures / macro_news
                           / buffett_13f / sentiment
                                     ↓
-                              renderer/render(原始数据 dump,无 LLM)
+                          translator(标题英→中)
                                     ↓
-                              sender/smtp_sender.send_html_email
+                          processors:
+                          news_summarizer / macro_filter
+                          / figure_filter / sentiment_judge
+                                    ↓
+                          renderer/render(段落 + 原始列表 fallback)
+                                    ↓
+                          sender/smtp_sender.send_html_email
                                     (含 logo inline 附件)
 
 时区:全程内部用 UTC,展示与邮件标题用北京时间。
-本地运行:`uv run python -m src.main`
+任何 LLM 调用失败 → 降级到 M3 原始数据展示(模板已支持)。
 """
 
 from __future__ import annotations
@@ -23,11 +29,18 @@ from pathlib import Path
 
 from src.collectors import buffett_13f, company_news, figures, macro_news, sentiment, stocks
 from src.config import HOLDINGS, Holding
+from src.processors import (
+    figure_filter,
+    macro_filter,
+    news_summarizer,
+    sentiment_judge,
+    translator,
+)
+from src.processors.llm_client import LLMClient
 from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
 from src.utils.dates import now_beijing
-from src.utils.translate import translate_in_place_news
 
 logger = logging.getLogger(__name__)
 
@@ -41,25 +54,18 @@ def _translate_all_bundles(
     cn_bundles: list,
     fig_bundles: list,
     macro_bundles: list,
-    deepseek_api_key: str,
+    client: LLMClient,
 ) -> None:
-    """
-    把所有 collector 的标题就地替换为中文。
-    只翻译模板实际渲染的"前 5 条"以控制成本(模板侧 [:5] 切片)。
-    已是中文的(港股 Google News)被 translate.py 内部跳过。
-    """
+    """把所有 collector 的标题就地替换为中文,只翻译模板渲染的前 5 条"""
     titles_to_translate: list[object] = []
-    # 公司新闻每只取前 5
     for b in cn_bundles:
         titles_to_translate.extend(b.items[:5])
-    # 关键发言每人取前 5
     for f in fig_bundles:
         titles_to_translate.extend(f.items[:5])
-    # 宏观每源取前 5
     for m in macro_bundles:
         titles_to_translate.extend(m.items[:5])
     if titles_to_translate:
-        translate_in_place_news(titles_to_translate, api_key=deepseek_api_key)
+        translator.translate_in_place_news(titles_to_translate, client=client)
 
 
 def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[InlineImage]]:
@@ -73,7 +79,7 @@ def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[Inl
             continue
         cid = h.logo_cid
         cids[h.ticker] = cid
-        images.append(InlineImage(cid=cid, path=path, subtype=None))  # 让 sender magic-bytes 推
+        images.append(InlineImage(cid=cid, path=path, subtype=None))
     logger.info("logos.loaded count=%d/%d", len(cids), len(holdings))
     return cids, images
 
@@ -89,7 +95,7 @@ def main() -> int:
 
     logger.info("main.start  generated_at=%s", now_bj.isoformat(timespec="seconds"))
 
-    # ---------- 数据采集 ----------
+    # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
     signals = stocks.fetch_all(HOLDINGS)
 
@@ -108,13 +114,36 @@ def main() -> int:
     logger.info("collect.sentiment")
     sentiment_bundle = sentiment.fetch_all(settings.fred_api_key)
 
-    # ---------- 标题翻译(M3 补丁,M4 起 processors/ 接管) ----------
+    # ---------- LLM 处理(M4) ----------
+    llm = LLMClient(api_key=settings.deepseek_api_key)
+
     logger.info("translate.titles")
     _translate_all_bundles(
         cn_bundles=cn_bundles,
         fig_bundles=fig_bundles,
         macro_bundles=macro_bundles,
-        deepseek_api_key=settings.deepseek_api_key,
+        client=llm,
+    )
+
+    logger.info("processors.news_summarizer")
+    company_news_paragraph = news_summarizer.summarize(cn_bundles, client=llm)
+
+    logger.info("processors.macro_filter")
+    macro_news_paragraph = macro_filter.summarize(macro_bundles, client=llm)
+
+    logger.info("processors.figure_filter")
+    figure_summaries = figure_filter.filter_all(fig_bundles, client=llm)
+
+    logger.info("processors.sentiment_judge")
+    sentiment_verdict = sentiment_judge.judge(sentiment_bundle, client=llm)
+
+    # token 成本汇总
+    cum = llm.cumulative
+    cost_cny = llm.estimate_cost_cny()
+    logger.info(
+        "llm.summary input=%d output=%d reasoning=%d cache_hit=%d  est_cost=¥%.4f",
+        cum.input_tokens, cum.output_tokens, cum.reasoning_tokens, cum.cache_hit_tokens,
+        cost_cny,
     )
 
     # ---------- 渲染 ----------
@@ -124,10 +153,15 @@ def main() -> int:
         signals=signals,
         generated_at=now_bj,
         logo_cids=logo_cids,
+        # 加工产物(为 None 时模板自动 fallback 到原始数据展示)
         sentiment=sentiment_bundle,
+        sentiment_verdict=sentiment_verdict,
         company_news=cn_bundles,
+        company_news_paragraph=company_news_paragraph,
         figures=fig_bundles,
+        figure_summaries=figure_summaries,
         macro_news=macro_bundles,
+        macro_news_paragraph=macro_news_paragraph,
         buffett_13f=buffett_bundle,
     )
 
@@ -143,7 +177,7 @@ def main() -> int:
         inline_images=inline_images,
     )
 
-    logger.info("main.done")
+    logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0
 
 

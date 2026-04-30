@@ -261,6 +261,19 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
           </td>
         </tr>
+        {# M4 LLM 综合判断(若失败则只渲染下面的指标小表) #}
+        {% if sentiment_verdict %}
+        <tr>
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_display }}; font-size:18px; color:{{ color_ink }}; letter-spacing:0.06em; line-height:1.4;">
+              {{ sentiment_verdict.verdict }}
+            </div>
+            <div style="margin-top:12px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
+              {{ sentiment_verdict.argument }}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         <tr>
           <td style="padding:14px 24px 0 24px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; font-family:{{ serif_body }}; color:{{ color_ink }};">
@@ -293,7 +306,7 @@
               </tbody>
             </table>
             <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-              "一周前"取约 5 个交易日前的可比值。LLM 综合判断与情绪结论留待 M4 接入后呈现。
+              "一周前"取约 5 个交易日前的可比值。
             </div>
           </td>
         </tr>
@@ -315,11 +328,16 @@
               </tr>
             </table>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
-            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-              M3 阶段直接展示原始新闻列表(每只持仓最多 5 条标题)。M4 起 LLM 摘要为段落叙述。
-            </div>
           </td>
         </tr>
+        {% if company_news_paragraph %}
+        {# M4 LLM 加工后的段落叙述 #}
+        <tr>
+          <td style="padding:18px 24px 0 24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
+            {{ (company_news_paragraph | e | replace('\n\n', '<br><br>') | replace('\n', '<br>')) | safe }}
+          </td>
+        </tr>
+        {% else %}
         {% for bundle in company_news %}
         {%- set has_logo = logo_cids and (bundle.holding.ticker in logo_cids) -%}
         <tr>
@@ -361,7 +379,8 @@
           </td>
         </tr>
         {% endfor %}
-        {% endif %}
+        {% endif %}{# end company_news_paragraph else #}
+        {% endif %}{# end company_news outer #}
 
         {# ─────────────────────────  IV. 关键发言  (M3) ───────────────────────── #}
         {% if figures or (buffett_13f and buffett_13f.is_new) %}
@@ -379,12 +398,45 @@
               </tr>
             </table>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
-            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-              候选发言列表 — 已通过规则筛选(标题需含 "said / told / announced" 等动词)
-              且 7 天内未推送过。LLM 第二道"是否本人原话"判断与摘要在 M4 接入。
+          </td>
+        </tr>
+        {% if figure_summaries %}
+        {# M4 LLM 第二道筛选 + 关键观点提炼 #}
+        {% for f in figure_summaries %}
+        <tr>
+          <td style="padding:18px 24px 0 24px;">
+            <div style="font-family:{{ serif_display }}; font-size:15px; color:{{ color_accent }}; letter-spacing:0.06em; font-weight:500;">{{ f.person }}</div>
+            <div style="margin-top:10px;">
+              {% if f.items %}
+              <ul style="margin:0; padding:0; list-style:none;">
+                {% for kp in f.items %}
+                <li style="margin:0 0 10px 0; font-family:{{ serif_body }}; font-size:14px; line-height:1.85; color:{{ color_ink_soft }};">
+                  {{ kp.text }}
+                  {% if kp.source_url %}
+                  <a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:{{ color_faint }}; text-decoration:none; font-size:10.5px; margin-left:6px; border-bottom:1px solid {{ color_hairline }};">原文 — {{ kp.source_name }}</a>
+                  {% endif %}
+                </li>
+                {% endfor %}
+              </ul>
+              {% elif f.fallback_raw %}
+              {# LLM 全 no:依旧展示原始候选,让用户自己判断 #}
+              <ul style="margin:0; padding:0; list-style:none;">
+                {% for item in f.fallback_raw %}
+                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
+                  <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
+                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_faint }}; font-style:italic;">{{ f.error or '过去 24 小时无新候选发言' }}</div>
+              {% endif %}
             </div>
           </td>
         </tr>
+        {% endfor %}
+        {% else %}
+        {# 降级:展示 M3 原始候选列表 #}
         {% for f in figures %}
         <tr>
           <td style="padding:18px 24px 0 24px;">
@@ -409,6 +461,7 @@
           </td>
         </tr>
         {% endfor %}
+        {% endif %}{# end figure_summaries / figures fallback #}
         {% if buffett_13f and buffett_13f.is_new %}
         <tr>
           <td style="padding:24px 24px 0 24px;">
@@ -416,7 +469,7 @@
             <div style="margin-top:8px; font-family:{{ serif_body }}; font-size:13px; color:{{ color_ink_soft }}; line-height:1.6;">
               SEC EDGAR 检测到新 13F 提交(accession <span style="font-family:Charter,Cambria,serif; color:{{ color_muted }};">{{ buffett_13f.latest.accession_no }}</span>),
               提交于北京时间 {{ buffett_13f.latest.filed_at | bj_time }}{% if buffett_13f.days_since_filed is not none %},距今 {{ buffett_13f.days_since_filed }} 天{% endif %}。
-              具体持仓变动(新增 / 加仓 / 减仓 / 清仓)将在 M4 接入 13F-HR XML 解析后呈现。
+              具体持仓变动(新增 / 加仓 / 减仓 / 清仓)将在 13F-HR XML 解析接入后呈现(M4+)。
             </div>
           </td>
         </tr>
@@ -439,11 +492,16 @@
               </tr>
             </table>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
-            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-              过去 24 小时各源头条原文。M4 起 LLM 会做"头版级别"筛选与段落叙述。
-            </div>
           </td>
         </tr>
+        {% if macro_news_paragraph %}
+        {# M4 LLM 头版级别筛选 + 段落叙述 #}
+        <tr>
+          <td style="padding:18px 24px 0 24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
+            {{ (macro_news_paragraph | e | replace('\n\n', '<br><br>') | replace('\n', '<br>')) | safe }}
+          </td>
+        </tr>
+        {% else %}
         {% for bundle in macro_news %}
         <tr>
           <td style="padding:18px 24px 0 24px;">
@@ -467,7 +525,8 @@
           </td>
         </tr>
         {% endfor %}
-        {% endif %}
+        {% endif %}{# end macro_news_paragraph else #}
+        {% endif %}{# end macro_news outer #}
 
         {# 装饰性结尾 #}
         <tr>
