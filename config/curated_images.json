@@ -1,0 +1,2430 @@
+{
+  "version": 2,
+  "updated_at": "2026-04-30",
+  "policy": "northern_hemisphere_meteorological",
+  "source": "pexels",
+  "url_template": "https://images.pexels.com/photos/{id}/pexels-photo-{id}.jpeg?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop",
+  "preview_template": "https://www.pexels.com/photo/{slug}-{id}/",
+  "seasons": {
+    "spring": [
+      {
+        "id": "30882618",
+        "slug": "misty-forest-landscape-with-dense-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "forest",
+          "dense",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "35001488",
+        "slug": "misty-forest-tall-trees-in-atmospheric-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "forest",
+          "tall",
+          "trees",
+          "atmospheric"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "36646592",
+        "slug": "moody-misty-forest-landscape-with-evergreen-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "moody",
+          "misty",
+          "forest",
+          "evergreen",
+          "trees"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "24536427",
+        "slug": "fog-over-lake-under-hill",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "lake",
+          "hill"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "28966860",
+        "slug": "misty-morning-landscape-in-tranquil-countryside",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "morning",
+          "tranquil",
+          "countryside"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "59688",
+        "slug": "mountains-foggy-misty-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountains",
+          "foggy",
+          "misty",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "1287083",
+        "slug": "trees-surrounded-by-fogs-in-the-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "trees",
+          "surrounded",
+          "fogs",
+          "forest"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "29070548",
+        "slug": "serene-frosty-morning-in-a-misty-bog-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "serene",
+          "frosty",
+          "morning",
+          "misty",
+          "bog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "33312427",
+        "slug": "aerial-view-of-misty-mountain-range-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "aerial",
+          "misty",
+          "mountain",
+          "range"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "1183099",
+        "slug": "photography-of-mountains-under-cloudy-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountains",
+          "cloudy",
+          "sky"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "1770809",
+        "slug": "green-grass-near-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "grass",
+          "trees"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "20523396",
+        "slug": "green-coniferous-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "coniferous",
+          "forest"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "17203268",
+        "slug": "green-trees-in-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "trees",
+          "forest"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "17005430",
+        "slug": "river-flowing-in-green-nature-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "river",
+          "flowing",
+          "green",
+          "nature"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "21753035",
+        "slug": "rain-clouds-over-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "rain",
+          "clouds",
+          "mountains"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "31947949",
+        "slug": "moody-dense-forest-under-cloudy-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "moody",
+          "dense",
+          "forest",
+          "cloudy",
+          "sky"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "6172330",
+        "slug": "wetlands-in-spring",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "wetlands",
+          "spring"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "29834890",
+        "slug": "moody-black-and-white-landscape-in-bolu-turkey",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "moody",
+          "black",
+          "white",
+          "bolu",
+          "turkey"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "1363873",
+        "slug": "scenic-view-of-mountain-under-cloudy-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "mountain",
+          "cloudy",
+          "sky"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "7789192",
+        "slug": "foggy-morning-in-countryside-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "morning",
+          "countryside",
+          "field"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "8708732",
+        "slug": "grass-field-under-the-cloudy-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grass",
+          "field",
+          "cloudy",
+          "sky"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "4488071",
+        "slug": "grass-field-near-forest-in-overcast-weather",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grass",
+          "field",
+          "forest",
+          "overcast",
+          "weather"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "32176280",
+        "slug": "serene-misty-morning-in-grassy-meadow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "serene",
+          "misty",
+          "morning",
+          "grassy",
+          "meadow"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "102160",
+        "slug": "landscape-nature-sky-clouds",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "nature",
+          "sky",
+          "clouds"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "34555740",
+        "slug": "misty-morning-landscape-in-poland-countryside",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "morning",
+          "poland",
+          "countryside"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "12488674",
+        "slug": "dark-image-of-a-mountain-landscape-in-a-fog-and-winding-road",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dark",
+          "mountain",
+          "fog",
+          "winding",
+          "road"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "55766",
+        "slug": "wheat-field-under-gray-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "wheat",
+          "field",
+          "gray",
+          "sky"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "30982497",
+        "slug": "misty-forest-pathway-in-serene-morning-light",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "forest",
+          "pathway",
+          "serene",
+          "morning"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "345043",
+        "slug": "body-of-water",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "body",
+          "water"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "9501329",
+        "slug": "a-reflection-of-trees-on-a-calm-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "reflection",
+          "trees",
+          "calm",
+          "lake"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "9188430",
+        "slug": "reflection-of-the-sky-on-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "reflection",
+          "sky",
+          "lake"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "30725259",
+        "slug": "serene-lake-with-reflective-trees-under-cloudy-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "serene",
+          "lake",
+          "reflective",
+          "trees",
+          "cloudy"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "5370215",
+        "slug": "green-grassy-hills-in-countryside-on-overcast-day",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "grassy",
+          "hills",
+          "countryside",
+          "overcast"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "30654271",
+        "slug": "misty-rural-hillside-with-overcast-skies",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "rural",
+          "hillside",
+          "overcast",
+          "skies"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "9268741",
+        "slug": "dark-landscape-with-river-in-a-valley-and-mountain-peaks-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dark",
+          "river",
+          "valley",
+          "mountain",
+          "peaks"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "16065845",
+        "slug": "green-hillside-under-cloudy-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "hillside",
+          "cloudy",
+          "sky"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "12797727",
+        "slug": "fog-and-overcast-sky-above-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "overcast",
+          "sky",
+          "above",
+          "mountains"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "14808128",
+        "slug": "clouds-over-forest-on-hillside",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "clouds",
+          "forest",
+          "hillside"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "16181969",
+        "slug": "rain-clouds-over-green-hills",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "rain",
+          "clouds",
+          "green",
+          "hills"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "29223951",
+        "slug": "serene-countryside-morning-with-mist-and-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "serene",
+          "countryside",
+          "morning",
+          "mist",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "4114237",
+        "slug": "weeping-willow-tree-near-body-of-water",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "weeping",
+          "willow",
+          "tree",
+          "body",
+          "water"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "5407567",
+        "slug": "fog-over-green-forest-in-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "green",
+          "forest",
+          "mountains"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "32176277",
+        "slug": "misty-morning-by-a-quiet-riverside-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "morning",
+          "quiet",
+          "riverside"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "35854904",
+        "slug": "misty-pine-forest-in-serene-morning-light",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "pine",
+          "forest",
+          "serene",
+          "morning"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "11575077",
+        "slug": "calm-sea-in-mountains-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "calm",
+          "sea",
+          "mountains"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "10622712",
+        "slug": "calm-mountain-landscape-with-fog-black-and-white",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "calm",
+          "mountain",
+          "fog",
+          "black",
+          "white"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "4406333",
+        "slug": "fog-over-valley-with-high-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "valley",
+          "high",
+          "trees"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "19497735",
+        "slug": "mountain-valley-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountain",
+          "valley",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "14691271",
+        "slug": "hills-in-a-mountain-valley-covered-with-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "hills",
+          "mountain",
+          "valley",
+          "covered",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "28617613",
+        "slug": "misty-hills-and-foggy-forest-in-munnar-india",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "hills",
+          "foggy",
+          "forest",
+          "munnar"
+        ],
+        "palette": "cool_grey"
+      }
+    ],
+    "summer": [
+      {
+        "id": "1463668",
+        "slug": "view-of-ocean-covered-with-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "ocean",
+          "covered",
+          "fog"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "18050899",
+        "slug": "scenic-view-of-sea-and-coastline-under-overcast-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "sea",
+          "coastline",
+          "overcast",
+          "sky"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "10278716",
+        "slug": "fog-over-ocean",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "ocean"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "4640990",
+        "slug": "fog-over-sea-near-shore",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "sea",
+          "shore"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "448748",
+        "slug": "blue-body-of-water-with-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "blue",
+          "body",
+          "water",
+          "fog"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "28770440",
+        "slug": "foggy-cliffside-overlooking-calm-ocean-waters",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "cliffside",
+          "overlooking",
+          "calm",
+          "ocean"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "29673131",
+        "slug": "lush-green-moss-in-brazilian-forest-light",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "lush",
+          "green",
+          "moss",
+          "brazilian",
+          "forest"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "18983204",
+        "slug": "fog-over-beach-and-cliff-on-sea-shore",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "beach",
+          "cliff",
+          "sea",
+          "shore"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "13728503",
+        "slug": "ocean-view-under-gray-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "ocean",
+          "gray",
+          "sky"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "11932114",
+        "slug": "moss-in-dark-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "moss",
+          "dark",
+          "forest"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "5273591",
+        "slug": "overcast-over-sea-shore-and-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "overcast",
+          "sea",
+          "shore",
+          "mountains"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "4775483",
+        "slug": "rock-on-sea-in-overcast-weather-in-evening",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "rock",
+          "sea",
+          "overcast",
+          "weather",
+          "evening"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "5331812",
+        "slug": "empty-beach-of-ocean-in-overcast-weather",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "empty",
+          "beach",
+          "ocean",
+          "overcast",
+          "weather"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "34053957",
+        "slug": "scenic-rock-jetty-extending-into-calm-blue-sea",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "rock",
+          "jetty",
+          "extending",
+          "into"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "5098158",
+        "slug": "rocky-cliff-above-sea-in-overcast",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "rocky",
+          "cliff",
+          "above",
+          "sea",
+          "overcast"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "9578029",
+        "slug": "brown-rocky-mountain-beside-the-beach",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "brown",
+          "rocky",
+          "mountain",
+          "beside",
+          "beach"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "235637",
+        "slug": "grey-rocks-on-river-landscape-photography",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grey",
+          "rocks",
+          "river"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "7520331",
+        "slug": "water-flowing-on-a-shallow-rocky-river",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "water",
+          "flowing",
+          "shallow",
+          "rocky",
+          "river"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "3800074",
+        "slug": "time-lapse-photo-of-river-between-mossy-rocks",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "time",
+          "lapse",
+          "river",
+          "mossy",
+          "rocks"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "8048466",
+        "slug": "waterfalls-cascading-on-mossy-rocks-in-the-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "waterfalls",
+          "cascading",
+          "mossy",
+          "rocks",
+          "forest"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "216757",
+        "slug": "body-of-water-between-black-rock-artwork",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "body",
+          "water",
+          "black",
+          "rock",
+          "artwork"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "5777919",
+        "slug": "waterfalls-in-the-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "waterfalls",
+          "forest"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "18703061",
+        "slug": "view-of-a-rocky-stream-in-the-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "rocky",
+          "stream",
+          "forest"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "1271620",
+        "slug": "creek-in-a-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "creek",
+          "forest"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "34253909",
+        "slug": "mountain-stream-flowing-over-mossy-rocks",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountain",
+          "stream",
+          "flowing",
+          "mossy",
+          "rocks"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "14471495",
+        "slug": "black-and-white-landscape-of-mountains-and-water-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "black",
+          "white",
+          "mountains",
+          "water",
+          "fog"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "12871045",
+        "slug": "mountain-with-cliffs-in-a-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountain",
+          "cliffs",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "3011846",
+        "slug": "foggy-cliff",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "cliff"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "1367192",
+        "slug": "photo-of-foggy-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "forest"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "9156056",
+        "slug": "scenic-view-of-a-coastal-cliff",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "coastal",
+          "cliff"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "1366921",
+        "slug": "photo-of-forest-covered-by-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "forest",
+          "covered",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "18591164",
+        "slug": "a-foggy-landscape-with-trees-and-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "trees",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "167699",
+        "slug": "green-pine-trees-covered-with-fogs-under-white-sky-during-daytime",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "pine",
+          "trees",
+          "covered",
+          "fogs"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "670782",
+        "slug": "early-morning-fog-forest-haze",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "early",
+          "morning",
+          "fog",
+          "forest",
+          "haze"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "12264406",
+        "slug": "reflection-of-the-sky-in-a-still-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "reflection",
+          "sky",
+          "still",
+          "lake"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "3975366",
+        "slug": "green-pine-trees-covered-with-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "pine",
+          "trees",
+          "covered",
+          "fog"
+        ],
+        "palette": "muted_green"
+      },
+      {
+        "id": "13364090",
+        "slug": "reflection-of-cloudy-sky-on-lake-surface",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "reflection",
+          "cloudy",
+          "sky",
+          "lake",
+          "surface"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "17180777",
+        "slug": "mountains-with-reflection-in-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountains",
+          "reflection",
+          "lake"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "1557652",
+        "slug": "tree-with-reflection-on-body-of-water",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "tree",
+          "reflection",
+          "body",
+          "water"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "15745269",
+        "slug": "reflection-of-trees-and-mountains-in-the-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "reflection",
+          "trees",
+          "mountains",
+          "lake"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "19036832",
+        "slug": "mountain-reflection-in-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountain",
+          "reflection",
+          "lake"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "5097949",
+        "slug": "reflection-of-a-cloudy-sky-on-a-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "reflection",
+          "cloudy",
+          "sky",
+          "lake"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "8389188",
+        "slug": "trees-reflection-on-a-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "trees",
+          "reflection",
+          "lake"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "28481987",
+        "slug": "serene-foggy-lake-with-tree-reflection",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "serene",
+          "foggy",
+          "lake",
+          "tree",
+          "reflection"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "15211444",
+        "slug": "a-storm-cloud-above-a-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "storm",
+          "cloud",
+          "above",
+          "field"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "8903157",
+        "slug": "dark-heavy-clouds-over-the-grass-land",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dark",
+          "heavy",
+          "clouds",
+          "grass",
+          "land"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "355441",
+        "slug": "grass-field-below-clouds",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grass",
+          "field",
+          "below",
+          "clouds"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "16880145",
+        "slug": "storm-clouds-over-a-countryside",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "storm",
+          "clouds",
+          "countryside"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "16277399",
+        "slug": "view-of-dark-storm-clouds",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dark",
+          "storm",
+          "clouds"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "13258137",
+        "slug": "heavy-dark-clouds-over-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "heavy",
+          "dark",
+          "clouds",
+          "mountains"
+        ],
+        "palette": "dark_grey"
+      }
+    ],
+    "autumn": [
+      {
+        "id": "17242182",
+        "slug": "misty-countryside-landscape-with-grass-field-covered-with-morning-dew",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "countryside",
+          "grass",
+          "field",
+          "covered"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "16297902",
+        "slug": "close-up-of-dry-grass-on-a-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "close",
+          "dry",
+          "grass",
+          "field"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "9892165",
+        "slug": "trees-in-the-middle-of-dry-fields-and-hills",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "trees",
+          "middle",
+          "dry",
+          "fields",
+          "hills"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "10111157",
+        "slug": "fallen-leaves-on-green-grass",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fallen",
+          "leaves",
+          "green",
+          "grass"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "174614",
+        "slug": "autumn-grass-background-grass",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "autumn",
+          "grass",
+          "grass"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "5889428",
+        "slug": "clear-river-flowing-among-dry-grass-and-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "clear",
+          "river",
+          "flowing",
+          "among",
+          "dry"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "5662136",
+        "slug": "bright-autumn-leaves-on-grass-lawn-in-park",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "bright",
+          "autumn",
+          "leaves",
+          "grass",
+          "lawn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "13739181",
+        "slug": "dry-landscape-with-grass-and-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dry",
+          "grass",
+          "mountains"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "380012",
+        "slug": "background-dry-grass-landscape-yellow-grass",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dry",
+          "grass",
+          "yellow",
+          "grass"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "28352672",
+        "slug": "an-aerial-view-of-a-field-with-crops",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "aerial",
+          "field",
+          "crops"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "2816057",
+        "slug": "photo-of-grass-field-during-daytime",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grass",
+          "field",
+          "daytime"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "5876603",
+        "slug": "dry-wheat-growing-on-countryside-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dry",
+          "wheat",
+          "growing",
+          "countryside",
+          "field"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "13957215",
+        "slug": "big-brown-tree-on-brown-grass-field-under-the-white-clouds",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "big",
+          "brown",
+          "tree",
+          "brown",
+          "grass"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "7626143",
+        "slug": "a-field-with-wheat-crops",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "field",
+          "wheat",
+          "crops"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "1227513",
+        "slug": "photo-of-grass-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grass",
+          "field"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "1048039",
+        "slug": "green-grass-field-under-white-clouds",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "green",
+          "grass",
+          "field",
+          "white",
+          "clouds"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "1102908",
+        "slug": "foggy-path",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "path"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "10817836",
+        "slug": "forest-path-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "forest",
+          "path",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "10239298",
+        "slug": "a-foggy-forest-during-autumn",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "forest",
+          "autumn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "34889618",
+        "slug": "foggy-road-through-a-dark-forest-in-autumn",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "road",
+          "through",
+          "dark",
+          "forest"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "5868172",
+        "slug": "fog-over-dark-autumn-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "fog",
+          "dark",
+          "autumn",
+          "forest"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "15576547",
+        "slug": "foggy-road-between-trees-in-autumn",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "road",
+          "trees",
+          "autumn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "5837865",
+        "slug": "narrow-pathway-between-bright-autumn-trees-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "narrow",
+          "pathway",
+          "bright",
+          "autumn",
+          "trees"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "1655901",
+        "slug": "landscape-photo-of-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "forest"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "29136939",
+        "slug": "misty-forest-with-birch-and-pine-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "forest",
+          "birch",
+          "pine",
+          "trees"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "29443875",
+        "slug": "autumn-birch-tree-in-misty-forest-scene",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "autumn",
+          "birch",
+          "tree",
+          "misty",
+          "forest"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "28471869",
+        "slug": "peaceful-birch-tree-pathway-in-autumn-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "peaceful",
+          "birch",
+          "tree",
+          "pathway",
+          "autumn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "15846861",
+        "slug": "birch-forest-in-autumn",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "birch",
+          "forest",
+          "autumn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "29120792",
+        "slug": "foggy-birch-tree-in-a-misty-autumn-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "foggy",
+          "birch",
+          "tree",
+          "misty",
+          "autumn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "19957279",
+        "slug": "birch-tree-in-autumn-foliage",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "birch",
+          "tree",
+          "autumn",
+          "foliage"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "16512172",
+        "slug": "birch-trees-in-autumn-with-yellow-leaves",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "birch",
+          "trees",
+          "autumn",
+          "yellow",
+          "leaves"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "29173938",
+        "slug": "rustic-autumn-birch-tree-by-a-tranquil-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "rustic",
+          "autumn",
+          "birch",
+          "tree",
+          "tranquil"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "29715252",
+        "slug": "misty-forest-in-autumn-with-bare-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "forest",
+          "autumn",
+          "bare",
+          "trees"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "13622968",
+        "slug": "grass-field-and-trees-covered-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grass",
+          "field",
+          "trees",
+          "covered",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "1640882",
+        "slug": "dried-leaves-under-a-tree-on-park-with-fogs-landscape-photography",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dried",
+          "leaves",
+          "tree",
+          "park",
+          "fogs"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "12527037",
+        "slug": "lake-surrounded-by-trees-covered-with-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "lake",
+          "surrounded",
+          "trees",
+          "covered",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "34675744",
+        "slug": "serene-autumn-reflection-on-calm-lake-waters",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "serene",
+          "autumn",
+          "reflection",
+          "calm",
+          "lake"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "35004410",
+        "slug": "tranquil-autumn-landscape-with-hillside-and-lake",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "tranquil",
+          "autumn",
+          "hillside",
+          "lake"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "29479873",
+        "slug": "serene-autumn-lake-with-fall-foliage-reflection",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "serene",
+          "autumn",
+          "lake",
+          "fall",
+          "foliage"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "89403",
+        "slug": "lake-with-fog-under-dark-blue-sky-photography",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "lake",
+          "fog",
+          "dark",
+          "blue",
+          "sky"
+        ],
+        "palette": "dark_grey"
+      },
+      {
+        "id": "28961234",
+        "slug": "misty-autumn-morning-in-a-forest-clearing",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "autumn",
+          "morning",
+          "forest",
+          "clearing"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "28811877",
+        "slug": "misty-pine-forest-in-autumn-colors",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "pine",
+          "forest",
+          "autumn",
+          "colors"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "29579812",
+        "slug": "misty-forest-pathway-in-early-morning-light",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "forest",
+          "pathway",
+          "early",
+          "morning"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "34482318",
+        "slug": "moody-scottish-highland-landscape-in-autumn",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "moody",
+          "scottish",
+          "highland",
+          "autumn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "28551402",
+        "slug": "misty-landscape-with-trees-and-fog-rolling-hills",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "trees",
+          "fog",
+          "rolling",
+          "hills"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "18842494",
+        "slug": "a-broken-tree-on-a-meadow-in-the-forest-in-autumn",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "broken",
+          "tree",
+          "meadow",
+          "forest",
+          "autumn"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "10012495",
+        "slug": "photo-of-a-forest-with-mist",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "forest",
+          "mist"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "34472001",
+        "slug": "majestic-autumn-landscape-with-foggy-mountain-view",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "majestic",
+          "autumn",
+          "foggy",
+          "mountain"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "29562214",
+        "slug": "misty-autumn-forest-in-vermont",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "misty",
+          "autumn",
+          "forest",
+          "vermont"
+        ],
+        "palette": "warm_grey"
+      },
+      {
+        "id": "18897224",
+        "slug": "autumn-mountain-landscape-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "autumn",
+          "mountain",
+          "fog"
+        ],
+        "palette": "warm_grey"
+      }
+    ],
+    "winter": [
+      {
+        "id": "691668",
+        "slug": "landscape-photography-of-mountains-covered-in-snow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountains",
+          "covered",
+          "snow"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "1366919",
+        "slug": "landscape-photography-of-snowy-mountain",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snowy",
+          "mountain"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "34348785",
+        "slug": "scenic-winter-view-of-norwegian-fjord-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "winter",
+          "norwegian",
+          "fjord"
+        ],
+        "palette": "cool_blue"
+      },
+      {
+        "id": "6530841",
+        "slug": "winter-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "winter"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "29823042",
+        "slug": "scenic-winter-road-through-snowy-norwegian-landscape",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "winter",
+          "road",
+          "through",
+          "snowy"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "35375041",
+        "slug": "minimalist-winter-scene-with-leaf-and-snow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "minimalist",
+          "winter",
+          "leaf",
+          "snow"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "18542025",
+        "slug": "winter-forest-in-the-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "winter",
+          "forest",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "4913511",
+        "slug": "snowy-forest-with-high-trees-on-foggy-day",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snowy",
+          "forest",
+          "high",
+          "trees",
+          "foggy"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "10408415",
+        "slug": "aerial-shot-of-a-foggy-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "aerial",
+          "shot",
+          "foggy",
+          "forest"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "20142761",
+        "slug": "dark-mountains-with-snow-and-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "dark",
+          "mountains",
+          "snow",
+          "fog"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "4406183",
+        "slug": "cloudy-sky-over-snowy-mountains-and-lush-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "cloudy",
+          "sky",
+          "snowy",
+          "mountains",
+          "lush"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "6397400",
+        "slug": "cloudy-sky-over-lush-coniferous-forest-covered-with-snow-in-winter",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "cloudy",
+          "sky",
+          "lush",
+          "coniferous",
+          "forest"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "355770",
+        "slug": "mountain-covered-with-snow-digital-wallpaper",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountain",
+          "covered",
+          "snow",
+          "digital",
+          "wallpaper"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "1446713",
+        "slug": "monochrome-photography-of-mountain",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "monochrome",
+          "mountain"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "1367188",
+        "slug": "monochrome-photography-of-mountain-covered-by-clouds",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "monochrome",
+          "mountain",
+          "covered",
+          "clouds"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "1840101",
+        "slug": "snow-covered-rocky-mountain",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "covered",
+          "rocky",
+          "mountain"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "6752125",
+        "slug": "snow-covered-road-near-the-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "covered",
+          "road",
+          "trees"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "14461667",
+        "slug": "grayscale-photo-of-mountain-peak-covered-with-snow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "grayscale",
+          "mountain",
+          "peak",
+          "covered",
+          "snow"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "5570439",
+        "slug": "black-and-white-photo-of-the-snowy-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "black",
+          "white",
+          "snowy",
+          "mountains"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "2683746",
+        "slug": "monochrome-photo-of-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "monochrome",
+          "mountains"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "371649",
+        "slug": "mountains-covered-with-snow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountains",
+          "covered",
+          "snow"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "2479026",
+        "slug": "monochrome-photo-of-mountain",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "monochrome",
+          "mountain"
+        ],
+        "palette": "monochrome"
+      },
+      {
+        "id": "17475755",
+        "slug": "white-snow-and-cloud-in-mountains",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "white",
+          "snow",
+          "cloud",
+          "mountains"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "4318217",
+        "slug": "frozen-lake-surrounded-with-wooded-mountains-in-snowy-winter",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "frozen",
+          "lake",
+          "surrounded",
+          "wooded",
+          "mountains"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "20306445",
+        "slug": "frozen-lake-among-evergreen-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "frozen",
+          "lake",
+          "among",
+          "evergreen",
+          "trees"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "5892621",
+        "slug": "the-frozen-lake-louise-in-alberta-canada-during-winter",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "frozen",
+          "lake",
+          "louise",
+          "alberta",
+          "canada"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "2004390",
+        "slug": "leafless-tree",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "leafless",
+          "tree"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "3509418",
+        "slug": "white-snow-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "white",
+          "snow",
+          "field"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "327434",
+        "slug": "calm-waters-clouds-cold-country",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "calm",
+          "waters",
+          "clouds",
+          "cold",
+          "country"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "29900182",
+        "slug": "snow-covered-forest-and-frozen-lake-scenic-view",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "covered",
+          "forest",
+          "frozen",
+          "lake"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "2004388",
+        "slug": "body-of-water-across-white-mountain",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "body",
+          "water",
+          "across",
+          "white",
+          "mountain"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "15150340",
+        "slug": "bare-trees-on-snow-covered-ground",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "bare",
+          "trees",
+          "snow",
+          "covered",
+          "ground"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "35617820",
+        "slug": "aerial-view-of-snow-covered-farmland-in-winter",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "aerial",
+          "snow",
+          "covered",
+          "farmland",
+          "winter"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "10819629",
+        "slug": "a-snow-covered-field-near-the-beach",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "covered",
+          "field",
+          "beach"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "11180715",
+        "slug": "a-bare-tree-on-a-snow-covered-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "bare",
+          "tree",
+          "snow",
+          "covered",
+          "field"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "11104472",
+        "slug": "trees-surrounding-a-snow-covered-field",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "trees",
+          "surrounding",
+          "snow",
+          "covered",
+          "field"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "688660",
+        "slug": "landscape-photography-of-snow-pathway-between-trees-during-winter",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "pathway",
+          "trees",
+          "winter"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "19296658",
+        "slug": "beautiful-snow-covered-pine-trees-in-a-winter-forest",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "beautiful",
+          "snow",
+          "covered",
+          "pine",
+          "trees"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "801787",
+        "slug": "pine-trees-covered-with-snow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "pine",
+          "trees",
+          "covered",
+          "snow"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "30663486",
+        "slug": "scenic-forest-pathway-with-pine-trees-in-winter",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "forest",
+          "pathway",
+          "pine",
+          "trees"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "4946941",
+        "slug": "coniferous-trees-covered-with-snow-in-sunny-winter-day",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "coniferous",
+          "trees",
+          "covered",
+          "snow",
+          "sunny"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "5097652",
+        "slug": "a-snow-covered-pathway-between-pine-trees",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "covered",
+          "pathway",
+          "pine",
+          "trees"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "904382",
+        "slug": "snow-covered-pine-trees-under-cloudy-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "covered",
+          "pine",
+          "trees",
+          "cloudy"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "18416001",
+        "slug": "scenic-panorama-of-a-mountain-with-peak-hidden-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "scenic",
+          "panorama",
+          "mountain",
+          "peak",
+          "hidden"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "21348382",
+        "slug": "coniferous-trees-covered-with-snow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "coniferous",
+          "trees",
+          "covered",
+          "snow"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "10346402",
+        "slug": "gray-and-black-mountain-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "gray",
+          "black",
+          "mountain",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "2365457",
+        "slug": "snow-covered-mountain",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "snow",
+          "covered",
+          "mountain"
+        ],
+        "palette": "cool_white"
+      },
+      {
+        "id": "18145514",
+        "slug": "mountain-covered-in-fog",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "mountain",
+          "covered",
+          "fog"
+        ],
+        "palette": "cool_grey"
+      },
+      {
+        "id": "3732527",
+        "slug": "leafless-tree-under-gray-sky",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "leafless",
+          "tree",
+          "gray",
+          "sky"
+        ],
+        "palette": "neutral_grey"
+      },
+      {
+        "id": "1888403",
+        "slug": "bare-tree-on-snow",
+        "credit": "Photo on Pexels",
+        "tags": [
+          "bare",
+          "tree",
+          "snow"
+        ],
+        "palette": "cool_white"
+      }
+    ]
+  }
+}
