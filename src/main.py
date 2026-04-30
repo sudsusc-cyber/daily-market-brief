@@ -177,12 +177,13 @@ def main() -> int:
     )
 
     # ---------- 发送 ----------
+    recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
     subject = f"每日晨报 · {now_bj.year} 年 {now_bj.month} 月 {now_bj.day} 日"
-    logger.info("send recipient=%s subject=%r", settings.email_recipient, subject)
+    logger.info("send recipients=%s subject=%r", recipients, subject)
     send_html_email(
         sender=settings.qq_email_address,
         auth_code=settings.qq_email_auth_code,
-        recipient=settings.email_recipient,
+        recipient=recipients,
         subject=subject,
         html_body=html,
         inline_images=inline_images,

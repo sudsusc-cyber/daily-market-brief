@@ -69,7 +69,7 @@ def send_html_email(
     *,
     sender: str,
     auth_code: str,
-    recipient: str,
+    recipient: str | list[str],
     subject: str,
     html_body: str,
     inline_images: list[InlineImage] | None = None,
@@ -78,12 +78,13 @@ def send_html_email(
     timeout: int = 30,
 ) -> None:
     """
-    发送 HTML 邮件。
+    发送 HTML 邮件。recipient 可为单个地址字符串或地址列表。
 
     若 inline_images 非空:邮件 MIME 结构为 multipart/related,
     HTML 用 <img src="cid:..."> 引用;否则发简单的 text/html 单部分。
     """
     inline_images = inline_images or []
+    recipients: list[str] = [recipient] if isinstance(recipient, str) else recipient
 
     if inline_images:
         msg: MIMEMultipart | MIMEText = MIMEMultipart("related")
@@ -94,19 +95,19 @@ def send_html_email(
         msg = MIMEText(html_body, "html", "utf-8")
 
     msg["From"] = sender
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     msg["Subject"] = Header(subject, "utf-8")
     msg["Date"] = formatdate(localtime=False)
     msg["Message-ID"] = make_msgid(domain="daily-market-brief.local")
 
     logger.info(
-        "smtp_send.start sender=%s recipient=%s subject=%r inline=%d",
-        sender, recipient, subject, len(inline_images),
+        "smtp_send.start sender=%s recipients=%s subject=%r inline=%d",
+        sender, recipients, subject, len(inline_images),
     )
     server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout)
     try:
         server.login(sender, auth_code)
-        server.sendmail(sender, [recipient], msg.as_string())
+        server.sendmail(sender, recipients, msg.as_string())
     finally:
         try:
             server.quit()
