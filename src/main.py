@@ -31,6 +31,7 @@ from src.collectors import buffett_13f, company_news, figures, header_image, mac
 from src.config import HOLDINGS, Holding
 from src.processors import (
     figure_filter,
+    holdings_intro,
     macro_filter,
     news_summarizer,
     sentiment_judge,
@@ -69,7 +70,12 @@ def _translate_all_bundles(
 
 
 def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[InlineImage]]:
-    """扫描 assets/logos/<slug>.{png,jpg,jpeg};按优先级取首个存在的文件。"""
+    """扫描 assets/logos/<slug>.{png,jpg,jpeg};按优先级取首个存在的文件。
+
+    CID 形如 logo_<slug>_<sha8>:文件内容变 → hash 变 → CID 变,
+    破解某些邮件客户端(如 iOS 微信邮件助手)对同名 CID 旧附件的缓存。
+    """
+    import hashlib
     cids: dict[str, str] = {}
     images: list[InlineImage] = []
     for h in holdings:
@@ -81,7 +87,8 @@ def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[Inl
         if path is None:
             logger.warning("logo.missing ticker=%s expected=%s/{png,jpg}", h.ticker, _LOGOS_DIR / h.slug)
             continue
-        cid = h.logo_cid
+        sha8 = hashlib.sha1(path.read_bytes()).hexdigest()[:8]
+        cid = f"{h.logo_cid}_{sha8}"
         cids[h.ticker] = cid
         images.append(InlineImage(cid=cid, path=path, subtype=None))
     logger.info("logos.loaded count=%d/%d", len(cids), len(holdings))
@@ -141,6 +148,9 @@ def main() -> int:
     logger.info("processors.sentiment_judge")
     sentiment_verdict = sentiment_judge.judge(sentiment_bundle, client=llm)
 
+    logger.info("processors.holdings_intro")
+    holdings_intro_text = holdings_intro.write_intro(signals, client=llm)
+
     # token 成本汇总
     cum = llm.cumulative
     cost_cny = llm.estimate_cost_cny()
@@ -168,6 +178,7 @@ def main() -> int:
         generated_at=now_bj,
         logo_cids=logo_cids,
         header_image_url=header["url"],
+        holdings_intro=holdings_intro_text,
         # 加工产物(为 None 时模板自动 fallback 到原始数据展示)
         sentiment=sentiment_bundle,
         sentiment_verdict=sentiment_verdict,

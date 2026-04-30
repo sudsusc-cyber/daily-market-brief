@@ -113,6 +113,8 @@ def render_email(
     logo_cids: dict[str, str] | None = None,
     # M5 刊头图
     header_image_url: str | None = None,
+    # M5 LLM 改写的持仓引言(无值时模板退回原 M2 文案)
+    holdings_intro: str | None = None,
     # M3 原始数据(始终渲染指标小表 / 错误兜底)
     sentiment: Any | None = None,            # SentimentBundle
     company_news: list[Any] | None = None,    # list[CompanyNewsBundle]
@@ -138,6 +140,7 @@ def render_email(
         generated_at=generated_at,
         logo_cids=logo_cids or {},
         header_image_url=header_image_url,
+        holdings_intro=holdings_intro,
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         company_news=company_news,

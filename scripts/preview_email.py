@@ -91,25 +91,40 @@ def _logo_path(h: Holding):
     return None
 
 
+def _hashed_cid(h: Holding) -> str | None:
+    """与 main.py._load_logo_assets 同款 CID:logo_<slug>_<sha8>。"""
+    import hashlib
+    p = _logo_path(h)
+    if p is None:
+        return None
+    sha8 = hashlib.sha1(p.read_bytes()).hexdigest()[:8]
+    return f"{h.logo_cid}_{sha8}"
+
+
 def _build_logo_cids() -> dict[str, str]:
-    """ticker -> CID;只对 assets/logos/<slug>.{png,jpg,jpeg} 实际存在的入字典"""
-    return {h.ticker: h.logo_cid for h in HOLDINGS if _logo_path(h)}
+    """ticker -> 带 hash 的 CID;只对 assets/logos/<slug>.{png,jpg,jpeg} 实际存在的入字典"""
+    out: dict[str, str] = {}
+    for h in HOLDINGS:
+        cid = _hashed_cid(h)
+        if cid:
+            out[h.ticker] = cid
+    return out
 
 
 def _inline_logos_as_data_uri(html: str) -> str:
-    """把 <img src='cid:logo_XXX'> 替换为 data:image/...;base64,..., 便于浏览器预览。
-    按 magic bytes 推断 MIME 类型(可能是 png / jpeg / svg)。"""
+    """把 <img src='cid:logo_XXX_<hash>'> 替换为 data:image/...;base64,..., 便于浏览器预览。"""
     from src.sender.smtp_sender import _detect_image_subtype  # 复用 sender 的检测
 
     for h in HOLDINGS:
         path = _logo_path(h)
-        if path is None:
+        cid = _hashed_cid(h)
+        if path is None or cid is None:
             continue
         data = path.read_bytes()
         subtype = _detect_image_subtype(data) or "png"
         b64 = base64.b64encode(data).decode("ascii")
         data_uri = f"data:image/{subtype};base64,{b64}"
-        html = html.replace(f"cid:{h.logo_cid}", data_uri)
+        html = html.replace(f"cid:{cid}", data_uri)
     return html
 
 

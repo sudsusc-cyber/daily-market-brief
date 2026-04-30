@@ -125,10 +125,14 @@
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
                 <td style="padding:18px 4px 8px 4px; font-family:{{ serif_body }}; font-size:15px; line-height:1.85; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
+                  {%- if holdings_intro %}
+                  {{ holdings_intro }}
+                  {%- else %}
                   当前持仓十二只——美股十只,港股两只。下表展示各只标的现价相对一百二十周与二百周均线的位置。
                   现价跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">一二〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;DCA</span>,
                   跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">二〇〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;Lump-sum</span>;
                   无信号则记录至最近均线的距离。
+                  {%- endif %}
                 </td>
               </tr>
             </table>
