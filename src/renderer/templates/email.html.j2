@@ -70,6 +70,18 @@
 
       <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ color_paper }}; max-width:640px; width:100%;">
 
+        {# ───────────────────────  HEADER IMAGE  ─────────────────────── #}
+        {%- if header_image_url %}
+        <tr>
+          <td style="padding:0; line-height:0; font-size:0; border-radius:4px 4px 0 0; overflow:hidden;">
+            <img src="{{ header_image_url }}"
+                 width="640" height="200"
+                 alt=""
+                 style="display:block; width:100%; max-width:640px; height:auto; border:0; line-height:0;" />
+          </td>
+        </tr>
+        {%- endif %}
+
         {# ─────────────────────────  MASTHEAD  ───────────────────────── #}
         <tr>
           <td align="center" style="padding:0 24px 4px 24px; font-family:{{ serif_display }}; color:{{ color_ink }};">

@@ -27,7 +27,7 @@ import logging
 import sys
 from pathlib import Path
 
-from src.collectors import buffett_13f, company_news, figures, macro_news, sentiment, stocks
+from src.collectors import buffett_13f, company_news, figures, header_image, macro_news, sentiment, stocks
 from src.config import HOLDINGS, Holding
 from src.processors import (
     figure_filter,
@@ -146,13 +146,24 @@ def main() -> int:
         cost_cny,
     )
 
+    # ---------- 刊头图(M5) ----------
+    logger.info("collect.header_image")
+    header = header_image.pick_header_image(now_bj.date())
+
     # ---------- 渲染 ----------
     logger.info("render")
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
+    if header["source"] == "local":
+        inline_images.append(InlineImage(
+            cid="header_fallback",
+            path=_PROJECT_ROOT / "assets" / "fallback_header.jpg",
+            subtype=None,
+        ))
     html = render_email(
         signals=signals,
         generated_at=now_bj,
         logo_cids=logo_cids,
+        header_image_url=header["url"],
         # 加工产物(为 None 时模板自动 fallback 到原始数据展示)
         sentiment=sentiment_bundle,
         sentiment_verdict=sentiment_verdict,

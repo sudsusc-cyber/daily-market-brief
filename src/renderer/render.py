@@ -111,6 +111,8 @@ def render_email(
     signals: list[StockSignal],
     generated_at: datetime,
     logo_cids: dict[str, str] | None = None,
+    # M5 刊头图
+    header_image_url: str | None = None,
     # M3 原始数据(始终渲染指标小表 / 错误兜底)
     sentiment: Any | None = None,            # SentimentBundle
     company_news: list[Any] | None = None,    # list[CompanyNewsBundle]
@@ -135,6 +137,7 @@ def render_email(
         signals=signals,
         generated_at=generated_at,
         logo_cids=logo_cids or {},
+        header_image_url=header_image_url,
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         company_news=company_news,
