@@ -1,0 +1,45 @@
+[project]
+name = "daily-market-brief"
+version = "0.1.0"
+description = "每日市场+你 自动晨报系统"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "kaiyuan" }]
+
+# M1 阶段验证脚本所需的最小依赖集
+# 后续里程碑会按需追加(LLM、模板、配置库等)
+dependencies = [
+    "yfinance>=0.2.40",
+    "finnhub-python>=2.4.20",
+    "feedparser>=6.0.11",
+    "requests>=2.32.0",
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.2.0",
+    "openai>=1.40.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+    "black>=24.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
