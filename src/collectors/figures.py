@@ -51,24 +51,33 @@ class FigureBundle:
     error: str | None = None
 
 
-# 监控人物清单
-FIGURES: list[tuple[str, str]] = [
-    ("黄仁勋", '"Jensen Huang"'),
-    ("巴菲特", '"Warren Buffett"'),
+# 监控人物清单。第三个字段是 Google News 语言:"en" 走英文搜索,"zh" 走中文。
+# 李录每日候选过少(24h 通常 0-2 条),已弃用——若以后频率上升可加回。
+FIGURES: list[tuple[str, str, str]] = [
+    ("黄仁勋", '"Jensen Huang"', "en"),
+    ("巴菲特", '"Warren Buffett"', "en"),
+    ("但斌", '"但斌"', "zh"),    # 东方港湾董事长,中文价值投资圈
 ]
 
-# 规则筛选用的动词(英文为主——Google News 中绝大多数为英文媒体)
+# 规则筛选动词:英文 + 中文双语,任一命中即视为候选
 _VERB_RE = re.compile(
+    # 英文
     r"\b(?:said|says|tells|told|announce[ds]?|speaks?|spoke|warns?|"
-    r"expects?|expected|believes?|noted|comment(?:ed|s)?|interview)\b",
+    r"expects?|expected|believes?|noted|comment(?:ed|s)?|interview)\b"
+    # 中文(动词或表态词,不要太宽)
+    r"|(?:说|表示|称|认为|发表|讲到|提到|强调|指出|警告|建议|相信|预计|"
+    r"分析|评论|看法|观点|采访|演讲|致辞|呼吁|批评|回应)",
     re.IGNORECASE,
 )
 
 
 @retry(max_attempts=3, base_delay=1.5)
-def _fetch_google_news(query: str) -> list[FigureMention]:
+def _fetch_google_news(query: str, lang: str = "en") -> list[FigureMention]:
     q = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=en-US&gl=US&ceid=US:en"
+    if lang == "zh":
+        url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    else:
+        url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=en-US&gl=US&ceid=US:en"
     feed = fetch_rss(url)
     items: list[FigureMention] = []
     for e in feed.entries or []:
@@ -143,9 +152,9 @@ def fetch_all(state_path: Path) -> list[FigureBundle]:
     new_pushed = dict(pushed)  # 本次新加入的也写入
 
     bundles: list[FigureBundle] = []
-    for person, query in FIGURES:
+    for person, query, lang in FIGURES:
         try:
-            raw = _fetch_google_news(query)
+            raw = _fetch_google_news(query, lang=lang)
         except Exception as exc:  # noqa: BLE001
             logger.exception("figures.fetch_failed person=%s", person)
             bundles.append(FigureBundle(

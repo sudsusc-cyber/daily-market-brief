@@ -62,15 +62,22 @@ _TASK_INSTRUCTION = """\
 【输出格式】
 
 每家公司输出一行,格式严格为:
-  公司中文名    一句话摘要<sup>[N]</sup>
+  <strong>公司中文名</strong> —— 一句话摘要<sup>[N]</sup>
 
-- 公司中文名:用 4-6 字常用译名(微软、好市多、苹果、英伟达、台积电、穆迪、
+- <strong>...</strong> 标签包住公司名,标签必须出现
+- 公司中文名后接全角破折号 —— 然后接摘要(用于视觉分隔)
+- 公司中文名:4-6 字常用译名(微软、好市多、苹果、英伟达、台积电、穆迪、
   谷歌、伯克希尔、可口可乐、运通、腾讯、泡泡玛特)
 - 一句话摘要:40-60 字,陈述客观事实
-- <sup>[N]</sup> 是新闻原始链接的脚注序号,从 [1] 开始递增,N 必须与下面"输入数据"
-  里这条新闻的"#" 编号一致(我已经预先编号了,你直接引用就行)
+- <sup>[N]</sup> 是脚注序号,N 必须等于下面"输入数据"里这条新闻的"#" 编号
 - 当某家公司没有重要新闻时,**这家公司不出现在输出中**(不要写"无重要新闻")
 - 当全部公司都没有重要新闻时,只输出一行:持仓今日无重要动态。
+
+【输出示例】
+
+<strong>苹果</strong> —— App Store 抽成案被驳回,案件移交最高法院。<sup>[1]</sup>
+<strong>英伟达</strong> —— Arrive AI 部署 Isaac Sim 与 Blackwell GPU 用于机器人视觉训练。<sup>[2]</sup>
+<strong>腾讯</strong> —— 4 月获 154 款游戏版号;开源轻量端侧翻译模型。<sup>[3]</sup>
 
 【内容标准】
 
@@ -84,7 +91,7 @@ _TASK_INSTRUCTION = """\
 - 主动语态:"苹果暂停 App Store 抽成变更" 而不是被动语态
 - 数字用阿拉伯数字
 - 不要前言、总结、过渡句
-- 输出**只有**公司分行,每行独立一行(用换行分隔)
+- 输出**只有**公司分行,每行独立一行(用换行分隔),每行必须以 <strong> 开头
 """
 
 
@@ -99,6 +106,21 @@ _FOOTNOTE_RE = re.compile(
 def _re_idx(match: re.Match[str]) -> int:
     """三组互斥,取非 None 的那个"""
     return int(match.group(1) or match.group(2) or match.group(3))
+
+
+_CN_NAMES_SORTED: list[str] = sorted(set(_CN_NAME_HINT.values()), key=len, reverse=True)
+
+
+def _ensure_strong_wrapping(line: str) -> str:
+    """LLM 没输出 <strong> 时,用已知中文公司名反查包装。
+    若行首匹配已知公司名,wrap 成 `<strong>名</strong> —— 摘要`;否则原样返回。"""
+    if "<strong>" in line:
+        return line
+    for cn in _CN_NAMES_SORTED:
+        if line.startswith(cn):
+            rest = line[len(cn):].lstrip(" —-—:、。·")
+            return f"<strong>{cn}</strong> —— {rest}"
+    return line
 
 
 def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]]:
@@ -152,7 +174,7 @@ def _build_footnotes(
         url = url_by_new_idx.get(new_idx, "")
         return (
             f'<sup><a href="{url}" target="_blank" rel="noopener" '
-            f'style="color:#7A1F2B;text-decoration:none;font-size:11px;'
+            f'style="color:#0563C1;text-decoration:none;font-size:11px;'
             f'font-family:Charter,Georgia,serif;margin-left:1px;">'
             f'[{new_idx}]</a></sup>'
         )
@@ -183,9 +205,26 @@ def summarize(
         return None
 
     raw_html = resp.text.strip()
-    # 把每行包成 <div>,以便 CSS 控制行间距;如果模型已经用 <p> / <div> 就保留
     lines = [line.strip() for line in raw_html.splitlines() if line.strip()]
-    body_html = "\n".join(f"<div>{line}</div>" for line in lines)
+    cleaned = []
+    for line in lines:
+        # 若 LLM 自己写了 "1." "1、" 之类前缀,剥掉(我们 Python 端统一加)
+        line = re.sub(r"^[0-9]+[.、。\s]+", "", line)
+        # Fallback:LLM 没输出 <strong> 时,用已知中文公司名反查包成 <strong>
+        line = _ensure_strong_wrapping(line)
+        cleaned.append(line)
+    # 序号与正文同字号同字体(思源宋体),只用淡灰色区分;不再用 Charter 西文字体
+    seq_style = (
+        "color:#6B6B6B; font-family:'Noto Serif SC','Source Han Serif SC',"
+        "'Songti SC','STSong',Charter,Cambria,Georgia,serif; "
+        "font-size:16px; font-weight:400; margin-right:12px;"
+    )
+    body_html = "\n".join(
+        f'<div style="margin:0 0 10px 0;">'
+        f'<span style="{seq_style}">{i + 1}.</span>'
+        f"{line}</div>"
+        for i, line in enumerate(cleaned)
+    )
 
     body_html, footnotes = _build_footnotes(body_html, flat_items)
     logger.info("news_summarizer.ok rows=%d footnotes=%d", len(lines), len(footnotes))

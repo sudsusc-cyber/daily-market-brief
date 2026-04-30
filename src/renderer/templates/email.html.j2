@@ -314,10 +314,9 @@
         {% if company_news_summary.footnotes %}
         <tr>
           <td style="padding:18px 24px 0 24px;">
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; line-height:1.7; padding-top:12px; border-top:0.5px solid {{ color_hairline }};">
+            <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in company_news_summary.footnotes %}
-              [{{ f.index }}] {{ f.source }} · <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:{{ color_muted }}; text-decoration:none;">原文 →</a>
-              {%- if not loop.last %}<br>{% endif %}
+              <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -378,35 +377,38 @@
           </td>
         </tr>
         {% if figure_summaries %}
-        {# M4 LLM 第二道筛选 + 关键观点提炼 #}
+        {# M4 LLM 第二道筛选 + 关键观点提炼;每个人物即使 0 条也展示小标题 + "昨日无发言" #}
         {% for f in figure_summaries %}
         <tr>
           <td style="padding:18px 24px 0 24px;">
-            <div style="font-family:{{ serif_display }}; font-size:15px; color:{{ color_accent }}; letter-spacing:0.06em; font-weight:500;">{{ f.person }}</div>
-            <div style="margin-top:10px;">
+            {# 人物姓名作为小标题:字号 13 + 字距 + 加粗 + oxblood,与主体观点 16/1.9 区分 #}
+            <div style="font-family:{{ serif_body }}; font-size:13px; color:{{ color_accent }}; letter-spacing:0.32em; font-weight:600; margin:0 0 14px 0;">{{ f.person }}</div>
+            <div>
               {% if f.items %}
               <ul style="margin:0; padding:0; list-style:none;">
                 {% for kp in f.items %}
-                <li style="margin:0 0 10px 0; font-family:{{ serif_body }}; font-size:14px; line-height:1.85; color:{{ color_ink_soft }};">
-                  {{ kp.text }}
+                <li style="margin:0 0 10px 0; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
+                  {{ kp.text | cjk_spaced }}
                   {% if kp.source_url %}
-                  <a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:{{ color_faint }}; text-decoration:none; font-size:10.5px; margin-left:6px; border-bottom:1px solid {{ color_hairline }};">原文 — {{ kp.source_name }}</a>
+                  <a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-left:8px;">[{{ kp.source_name }}]</a>
                   {% endif %}
                 </li>
                 {% endfor %}
               </ul>
               {% elif f.fallback_raw %}
-              {# LLM 全 no:依旧展示原始候选,让用户自己判断 #}
+              {# LLM 全 no:展示原始候选,样式统一 16/1.9 #}
               <ul style="margin:0; padding:0; list-style:none;">
                 {% for item in f.fallback_raw %}
-                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
-                  <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
-                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
+                <li style="margin:0 0 10px 0; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
+                  {{ item.title | cjk_spaced }}
+                  {% if item.url %}
+                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-left:8px;">[{{ item.source }}]</a>
+                  {% endif %}
                 </li>
                 {% endfor %}
               </ul>
               {% else %}
-              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_faint }}; font-style:italic;">{{ f.error or '过去 24 小时无新候选发言' }}</div>
+              <div style="font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.02em;">{{ f.error or '昨日无发言。' }}</div>
               {% endif %}
             </div>
           </td>
@@ -472,10 +474,9 @@
         {% if macro_news_summary.footnotes %}
         <tr>
           <td style="padding:8px 24px 0 24px;">
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; line-height:1.7; padding-top:12px; border-top:0.5px solid {{ color_hairline }};">
+            <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in macro_news_summary.footnotes %}
-              [{{ f.index }}] {{ f.source }} · <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:{{ color_muted }}; text-decoration:none;">原文 →</a>
-              {%- if not loop.last %}<br>{% endif %}
+              <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>

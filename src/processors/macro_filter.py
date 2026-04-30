@@ -119,7 +119,7 @@ def _rebuild_footnotes(html: str, flat_items: list[MacroNewsItem]) -> tuple[str,
         url = url_by_new_idx.get(new_idx, "")
         return (
             f'<sup><a href="{url}" target="_blank" rel="noopener" '
-            f'style="color:#7A1F2B;text-decoration:none;font-size:11px;'
+            f'style="color:#0563C1;text-decoration:none;font-size:11px;'
             f'font-family:Charter,Georgia,serif;margin-left:1px;">'
             f'[{new_idx}]</a></sup>'
         )
