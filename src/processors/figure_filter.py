@@ -109,7 +109,8 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION.replace("人物", bundle.person),
-        max_tokens=900,
+        # V4-Flash reasoning 占用 ~50%,留双份空间
+        max_tokens=2200,
         temperature=0.2,
     )
     if not resp.text:

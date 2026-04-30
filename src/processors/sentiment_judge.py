@@ -88,7 +88,8 @@ def judge(
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION,
-        max_tokens=400,
+        # V4-Flash reasoning 占用主要 token;JSON 输出短,但仍需 buffer
+        max_tokens=1500,
         temperature=0.2,
     )
     if not resp.text:

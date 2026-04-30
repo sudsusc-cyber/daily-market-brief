@@ -48,15 +48,17 @@ class TestNewsSummarizerFormat:
         b1 = CompanyNewsBundle(holding=nvda, items=[
             NewsItem(title="Nvidia 发布 Rubin", published_at=_utc(2026, 4, 30), url="", source="Reuters"),
         ])
-        b2 = CompanyNewsBundle(holding=msft, items=[])
-        b3 = CompanyNewsBundle(holding=HOLDINGS[2], error="API 故障")
-        s = news_format([b1, b2, b3])
-        assert "【NVDA(NVIDIA)】" in s
+        b2 = CompanyNewsBundle(holding=msft, items=[])  # 无新闻 → 不出现
+        b3 = CompanyNewsBundle(holding=HOLDINGS[2], error="API 故障")  # error → 不出现
+        s, flat = news_format([b1, b2, b3])
+        # M4 内修复后:无新闻 / error 的公司直接跳过(不写"无")
+        assert "英伟达" in s  # 中文译名提示
         assert "Nvidia 发布 Rubin" in s
         assert "Reuters" in s
-        assert "【MSFT(Microsoft)】" in s
-        assert "无" in s  # MSFT 无新闻
-        assert "AAPL" not in s  # error bundle 应被跳过
+        assert "MSFT" not in s  # 无新闻应被跳过
+        assert "AAPL" not in s  # error 应被跳过
+        assert flat == [b1.items[0]]
+        # flat_items 用于 LLM [N] 引用回查 url
 
 
 class TestMacroFilterFormat:
@@ -66,11 +68,12 @@ class TestMacroFilterFormat:
         ])
         b2 = MacroFeedBundle(source="Reuters", error="SSL 失败")
         b3 = MacroFeedBundle(source="FT", items=[])
-        s = macro_format([b1, b2, b3])
+        s, flat = macro_format([b1, b2, b3])
         assert "【WSJ】" in s
         assert "Fed 降息 25 bp" in s
         assert "Reuters" not in s
         assert "FT" not in s
+        assert flat == [b1.items[0]]
 
 
 class TestFigureFilter:

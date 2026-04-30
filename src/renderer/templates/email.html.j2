@@ -26,8 +26,9 @@
       | replace('6','六') | replace('7','七') | replace('8','八')
       | replace('9','九') -%}
 {%- set weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'] -%}
-{%- set serif_display = "'Newsreader','Source Serif Pro','Source Serif 4',Charter,Cambria,Georgia,'Noto Serif SC','Songti SC',STSong,'宋体',serif" -%}
-{%- set serif_body = "Charter,Cambria,Georgia,'Noto Serif SC','Songti SC',STSong,'宋体','Times New Roman',Times,serif" -%}
+{# 思源宋体 / Source Han Serif SC 优先;退路是 macOS 自带宋体与 Windows Cambria #}
+{%- set serif_display = "'Noto Serif SC','Source Han Serif SC','Songti SC','STSong','Newsreader','Source Serif Pro',Charter,Cambria,Georgia,serif" -%}
+{%- set serif_body = "'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',Charter,Cambria,Georgia,'Times New Roman',Times,serif" -%}
 {%- set color_paper = '#F8F5EE' -%}
 {%- set color_paper_alt = '#F2ECDC' -%}
 {%- set color_ink = '#1A1A1A' -%}
@@ -103,24 +104,15 @@
         <tr>
           <td style="padding:0 24px 0 24px;">
 
-            {# 区段标题:Roman drop cap + 中文 + 英文小字 #}
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td valign="top" width="64" style="padding:2px 0 0 0;">
-                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">I.</div>
-                </td>
-                <td valign="top" style="padding:6px 0 0 4px;">
-                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">持&nbsp;仓&nbsp;信&nbsp;号</div>
-                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Position&nbsp;&nbsp;Signals</div>
-                </td>
-              </tr>
-            </table>
-            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px; line-height:0; font-size:0;">&nbsp;</div>
+            {# 区段标题:无罗马数字,中文用 letter-spacing 拉字距 #}
+            <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">持仓信号</div>
+            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Position Signals</div>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:24px; line-height:0; font-size:0;">&nbsp;</div>
 
             {# 引言段:解释这个表格在看什么。M2 实用,M3 起可换成更克制的款式 #}
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td style="padding:18px 4px 8px 4px; font-family:{{ serif_body }}; font-size:13.5px; line-height:1.78; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
+                <td style="padding:18px 4px 8px 4px; font-family:{{ serif_body }}; font-size:15px; line-height:1.85; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
                   当前持仓十二只——美股十只,港股两只。下表展示各只标的现价相对一百二十周与二百周均线的位置。
                   现价跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em;">一二〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600;">&nbsp;DCA</span>,
                   跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em;">二〇〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600;">&nbsp;Lump-sum</span>;
@@ -243,22 +235,13 @@
         </tr>
         {% endif %}
 
-        {# ─────────────────────────  II. 情绪温度计  (M3) ───────────────────────── #}
+        {# ─────────────────────────  情绪温度计  ───────────────────────── #}
         {% if sentiment and sentiment.metrics %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td valign="top" width="64" style="padding:2px 0 0 0;">
-                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">II.</div>
-                </td>
-                <td valign="top" style="padding:6px 0 0 4px;">
-                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">情&nbsp;绪&nbsp;温&nbsp;度&nbsp;计</div>
-                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Market&nbsp;&nbsp;Mood</div>
-                </td>
-              </tr>
-            </table>
-            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">情绪温度计</div>
+            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Market Mood</div>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
         {# M4 LLM 综合判断(若失败则只渲染下面的指标小表) #}
@@ -266,10 +249,10 @@
         <tr>
           <td style="padding:24px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; color:{{ color_ink }}; letter-spacing:0.06em; line-height:1.4;">
-              {{ sentiment_verdict.verdict }}
+              {{ sentiment_verdict.verdict | cjk_spaced }}
             </div>
-            <div style="margin-top:12px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
-              {{ sentiment_verdict.argument }}
+            <div style="margin-top:12px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
+              {{ sentiment_verdict.argument | cjk_spaced }}
             </div>
           </td>
         </tr>
@@ -312,31 +295,34 @@
         </tr>
         {% endif %}
 
-        {# ─────────────────────────  III. 昨日动态  (M3) ───────────────────────── #}
+        {# ─────────────────────────  昨日动态  ───────────────────────── #}
         {% if company_news %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td valign="top" width="64" style="padding:2px 0 0 0;">
-                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">III.</div>
-                </td>
-                <td valign="top" style="padding:6px 0 0 4px;">
-                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">昨&nbsp;日&nbsp;动&nbsp;态</div>
-                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Yesterday&nbsp;&nbsp;in&nbsp;Holdings</div>
-                </td>
-              </tr>
-            </table>
-            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">昨日动态</div>
+            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Yesterday in Holdings</div>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
-        {% if company_news_paragraph %}
-        {# M4 LLM 加工后的段落叙述 #}
+        {% if company_news_summary and company_news_summary.summary_html %}
+        {# M4 LLM 公司分行简报 + 区块下方脚注列表 #}
         <tr>
-          <td style="padding:18px 24px 0 24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
-            {{ (company_news_paragraph | e | replace('\n\n', '<br><br>') | replace('\n', '<br>')) | safe }}
+          <td style="padding:24px 24px 0 24px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
+            {{ company_news_summary.summary_html | cjk_spaced | safe }}
           </td>
         </tr>
+        {% if company_news_summary.footnotes %}
+        <tr>
+          <td style="padding:18px 24px 0 24px;">
+            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; line-height:1.7; padding-top:12px; border-top:0.5px solid {{ color_hairline }};">
+              {% for f in company_news_summary.footnotes %}
+              [{{ f.index }}] {{ f.source }} · <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:{{ color_muted }}; text-decoration:none;">原文 →</a>
+              {%- if not loop.last %}<br>{% endif %}
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         {% else %}
         {% for bundle in company_news %}
         {%- set has_logo = logo_cids and (bundle.holding.ticker in logo_cids) -%}
@@ -382,22 +368,13 @@
         {% endif %}{# end company_news_paragraph else #}
         {% endif %}{# end company_news outer #}
 
-        {# ─────────────────────────  IV. 关键发言  (M3) ───────────────────────── #}
+        {# ─────────────────────────  关键发言  ───────────────────────── #}
         {% if figures or (buffett_13f and buffett_13f.is_new) %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td valign="top" width="64" style="padding:2px 0 0 0;">
-                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">IV.</div>
-                </td>
-                <td valign="top" style="padding:6px 0 0 4px;">
-                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">关&nbsp;键&nbsp;发&nbsp;言</div>
-                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Voices</div>
-                </td>
-              </tr>
-            </table>
-            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">关键发言</div>
+            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Voices</div>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
         {% if figure_summaries %}
@@ -476,31 +453,34 @@
         {% endif %}
         {% endif %}
 
-        {# ─────────────────────────  V. 宏观视野  (M3) ───────────────────────── #}
+        {# ─────────────────────────  宏观视野  ───────────────────────── #}
         {% if macro_news %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td valign="top" width="64" style="padding:2px 0 0 0;">
-                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">V.</div>
-                </td>
-                <td valign="top" style="padding:6px 0 0 4px;">
-                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">宏&nbsp;观&nbsp;视&nbsp;野</div>
-                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Macro&nbsp;&nbsp;Horizon</div>
-                </td>
-              </tr>
-            </table>
-            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">宏观视野</div>
+            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Macro Horizon</div>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
-        {% if macro_news_paragraph %}
-        {# M4 LLM 头版级别筛选 + 段落叙述 #}
+        {% if macro_news_summary and macro_news_summary.summary_html %}
+        {# M4 LLM 主题分段叙述 + 区块下方脚注 #}
         <tr>
-          <td style="padding:18px 24px 0 24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
-            {{ (macro_news_paragraph | e | replace('\n\n', '<br><br>') | replace('\n', '<br>')) | safe }}
+          <td style="padding:24px 24px 0 24px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
+            {{ macro_news_summary.summary_html | cjk_spaced | safe }}
           </td>
         </tr>
+        {% if macro_news_summary.footnotes %}
+        <tr>
+          <td style="padding:8px 24px 0 24px;">
+            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; line-height:1.7; padding-top:12px; border-top:0.5px solid {{ color_hairline }};">
+              {% for f in macro_news_summary.footnotes %}
+              [{{ f.index }}] {{ f.source }} · <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:{{ color_muted }}; text-decoration:none;">原文 →</a>
+              {%- if not loop.last %}<br>{% endif %}
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         {% else %}
         {% for bundle in macro_news %}
         <tr>

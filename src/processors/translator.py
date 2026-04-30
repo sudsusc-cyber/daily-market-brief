@@ -67,7 +67,8 @@ def translate_titles(
         resp = client.chat(
             user_prompt,
             task_extra=_TASK_INSTRUCTION,
-            max_tokens=2048,
+            # V4-Flash reasoning 偶尔会吃 1500+ token,留双份空间避免丢标题
+            max_tokens=3500,
             temperature=0.0,
         )
         if not resp.text:

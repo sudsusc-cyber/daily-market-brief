@@ -126,10 +126,10 @@ def main() -> int:
     )
 
     logger.info("processors.news_summarizer")
-    company_news_paragraph = news_summarizer.summarize(cn_bundles, client=llm)
+    company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
 
     logger.info("processors.macro_filter")
-    macro_news_paragraph = macro_filter.summarize(macro_bundles, client=llm)
+    macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
 
     logger.info("processors.figure_filter")
     figure_summaries = figure_filter.filter_all(fig_bundles, client=llm)
@@ -157,11 +157,11 @@ def main() -> int:
         sentiment=sentiment_bundle,
         sentiment_verdict=sentiment_verdict,
         company_news=cn_bundles,
-        company_news_paragraph=company_news_paragraph,
+        company_news_summary=company_news_summary,
         figures=fig_bundles,
         figure_summaries=figure_summaries,
         macro_news=macro_bundles,
-        macro_news_paragraph=macro_news_paragraph,
+        macro_news_summary=macro_news_summary,
         buffett_13f=buffett_bundle,
     )
 

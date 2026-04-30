@@ -21,6 +21,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.collectors.stocks import StockSignal
+from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -101,6 +102,7 @@ def _build_env() -> Environment:
     env.filters["metric_num"] = _filter_metric_num
     env.filters["metric_delta"] = _filter_metric_delta
     env.filters["bj_time"] = _filter_bj_time
+    env.filters["cjk_spaced"] = add_cjk_spacing
     return env
 
 
@@ -117,9 +119,9 @@ def render_email(
     buffett_13f: Any | None = None,           # BuffettBundle
     # M4 LLM 加工产物(若为 None,模板自动降级到 M3 原始数据)
     sentiment_verdict: dict | None = None,           # {verdict, argument}
-    company_news_paragraph: str | None = None,       # 200-400 字段落
+    company_news_summary: Any | None = None,          # CompanyNewsSummary {summary_html, footnotes}
     figure_summaries: list[Any] | None = None,        # list[FigureSummary]
-    macro_news_paragraph: str | None = None,         # 150-300 字段落
+    macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
 ) -> str:
     """
     渲染完整邮件 HTML。
@@ -136,10 +138,10 @@ def render_email(
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         company_news=company_news,
-        company_news_paragraph=company_news_paragraph,
+        company_news_summary=company_news_summary,
         figures=figures,
         figure_summaries=figure_summaries,
         macro_news=macro_news,
-        macro_news_paragraph=macro_news_paragraph,
+        macro_news_summary=macro_news_summary,
         buffett_13f=buffett_13f,
     )

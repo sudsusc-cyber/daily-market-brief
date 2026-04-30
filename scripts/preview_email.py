@@ -109,17 +109,20 @@ def _inline_logos_as_data_uri(html: str) -> str:
 
 
 def render_preview() -> str:
-    env = Environment(
-        loader=FileSystemLoader(PROJECT_ROOT / "src" / "renderer" / "templates"),
-        autoescape=select_autoescape(["html"]),
-    )
-    env.filters["price"] = _format_price
-    env.filters["pct"] = _format_pct
+    # 复用 render.py 的 Environment(已注册全部 filter:price/pct/metric_*/bj_time/cjk_spaced)
+    from src.renderer.render import _build_env
+    env = _build_env()
     template = env.get_template("email.html.j2")
     html = template.render(
         signals=_build_mock_signals(),
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids=_build_logo_cids(),
+        # M4 加工产物 mock(模板降级到 M3 原始数据列表更接近真实情况;但提供 mock 也可)
+        sentiment=None, sentiment_verdict=None,
+        company_news=None, company_news_summary=None,
+        figures=None, figure_summaries=None,
+        macro_news=None, macro_news_summary=None,
+        buffett_13f=None,
     )
     return _inline_logos_as_data_uri(html)
 
