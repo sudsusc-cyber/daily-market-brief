@@ -13,7 +13,7 @@
   - 两融余额:Tushare 需注册 + 收费 token,东财抓取脆弱,M3 砍掉
   - 北向资金:PLAN 第 11 节用户已明确放弃
 
-输出:每个指标一份 SentimentMetric,包含当前值 / 一周前值 / 变化方向。
+输出:每个指标一份 SentimentMetric,包含当前值 / 前一交易日值 / 变化方向。
 M3 不出"一句结论",M4 由 LLM 综合判断。
 """
 
@@ -38,7 +38,7 @@ class SentimentMetric:
     """单个情绪指标"""
     name: str          # 显示名,如 "CNN Fear & Greed"
     current: float | None
-    prior: float | None  # 一周前(或最接近的可比值)
+    prior: float | None  # 前一交易日(或最接近的可比值)
     rating: str | None   # 部分指标自带分级文本,如 F&G "greed"
     unit: str = ""       # "" 数字 / "%" 百分比 / "bp" 基点
     error: str | None = None
@@ -76,8 +76,8 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
     rating = fg.get("rating")
     prior = None
     if historical:
-        # 7 天前的目标毫秒时间戳;在 historical 中找最接近的 (x: ms 时间戳, y: 分值)
-        target_ts = (datetime.now(timezone.utc) - timedelta(days=7)).timestamp() * 1000
+        # 1 天前(前一交易日)的目标毫秒时间戳;在 historical 中找最接近的 (x: ms 时间戳, y: 分值)
+        target_ts = (datetime.now(timezone.utc) - timedelta(days=1)).timestamp() * 1000
         best = min(
             historical,
             key=lambda e: abs((e.get("x") or 0) - target_ts),
@@ -112,9 +112,8 @@ def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> Senti
         return SentimentMetric(name=display_name, current=None, prior=None, rating=None,
                               unit=unit, error="无数据")
     current = closes[-1]
-    # 取 5 个交易日前作为"一周前"参考(略简化,没考虑节假日)
-    prior_idx = max(0, len(closes) - 6)
-    prior = closes[prior_idx] if prior_idx < len(closes) else None
+    # 前一交易日(closes[-2])作为"前一日"参考
+    prior = closes[-2] if len(closes) >= 2 else None
     return SentimentMetric(name=display_name, current=current, prior=prior, rating=None, unit=unit)
 
 
@@ -146,7 +145,8 @@ def _fetch_hsi_rsi(period_days: int = 14) -> SentimentMetric:
         return 100.0 - (100.0 / (1.0 + rs))
 
     current = _rsi(closes)
-    prior = _rsi(closes[:-5]) if len(closes) > period_days + 5 else None
+    # RSI 前一交易日:截掉最后一根 K 线后再算 RSI
+    prior = _rsi(closes[:-1]) if len(closes) > period_days + 1 else None
     return SentimentMetric(name="恒指 14 日 RSI", current=current, prior=prior, rating=None)
 
 
@@ -197,7 +197,8 @@ def _fetch_fred_hy_spread(api_key: str) -> SentimentMetric:
             return None
 
     current = _val(obs[0])
-    prior = _val(obs[5]) if len(obs) > 5 else (_val(obs[-1]) if obs else None)
+    # FRED 是降序;obs[1] 即前一观测日(节假日 FRED 不更新即为前一交易日)
+    prior = _val(obs[1]) if len(obs) > 1 else None
     return SentimentMetric(name="高收益债利差", current=current, prior=prior, rating=None, unit="%")
 
 

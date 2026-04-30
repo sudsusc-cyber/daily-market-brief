@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # M2:邮件发送
     qq_email_address: str = Field(..., description="QQ 邮箱地址,作为 SMTP 发件方")
     qq_email_auth_code: str = Field(..., description="QQ 邮箱 16 位授权码,非登录密码")
-    email_recipient: str = Field(..., description="收件邮箱(通常等于 qq_email_address)")
+    email_recipient: str = Field(..., description="收件邮箱;逗号分隔可填多个,如 a@qq.com,b@gmail.com")
 
     # M3:数据采集层
     finnhub_api_key: str = Field(..., description="Finnhub 免费 API Key,用于持仓公司新闻")

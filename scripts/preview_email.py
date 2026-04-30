@@ -82,33 +82,64 @@ def _build_mock_signals() -> list[StockSignal]:
     return signals
 
 
+def _logo_path(h: Holding):
+    """按优先级查找 png/jpg/jpeg 文件,返回首个存在的 Path 或 None。"""
+    for ext in ("png", "jpg", "jpeg"):
+        p = LOGOS_DIR / f"{h.slug}.{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def _hashed_cid(h: Holding) -> str | None:
+    """与 main.py._load_logo_assets 同款 CID:logo_<slug>_<sha8>。"""
+    import hashlib
+    p = _logo_path(h)
+    if p is None:
+        return None
+    sha8 = hashlib.sha1(p.read_bytes()).hexdigest()[:8]
+    return f"{h.logo_cid}_{sha8}"
+
+
 def _build_logo_cids() -> dict[str, str]:
-    """ticker -> CID;只对 assets/logos/<slug>.png 实际存在的入字典"""
-    cids: dict[str, str] = {}
+    """ticker -> 带 hash 的 CID;只对 assets/logos/<slug>.{png,jpg,jpeg} 实际存在的入字典"""
+    out: dict[str, str] = {}
     for h in HOLDINGS:
-        if (LOGOS_DIR / f"{h.slug}.png").exists():
-            cids[h.ticker] = h.logo_cid
-    return cids
+        cid = _hashed_cid(h)
+        if cid:
+            out[h.ticker] = cid
+    return out
 
 
 def _inline_logos_as_data_uri(html: str) -> str:
-    """把 <img src='cid:logo_XXX'> 替换为 data:image/...;base64,..., 便于浏览器预览。
-    按 magic bytes 推断 MIME 类型(可能是 png / jpeg / svg)。"""
+    """把 <img src='cid:logo_XXX_<hash>'> 替换为 data:image/...;base64,..., 便于浏览器预览。"""
     from src.sender.smtp_sender import _detect_image_subtype  # 复用 sender 的检测
 
     for h in HOLDINGS:
-        path = LOGOS_DIR / f"{h.slug}.png"
-        if not path.exists():
+        path = _logo_path(h)
+        cid = _hashed_cid(h)
+        if path is None or cid is None:
             continue
         data = path.read_bytes()
         subtype = _detect_image_subtype(data) or "png"
         b64 = base64.b64encode(data).decode("ascii")
         data_uri = f"data:image/{subtype};base64,{b64}"
-        html = html.replace(f"cid:{h.logo_cid}", data_uri)
+        html = html.replace(f"cid:{cid}", data_uri)
     return html
 
 
 def render_preview() -> str:
+    import datetime as dt
+    from src.collectors.header_image import pick_header_image
+    header = pick_header_image(dt.date.today())
+    header_url = header["url"]
+    # cid: 在浏览器无法加载,换用固定 Pexels URL 供预览
+    if header_url.startswith("cid:"):
+        header_url = (
+            "https://images.pexels.com/photos/691668/pexels-photo-691668.jpeg"
+            "?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop"
+        )
+
     # 复用 render.py 的 Environment(已注册全部 filter:price/pct/metric_*/bj_time/cjk_spaced)
     from src.renderer.render import _build_env
     env = _build_env()
@@ -117,6 +148,7 @@ def render_preview() -> str:
         signals=_build_mock_signals(),
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids=_build_logo_cids(),
+        header_image_url=header_url,
         # M4 加工产物 mock(模板降级到 M3 原始数据列表更接近真实情况;但提供 mock 也可)
         sentiment=None, sentiment_verdict=None,
         company_news=None, company_news_summary=None,

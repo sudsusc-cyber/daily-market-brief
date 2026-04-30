@@ -16,7 +16,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-PORT = 8765
+PORT = int(__import__("os").environ.get("PORT", 8766))
 PREVIEW_DIR = Path("/tmp/email-preview")
 PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -1,11 +1,15 @@
 """
 情绪综合判断(模块 5 加工)。
 
-输入:SentimentBundle(6 个指标的 当前 / 一周前 / rating / unit)
-输出:dict { verdict: "今日情绪 · 偏热", argument: "<2-3 句>" }
-失败时返回 None,模板降级到原始指标小表。
+verdict(温度档位)由**确定性加权打分**得出,同样输入永远同样档位:
+  - 6 指标各打 0-100 分(0=极度恐慌,100=极度贪婪)
+  - 加权平均(失败指标从权重中剔除并重新归一化)
+  - 阈值切档:<25 极度恐慌 / 25-40 偏冷 / 40-60 中性 / 60-75 偏热 / >75 极度贪婪
 
-prompt 要求 LLM 输出严格 JSON,便于稳定解析。
+argument(2-3 句论据)仍由 LLM 撰写,prompt 强制 verdict 已固定,LLM 只能解释"为什么是这个档位"。
+
+输入:SentimentBundle(6 个指标的 当前 / 一周前 / rating / unit)
+输出:dict { verdict, argument, score, breakdown } 或 None
 """
 
 from __future__ import annotations
@@ -14,33 +18,137 @@ import json
 import logging
 import re
 
-from src.collectors.sentiment import SentimentBundle
+from src.collectors.sentiment import SentimentBundle, SentimentMetric
 from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
 
-_TASK_INSTRUCTION = """\
-任务:基于下列 6 个情绪指标的"当前值 / 一周前值 / 变化",输出**严格 JSON**(无任何前言、解释、代码块标记)。
+# ──────────────────  确定性打分  ──────────────────
 
-JSON 结构:
-{
-  "verdict": "今日情绪 · <偏冷|中性|偏热|极度恐慌|极度贪婪> 中的一个",
-  "argument": "2-3 句中文论据,引用关键数字"
+_WEIGHTS: dict[str, float] = {
+    "CNN Fear & Greed": 0.25,
+    "VIX": 0.25,
+    "高收益债利差": 0.20,
+    "恒指 14 日 RSI": 0.12,
+    "Shiller PE": 0.10,
+    "DXY": 0.08,
 }
 
-约束:
-- argument 要联系开源的投资框架:若偏冷或极度恐慌,提示"DCA 信号触发概率上升,可保持耐心"
-  之类;若偏热或极度贪婪,提示"建议暂缓加仓,守住现金仓位";中性给出留意事项
-- 数字保留 1-2 位小数即可
+
+def _piecewise_linear(x: float, points: list[tuple[float, float]]) -> float:
+    """分段线性插值:points 必须按 x 升序。x 超出端点时夹到端点 y。"""
+    if x <= points[0][0]:
+        return points[0][1]
+    if x >= points[-1][0]:
+        return points[-1][1]
+    for i in range(len(points) - 1):
+        x1, y1 = points[i]
+        x2, y2 = points[i + 1]
+        if x1 <= x <= x2:
+            t = (x - x1) / (x2 - x1) if x2 > x1 else 0.0
+            return y1 + t * (y2 - y1)
+    return points[-1][1]
+
+
+def _score_metric(name: str, value: float) -> float | None:
+    """把单个指标当前值映射到 0-100 fear-greed 量表。失败返回 None。"""
+    if name == "CNN Fear & Greed":
+        return max(0.0, min(100.0, value))
+    if name == "VIX":
+        # 越低越贪婪。区间映射:8→100,12→90,15→75,20→50,25→30,30→10,40→0
+        return _piecewise_linear(value, [(8, 100), (12, 90), (15, 75), (20, 50), (25, 30), (30, 10), (40, 0)])
+    if name == "高收益债利差":
+        # FRED 单位 %。越低越贪婪:2→90,3→75,4→50,5→35,6→20,8→5
+        return _piecewise_linear(value, [(2, 90), (3, 75), (4, 50), (5, 35), (6, 20), (8, 5)])
+    if name == "恒指 14 日 RSI":
+        # 标准 RSI:30→20(超卖,接近恐慌),50→50,70→80(超买,接近贪婪)
+        return _piecewise_linear(value, [(20, 5), (30, 20), (50, 50), (70, 80), (80, 95)])
+    if name == "Shiller PE":
+        # 历史均值约 17。<15 极度恐慌,>35 极度贪婪
+        return _piecewise_linear(value, [(10, 5), (15, 15), (20, 35), (25, 50), (28, 65), (32, 80), (38, 95)])
+    if name == "DXY":
+        # 美元强对应风险资产偏弱(轻度恐慌),弱美元偏贪婪
+        return _piecewise_linear(value, [(90, 75), (95, 60), (100, 50), (105, 35), (110, 20)])
+    return None
+
+
+_VERDICT_THRESHOLDS = [
+    (25.0, "极度恐慌"),
+    (40.0, "偏冷"),
+    (60.0, "中性"),
+    (75.0, "偏热"),
+    (100.1, "极度贪婪"),
+]
+
+
+def _verdict_from_score(score: float) -> str:
+    for upper, label in _VERDICT_THRESHOLDS:
+        if score < upper:
+            return label
+    return "极度贪婪"
+
+
+def score_sentiment(bundle: SentimentBundle) -> dict | None:
+    """
+    确定性加权打分。
+    返回 { score: float 0-100, verdict: str, breakdown: list[(name, score, weight)] }。
+    bundle 全部指标都失败时返回 None。
+    """
+    if not bundle or not bundle.metrics:
+        return None
+
+    breakdown: list[tuple[str, float, float]] = []
+    weighted_sum = 0.0
+    weight_total = 0.0
+    for m in bundle.metrics:
+        if m.error or m.current is None:
+            continue
+        w = _WEIGHTS.get(m.name)
+        if w is None:
+            continue
+        s = _score_metric(m.name, m.current)
+        if s is None:
+            continue
+        weighted_sum += s * w
+        weight_total += w
+        breakdown.append((m.name, round(s, 1), w))
+
+    if weight_total == 0.0:
+        return None
+
+    score = weighted_sum / weight_total
+    return {
+        "score": round(score, 1),
+        "verdict": _verdict_from_score(score),
+        "breakdown": breakdown,
+    }
+
+
+# ──────────────────  LLM 写 argument(verdict 已固定,LLM 只解释)  ──────────────────
+
+_TASK_INSTRUCTION = """\
+任务:基于下列 6 个情绪指标的"当前值 / 一周前值 / 变化",**给定固定档位**写 argument(2-3 句中文论据)。
+
+档位由确定性加权算法已经决定,你**不得**改变它。你的工作是:
+- 用 2-3 句话解释为什么算法会落到这个档位,引用关键指标的具体数字与方向
+- 提示对应的投资纪律:偏冷/极度恐慌 → "DCA 触发概率上升,保持耐心";偏热/极度贪婪 → "暂缓加仓,守住现金仓位";中性 → 给出留意事项
 - 不要写"今日"等时间副词,直接陈述
-- 不要 AI 腔
-- 输出**只有 JSON 一个对象**,不要 markdown ```json 包裹
+- 不要 AI 腔,不要"让我们"
+
+输出**严格 JSON**(无 markdown 代码块):
+{
+  "argument": "<2-3 句中文论据>"
+}
 """
 
 
-def _format_input(b: SentimentBundle) -> str:
-    lines: list[str] = []
+def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
+    lines: list[str] = [
+        f"已固定档位:今日情绪 · {fixed_verdict}(加权分:{score:.1f}/100)",
+        "",
+        "6 指标明细:",
+    ]
     for m in b.metrics:
         if m.error:
             lines.append(f"- {m.name}: 数据获取失败 ({m.error})")
@@ -55,7 +163,7 @@ def _format_input(b: SentimentBundle) -> str:
     return "\n".join(lines)
 
 
-_JSON_RE = re.compile(r"\{[^{}]*\"verdict\"[^{}]*\}", re.DOTALL)
+_JSON_RE = re.compile(r"\{[^{}]*\"argument\"[^{}]*\}", re.DOTALL)
 
 
 def _parse_json(text: str) -> dict | None:
@@ -81,27 +189,41 @@ def _parse_json(text: str) -> dict | None:
 def judge(
     bundle: SentimentBundle, *, client: LLMClient
 ) -> dict | None:
-    """成功返回 {verdict, argument},失败返回 None"""
-    if not bundle or not bundle.metrics:
+    """
+    返回 {verdict, argument, score, breakdown}:
+    - verdict 由确定性加权打分决定(同输入永远同档位)
+    - argument 由 LLM 写,被告知 verdict 已固定只解释为什么
+    - LLM 失败时仍返回算法结果,argument 退回模板默认。
+    """
+    scored = score_sentiment(bundle)
+    if not scored:
         return None
-    payload = _format_input(bundle)
+    verdict_label = scored["verdict"]
+    score = scored["score"]
+    payload = _format_input(bundle, verdict_label, score)
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION,
-        # V4-Flash reasoning 占用主要 token;JSON 输出短,但仍需 buffer
         max_tokens=1500,
         temperature=0.2,
     )
-    if not resp.text:
-        logger.warning("sentiment_judge.failed reason=%s", resp.error)
-        return None
-    data = _parse_json(resp.text)
-    if not data or "verdict" not in data or "argument" not in data:
-        logger.warning("sentiment_judge.parse_failed text=%r", resp.text[:200])
-        return None
-    logger.info("sentiment_judge.ok verdict=%r argument_chars=%d",
-               data.get("verdict"), len(str(data.get("argument", ""))))
+    argument = ""
+    if resp.text:
+        data = _parse_json(resp.text)
+        if data and "argument" in data:
+            argument = str(data["argument"]).strip()
+        else:
+            logger.warning("sentiment_judge.parse_failed text=%r", resp.text[:200])
+    else:
+        logger.warning("sentiment_judge.llm_failed reason=%s", resp.error)
+
+    logger.info(
+        "sentiment_judge.ok verdict=%r score=%.1f argument_chars=%d",
+        verdict_label, score, len(argument),
+    )
     return {
-        "verdict": str(data["verdict"]).strip(),
-        "argument": str(data["argument"]).strip(),
+        "verdict": f"今日情绪 · {verdict_label}",
+        "argument": argument,
+        "score": score,
+        "breakdown": scored["breakdown"],
     }

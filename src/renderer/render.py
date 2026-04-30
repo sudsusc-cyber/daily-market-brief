@@ -48,7 +48,7 @@ def _filter_pct(value: float | None) -> str:
 
 
 def _filter_metric_num(value: float | None, unit: str = "") -> str:
-    """情绪指标当前值/一周前值,带单位。None → '—'"""
+    """情绪指标当前值/前一日值,带单位。None → '—'"""
     if value is None:
         return "—"
     try:
@@ -111,6 +111,10 @@ def render_email(
     signals: list[StockSignal],
     generated_at: datetime,
     logo_cids: dict[str, str] | None = None,
+    # M5 刊头图
+    header_image_url: str | None = None,
+    # M5 LLM 改写的持仓引言(无值时模板退回原 M2 文案)
+    holdings_intro: str | None = None,
     # M3 原始数据(始终渲染指标小表 / 错误兜底)
     sentiment: Any | None = None,            # SentimentBundle
     company_news: list[Any] | None = None,    # list[CompanyNewsBundle]
@@ -135,6 +139,8 @@ def render_email(
         signals=signals,
         generated_at=generated_at,
         logo_cids=logo_cids or {},
+        header_image_url=header_image_url,
+        holdings_intro=holdings_intro,
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         company_news=company_news,

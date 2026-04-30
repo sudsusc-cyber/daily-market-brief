@@ -27,10 +27,11 @@ import logging
 import sys
 from pathlib import Path
 
-from src.collectors import buffett_13f, company_news, figures, macro_news, sentiment, stocks
+from src.collectors import buffett_13f, company_news, figures, header_image, macro_news, sentiment, stocks
 from src.config import HOLDINGS, Holding
 from src.processors import (
     figure_filter,
+    holdings_intro,
     macro_filter,
     news_summarizer,
     sentiment_judge,
@@ -69,15 +70,25 @@ def _translate_all_bundles(
 
 
 def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[InlineImage]]:
-    """扫描 assets/logos/<slug>.png,组装 (cid 映射, InlineImage 列表)"""
+    """扫描 assets/logos/<slug>.{png,jpg,jpeg};按优先级取首个存在的文件。
+
+    CID 形如 logo_<slug>_<sha8>:文件内容变 → hash 变 → CID 变,
+    破解某些邮件客户端(如 iOS 微信邮件助手)对同名 CID 旧附件的缓存。
+    """
+    import hashlib
     cids: dict[str, str] = {}
     images: list[InlineImage] = []
     for h in holdings:
-        path = _LOGOS_DIR / f"{h.slug}.png"
-        if not path.exists():
-            logger.warning("logo.missing ticker=%s expected=%s", h.ticker, path)
+        path = next(
+            (p for ext in ("png", "jpg", "jpeg")
+             if (p := _LOGOS_DIR / f"{h.slug}.{ext}").exists()),
+            None,
+        )
+        if path is None:
+            logger.warning("logo.missing ticker=%s expected=%s/{png,jpg}", h.ticker, _LOGOS_DIR / h.slug)
             continue
-        cid = h.logo_cid
+        sha8 = hashlib.sha1(path.read_bytes()).hexdigest()[:8]
+        cid = f"{h.logo_cid}_{sha8}"
         cids[h.ticker] = cid
         images.append(InlineImage(cid=cid, path=path, subtype=None))
     logger.info("logos.loaded count=%d/%d", len(cids), len(holdings))
@@ -94,6 +105,16 @@ def main() -> int:
     now_bj = now_beijing()
 
     logger.info("main.start  generated_at=%s", now_bj.isoformat(timespec="seconds"))
+
+    # ---------- 节假日预检(M6;cron 仍按周二-周六触发,但美股节假日要跳过) ----------
+    import os
+    from src.utils.holidays import should_send_today
+    if os.environ.get("FORCE_SEND") != "1":
+        ok, reason = should_send_today(now_bj.date())
+        logger.info("holidays.check ok=%s reason=%s", ok, reason)
+        if not ok:
+            logger.info("main.skipped reason=%s", reason)
+            return 0
 
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
@@ -137,6 +158,9 @@ def main() -> int:
     logger.info("processors.sentiment_judge")
     sentiment_verdict = sentiment_judge.judge(sentiment_bundle, client=llm)
 
+    logger.info("processors.holdings_intro")
+    holdings_intro_text = holdings_intro.write_intro(signals, client=llm)
+
     # token 成本汇总
     cum = llm.cumulative
     cost_cny = llm.estimate_cost_cny()
@@ -146,13 +170,25 @@ def main() -> int:
         cost_cny,
     )
 
+    # ---------- 刊头图(M5) ----------
+    logger.info("collect.header_image")
+    header = header_image.pick_header_image(now_bj.date())
+
     # ---------- 渲染 ----------
     logger.info("render")
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
+    if header["source"] == "local":
+        inline_images.append(InlineImage(
+            cid="header_fallback",
+            path=_PROJECT_ROOT / "assets" / "fallback_header.jpg",
+            subtype=None,
+        ))
     html = render_email(
         signals=signals,
         generated_at=now_bj,
         logo_cids=logo_cids,
+        header_image_url=header["url"],
+        holdings_intro=holdings_intro_text,
         # 加工产物(为 None 时模板自动 fallback 到原始数据展示)
         sentiment=sentiment_bundle,
         sentiment_verdict=sentiment_verdict,
@@ -166,12 +202,13 @@ def main() -> int:
     )
 
     # ---------- 发送 ----------
+    recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
     subject = f"每日晨报 · {now_bj.year} 年 {now_bj.month} 月 {now_bj.day} 日"
-    logger.info("send recipient=%s subject=%r", settings.email_recipient, subject)
+    logger.info("send recipients=%s subject=%r", recipients, subject)
     send_html_email(
         sender=settings.qq_email_address,
         auth_code=settings.qq_email_auth_code,
-        recipient=settings.email_recipient,
+        recipient=recipients,
         subject=subject,
         html_body=html,
         inline_images=inline_images,
