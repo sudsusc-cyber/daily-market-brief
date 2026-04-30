@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "email-preview",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "scripts/preview_server.py"],
+      "port": 8765
+    }
+  ]
+}

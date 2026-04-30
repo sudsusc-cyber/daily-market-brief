@@ -1,0 +1,354 @@
+{#-
+  email.html.j2 — 每日晨报 HTML 邮件模板
+
+  设计基调:Berkshire 致股东信 × FT Weekend × Howard Marks Memo
+  强调色:oxblood #7A1F2B(全文唯一)
+  字体:衬线为主,中英文 fallback 链覆盖 macOS / Windows / Linux
+
+  M2 阶段渲染:masthead + I. 持仓信号 + footer
+  M3 起按 {% if section %} 渐次启用其他区块
+
+  上下文变量:
+    signals       — list[StockSignal](M2 必传)
+    generated_at  — datetime,北京时间
+    sentiment     — dict | None       (M3 用)
+    company_news  — str  | None       (M3 用)
+    figures       — list | None       (M3 用)
+    macro_news    — str  | None       (M3 用)
+
+  Filter(由 renderer/render.py 注册):
+    | price  →  浮点千分位 + 2 位小数
+    | pct    →  浮点百分比,带正负号(如 +9.2%)
+-#}
+{%- set year_cn = (generated_at.year | string)
+      | replace('0','〇') | replace('1','一') | replace('2','二')
+      | replace('3','三') | replace('4','四') | replace('5','五')
+      | replace('6','六') | replace('7','七') | replace('8','八')
+      | replace('9','九') -%}
+{%- set weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'] -%}
+{%- set serif_display = "'Newsreader','Source Serif Pro','Source Serif 4',Charter,Cambria,Georgia,'Noto Serif SC','Songti SC',STSong,'宋体',serif" -%}
+{%- set serif_body = "Charter,Cambria,Georgia,'Noto Serif SC','Songti SC',STSong,'宋体','Times New Roman',Times,serif" -%}
+{%- set color_paper = '#F8F5EE' -%}
+{%- set color_paper_alt = '#F2ECDC' -%}
+{%- set color_ink = '#1A1A1A' -%}
+{%- set color_ink_soft = '#2B2B2B' -%}
+{%- set color_muted = '#6B6B6B' -%}
+{%- set color_faint = '#A09887' -%}
+{%- set color_rule = '#1A1A1A' -%}
+{%- set color_hairline = '#D9D2BE' -%}
+{%- set color_accent = '#7A1F2B' -%}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="color-scheme" content="light" />
+<meta name="supported-color-schemes" content="light" />
+<title>每日晨报 · {{ year_cn }} 年 {{ generated_at.month }} 月 {{ generated_at.day }} 日</title>
+<!--[if mso]>
+<style type="text/css">
+  table,td,div,h1,h2,p { font-family: Cambria, Georgia, serif !important; }
+  table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+</style>
+<![endif]-->
+</head>
+<body style="margin:0; padding:0; background-color:{{ color_paper }}; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+
+{# 收件箱预览文字(preheader),不可见 #}
+<div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:{{ color_paper }};">
+  {{ year_cn }} 年 {{ generated_at.month }} 月 {{ generated_at.day }} 日 · 持仓信号摘录 · 数据截至北京时间 {{ generated_at.strftime('%H:%M') }}
+</div>
+<div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:{{ color_paper }};">
+  &#847;&zwnj;&nbsp;&#8199;&#65279;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ color_paper }};">
+  <tr>
+    <td align="center" style="padding:48px 16px 56px 16px;">
+
+      <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ color_paper }}; max-width:640px; width:100%;">
+
+        {# ─────────────────────────  MASTHEAD  ───────────────────────── #}
+        <tr>
+          <td align="center" style="padding:0 24px 4px 24px; font-family:{{ serif_display }}; color:{{ color_ink }};">
+            <div style="font-size:11px; letter-spacing:0.46em; color:{{ color_accent }}; text-transform:uppercase; margin-bottom:18px; font-family:{{ serif_body }};">
+              Daily&nbsp;&nbsp;Brief
+            </div>
+            <div style="font-size:42px; line-height:1.0; font-weight:500; letter-spacing:0.32em; text-indent:0.32em; color:{{ color_ink }};">
+              每日晨报
+            </div>
+            <div style="margin:18px auto 14px auto; height:1px; line-height:1px; font-size:0; width:48px; background-color:{{ color_accent }};">&nbsp;</div>
+            <div style="font-size:13px; color:{{ color_muted }}; letter-spacing:0.10em; font-family:{{ serif_body }};">
+              {{ year_cn }} 年 {{ generated_at.month }} 月 {{ generated_at.day }} 日 · {{ weekdays[generated_at.weekday()] }}
+            </div>
+          </td>
+        </tr>
+
+        {# 装饰性分隔(章节起始) #}
+        <tr>
+          <td align="center" style="padding:36px 24px 36px 24px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="border-top:1px solid {{ color_rule }}; width:96px; line-height:1px; font-size:0;">&nbsp;</td>
+                <td style="padding:0 14px; font-size:14px; color:{{ color_accent }}; line-height:1; font-family:{{ serif_display }};">·&nbsp;·&nbsp;·</td>
+                <td style="border-top:1px solid {{ color_rule }}; width:96px; line-height:1px; font-size:0;">&nbsp;</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        {# ─────────────────────────  I. 持仓信号  ───────────────────────── #}
+        {% if signals %}
+        <tr>
+          <td style="padding:0 24px 0 24px;">
+
+            {# 区段标题:Roman drop cap + 中文 + 英文小字 #}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" width="64" style="padding:2px 0 0 0;">
+                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">I.</div>
+                </td>
+                <td valign="top" style="padding:6px 0 0 4px;">
+                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">持&nbsp;仓&nbsp;信&nbsp;号</div>
+                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Position&nbsp;&nbsp;Signals</div>
+                </td>
+              </tr>
+            </table>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px; line-height:0; font-size:0;">&nbsp;</div>
+
+            {# 引言段:解释这个表格在看什么。M2 实用,M3 起可换成更克制的款式 #}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding:18px 4px 8px 4px; font-family:{{ serif_body }}; font-size:13.5px; line-height:1.78; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
+                  当前持仓十二只——美股十只,港股两只。下表展示各只标的现价相对一百二十周与二百周均线的位置。
+                  现价跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em;">一二〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600;">&nbsp;DCA</span>,
+                  跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em;">二〇〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600;">&nbsp;Lump-sum</span>;
+                  无信号则记录至最近均线的距离。
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+
+        {# 数据表格 #}
+        <tr>
+          <td style="padding:8px 24px 8px 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; font-family:{{ serif_body }}; color:{{ color_ink }};">
+              <thead>
+                <tr>
+                  <th align="left" style="padding:14px 0 8px 0; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
+                    标&nbsp;的
+                  </th>
+                  <th align="right" style="padding:14px 0 8px 0; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
+                    现&nbsp;价
+                  </th>
+                  <th align="right" style="padding:14px 0 8px 16px; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
+                    一二〇&nbsp;周
+                  </th>
+                  <th align="right" style="padding:14px 0 8px 16px; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
+                    二〇〇&nbsp;周
+                  </th>
+                  <th align="right" style="padding:14px 0 8px 16px; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
+                    信&nbsp;号
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in signals %}
+                {%- set is_lump = (s.signal == 'LUMP_SUM') -%}
+                {%- set is_dca  = (s.signal == 'DCA') -%}
+                {%- set has_error = (s.error is not none) -%}
+                {%- set row_bg = color_paper_alt if is_lump else color_paper -%}
+                <tr>
+                  {# 标的 #}
+                  <td valign="top" style="padding:18px 8px 18px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }};">
+                    <div style="font-family:{{ serif_display }}; font-size:15px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em; line-height:1.2;">{{ s.holding.ticker }}</div>
+                    <div style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-top:4px; line-height:1.3;">{{ s.holding.name }}</div>
+                  </td>
+
+                  {% if has_error %}
+                  {# 整行错误态:跨 4 列展示原因 #}
+                  <td colspan="4" align="right" valign="middle" style="padding:18px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ color_paper }}; font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic; line-height:1.5;">
+                    数据获取失败 · {{ s.error }}
+                  </td>
+                  {% else %}
+                  {# 现价 #}
+                  <td valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_display }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.01em; line-height:1.1;">
+                    {{ s.last_close | price }}
+                  </td>
+                  {# 120w #}
+                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }};">
+                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1;">{{ s.sma_120 | price }}</div>
+                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em;">{{ s.delta_120 | pct }}</div>
+                  </td>
+                  {# 200w #}
+                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }};">
+                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1;">{{ s.sma_200 | price }}</div>
+                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em;">{{ s.delta_200 | pct }}</div>
+                  </td>
+                  {# 信号 #}
+                  <td valign="middle" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }};">
+                    {% if is_lump %}
+                      <span style="display:inline-block; padding:5px 11px 5px 11px; background-color:{{ color_accent }}; color:{{ color_paper }}; font-family:{{ serif_body }}; font-size:9.5px; font-weight:600; letter-spacing:0.28em; text-transform:uppercase; line-height:1.3; mso-line-height-rule:exactly;">Lump-sum</span>
+                    {% elif is_dca %}
+                      <span style="display:inline-block; font-family:{{ serif_body }}; font-size:11.5px; font-weight:600; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_accent }}; line-height:1; padding:0; border-bottom:1px solid {{ color_accent }}; padding-bottom:3px;">DCA</span>
+                    {% else %}
+                      <span style="font-family:{{ serif_body }}; font-size:15px; color:{{ color_faint }}; line-height:1;">—</span>
+                    {% endif %}
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+
+        {# 表格脚注 #}
+        <tr>
+          <td style="padding:14px 24px 0 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
+                  数据源&nbsp;Yahoo&nbsp;Finance&nbsp;周频收盘价。均线为最近 120 / 200 周收盘均价的算术平均。
+                  括号内百分比表示现价相对该均线的位置——负值即现价低于均线。
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
+        {# ─────────────────────────  II. 情绪温度计  (M3) ───────────────────────── #}
+        {% if sentiment %}
+        <tr>
+          <td style="padding:48px 24px 0 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" width="64" style="padding:2px 0 0 0;">
+                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">II.</div>
+                </td>
+                <td valign="top" style="padding:6px 0 0 4px;">
+                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">情&nbsp;绪&nbsp;温&nbsp;度&nbsp;计</div>
+                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Market&nbsp;&nbsp;Mood</div>
+                </td>
+              </tr>
+            </table>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            <div style="margin-top:24px; font-family:{{ serif_display }}; font-size:18px; color:{{ color_ink }}; letter-spacing:0.06em;">
+              今日情绪 · <span style="color:{{ color_accent }};">{{ sentiment.verdict }}</span>
+            </div>
+            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:14px; line-height:1.85; color:{{ color_ink_soft }};">
+              {{ sentiment.argument }}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+
+        {# ─────────────────────────  III. 昨日动态  (M3) ───────────────────────── #}
+        {% if company_news %}
+        <tr>
+          <td style="padding:48px 24px 0 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" width="64" style="padding:2px 0 0 0;">
+                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">III.</div>
+                </td>
+                <td valign="top" style="padding:6px 0 0 4px;">
+                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">昨&nbsp;日&nbsp;动&nbsp;态</div>
+                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Yesterday&nbsp;&nbsp;in&nbsp;Holdings</div>
+                </td>
+              </tr>
+            </table>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            <div style="margin-top:24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
+              {{ company_news }}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+
+        {# ─────────────────────────  IV. 关键发言  (M3) ───────────────────────── #}
+        {% if figures %}
+        <tr>
+          <td style="padding:48px 24px 0 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" width="64" style="padding:2px 0 0 0;">
+                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">IV.</div>
+                </td>
+                <td valign="top" style="padding:6px 0 0 4px;">
+                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">关&nbsp;键&nbsp;发&nbsp;言</div>
+                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Voices</div>
+                </td>
+              </tr>
+            </table>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            {% for f in figures %}
+            <div style="margin-top:{{ '28px' if loop.first else '24px' }}; font-family:{{ serif_body }}; font-size:14px; line-height:1.85; color:{{ color_ink_soft }};">
+              <span style="font-family:{{ serif_display }}; color:{{ color_accent }}; letter-spacing:0.04em;">{{ f.person }}</span>
+              {% if f.context %}<span style="color:{{ color_muted }};">({{ f.context }})</span>{% endif %}
+              ·&nbsp;{{ f.content }}
+            </div>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endif %}
+
+        {# ─────────────────────────  V. 宏观视野  (M3) ───────────────────────── #}
+        {% if macro_news %}
+        <tr>
+          <td style="padding:48px 24px 0 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="top" width="64" style="padding:2px 0 0 0;">
+                  <div style="font-family:{{ serif_display }}; font-size:38px; line-height:1; font-style:italic; color:{{ color_accent }}; font-weight:500;">V.</div>
+                </td>
+                <td valign="top" style="padding:6px 0 0 4px;">
+                  <div style="font-family:{{ serif_display }}; font-size:22px; line-height:1.2; font-weight:500; color:{{ color_ink }}; letter-spacing:0.20em;">宏&nbsp;观&nbsp;视&nbsp;野</div>
+                  <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10px; letter-spacing:0.36em; color:{{ color_muted }}; text-transform:uppercase;">Macro&nbsp;&nbsp;Horizon</div>
+                </td>
+              </tr>
+            </table>
+            <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
+            <div style="margin-top:24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
+              {{ macro_news }}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+
+        {# 装饰性结尾 #}
+        <tr>
+          <td align="center" style="padding:56px 24px 24px 24px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="border-top:1px solid {{ color_rule }}; width:96px; line-height:1px; font-size:0;">&nbsp;</td>
+                <td style="padding:0 14px; font-size:14px; color:{{ color_accent }}; line-height:1; font-family:{{ serif_display }};">·&nbsp;·&nbsp;·</td>
+                <td style="border-top:1px solid {{ color_rule }}; width:96px; line-height:1px; font-size:0;">&nbsp;</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        {# ─────────────────────────  COLOPHON / FOOTER  ───────────────────────── #}
+        <tr>
+          <td align="center" style="padding:0 24px 0 24px; font-family:{{ serif_body }};">
+            <div style="font-size:11.5px; color:{{ color_ink_soft }}; line-height:1.7; letter-spacing:0.06em;">
+              本邮件由开源的私人晨报系统发送
+            </div>
+            <div style="margin-top:6px; font-size:10.5px; color:{{ color_faint }}; letter-spacing:0.04em;">
+              数据截至北京时间 {{ generated_at.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

@@ -6,9 +6,9 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "kaiyuan" }]
 
-# M1 阶段验证脚本所需的最小依赖集
-# 后续里程碑会按需追加(LLM、模板、配置库等)
+# 依赖按里程碑追加,后续 M3/M4/M5/M6 再补充
 dependencies = [
+    # M1 验证
     "yfinance>=0.2.40",
     "finnhub-python>=2.4.20",
     "feedparser>=6.0.11",
@@ -17,6 +17,9 @@ dependencies = [
     "lxml>=5.2.0",
     "openai>=1.40.0",
     "python-dotenv>=1.0.1",
+    # M2 MVP
+    "pydantic-settings>=2.5.0",
+    "jinja2>=3.1.4",
 ]
 
 [project.optional-dependencies]

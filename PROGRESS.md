@@ -3,7 +3,10 @@
 > 本文件由 Claude Code 维护,记录每个里程碑的执行状态与关键决策。
 > 用户验收节点见 PLAN.md 第 7 节。
 
-**当前阶段**:M1(可行性验证)— ⏸ 等待用户验收
+**当前阶段**:M2(MVP 端到端最小流程)— ⏸ 等待用户验收
+
+> M1 已于 2026-04-30 验收通过(用户口头确认),commit `c1cefe3`
+> M2 实际包含了 PLAN 原 M5 的"精美设计"部分(用户在 M2 期间追加指令),详见 ADR-0002
 
 ---
 
@@ -11,8 +14,8 @@
 
 | 里程碑 | 名称 | 状态 | 起始日期 | 验收日期 | 备注 |
 |---|---|---|---|---|---|
-| M1 | 可行性验证 | ⏸ 等待验收 | 2026-04-30 | — | 10/10 数据源 ✅ |
-| M2 | MVP 端到端最小流程 | ⬜ 待开始 | — | — | 仅实现持仓信号模块 |
+| M1 | 可行性验证 | ✅ 已通过 | 2026-04-30 | 2026-04-30 | 10/10 数据源 ✅,commit c1cefe3 |
+| M2 | MVP 端到端最小流程 | ⏸ 等待验收 | 2026-04-30 | — | 持仓信号 12/12 ✅ + 精美邮件设计 |
 | M3 | 数据采集层完善 | ⬜ 待开始 | — | — | 5 个模块原始数据全部接入 |
 | M4 | LLM 处理层 | ⬜ 待开始 | — | — | DeepSeek V4-Flash 接入 |
 | M5 | HTML 精美化 + 兼容性 | ⬜ 待开始 | — | — | 严肃刊物风邮件设计 |
@@ -69,13 +72,46 @@
 
 ## M2 — MVP 端到端最小流程
 
-**状态**:⬜ 待开始(用户验收 M1 后启动)
+**状态**:⏸ 等待用户验收
+**起止**:2026-04-30 ~ 2026-04-30(单日完成)
 
-进入 M2 前的自检(参考 PLAN 第 13 节):
+### 已交付清单
 
-- 范围:仅实现"模块 2 持仓信号"的端到端链路(采集 → 渲染表格 → SMTP 发件)
-- M+1 不做的事:不接 LLM、不做样式精美化
-- 用户准备:无新增 secret 需求
+- [x] `pyproject.toml` 追加 M2 依赖:`pydantic-settings` + `jinja2`
+- [x] `src/settings.py`:pydantic-settings 集中读取 secrets(M2 仅声明 QQ_*)
+- [x] `src/config.py`:`Holding` dataclass + 12 只持仓清单(权威来源 PLAN 附录 A)
+- [x] `src/collectors/stocks.py`:120w / 200w SMA + DCA / LUMP-SUM 信号判断
+- [x] `src/sender/smtp_sender.py`:QQ SMTP SSL 465 端口 HTML 邮件发送
+- [x] `src/renderer/render.py` + `src/renderer/templates/email.html.j2`:Jinja2 模板,
+      由 `anthropic-skills:frontend-design` 一次性生成,oxblood 强调色,
+      table-based layout / inline CSS / 全衬线字体
+- [x] `src/main.py`:配置 → 采集 → 渲染 → 发送 全链路串起,北京时间标题
+- [x] `scripts/preview_email.py` + `scripts/preview_server.py`:本地预览(含 mock 各种状态)
+- [x] `docs/decisions/0002-mvp-scope.md`:M2 范围 + M2 提前覆盖 M5 设计的偏差记录
+
+### 实测信号结果(2026-04-30)
+
+| Ticker | 现价 | 120w SMA | 200w SMA | 信号 |
+|---|---|---|---|---|
+| MSFT | 424.46 | 438.93 | 381.83 | DCA |
+| MCO | 460.11 | 460.48 | 402.06 | DCA |
+| 其余 10 只 | — | — | — | NONE |
+
+- 12/12 全部拉到真实数据,无失败
+- 无 LUMP-SUM 触发(均未跌破 200w);LUMP-SUM 视觉仅靠 mock 预览验证
+
+### 验收标准对照(PLAN.md 第 7 节)
+
+| 验收项 | 状态 | 备注 |
+|---|---|---|
+| 用户在 QQ 邮箱收到邮件,标题正确 | ⏳ 待用户确认 | 标题 `每日晨报 · 2026 年 4 月 30 日` |
+| 12 只股票表格正确 | ⏳ 待用户人工核对 | 建议核 NVDA / MSFT 任一 |
+| 暂不要求好看 | ✅ 超出预期 | 已按 PLAN 第 2 节精美设计 |
+
+### 用户在 M2 期间提出的指令(已落地)
+
+1. **邮件直接做精美设计,不做丑陋占位版** → 调用 frontend-design skill,oxblood 风格
+2. **删除"为 开 源"署名** → masthead 已删除该行
 
 ---
 
