@@ -20,24 +20,10 @@ PORT = 8765
 PREVIEW_DIR = Path("/tmp/email-preview")
 PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
 
-# 渲染最新一次模板到 PREVIEW_DIR/index.html
-from scripts.preview_email import _build_mock_signals, _format_pct, _format_price  # noqa: E402
+# 复用 preview_email 的渲染流程(已带 logo data-URI 内联)
+from scripts.preview_email import render_preview  # noqa: E402
 
-from datetime import datetime  # noqa: E402
-from zoneinfo import ZoneInfo  # noqa: E402
-
-from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
-
-env = Environment(
-    loader=FileSystemLoader(PROJECT_ROOT / "src" / "renderer" / "templates"),
-    autoescape=select_autoescape(["html"]),
-)
-env.filters["price"] = _format_price
-env.filters["pct"] = _format_pct
-html = env.get_template("email.html.j2").render(
-    signals=_build_mock_signals(),
-    generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
-)
+html = render_preview()
 (PREVIEW_DIR / "index.html").write_text(html, encoding="utf-8")
 print(f"rendered → {PREVIEW_DIR / 'index.html'}  ({len(html):,} bytes)", flush=True)
 

@@ -18,6 +18,7 @@ class Holding:
 
     ticker: str  # 标准记号,邮件展示与日志用
     name: str  # 中文/英文展示名
+    logo_domain: str  # Clearbit / 公司主域名,用于拉 logo,如 'microsoft.com'
 
     @property
     def yfinance_symbol(self) -> str:
@@ -26,18 +27,30 @@ class Holding:
             return self.ticker
         return self.ticker.replace(".", "-")
 
+    @property
+    def slug(self) -> str:
+        """文件名 / CID 安全标识符,如 BRK.B -> BRK_B,0700.HK -> 0700_HK"""
+        return self.ticker.replace(".", "_").replace("-", "_")
+
+    @property
+    def logo_cid(self) -> str:
+        """邮件中 <img src='cid:...'> 的 Content-ID"""
+        return f"logo_{self.slug}"
+
 
 HOLDINGS: list[Holding] = [
-    Holding("MSFT", "Microsoft"),
-    Holding("COST", "Costco Wholesale"),
-    Holding("AAPL", "Apple"),
-    Holding("NVDA", "NVIDIA"),
-    Holding("TSM", "Taiwan Semiconductor (ADR)"),
-    Holding("MCO", "Moody's"),
-    Holding("GOOG", "Alphabet C"),
-    Holding("BRK.B", "Berkshire Hathaway B"),
-    Holding("KO", "The Coca-Cola Company"),
-    Holding("AXP", "American Express"),
-    Holding("0700.HK", "腾讯控股"),
-    Holding("9992.HK", "泡泡玛特"),
+    Holding("MSFT", "Microsoft", "microsoft.com"),
+    Holding("COST", "Costco Wholesale", "costco.com"),
+    Holding("AAPL", "Apple", "apple.com"),
+    Holding("NVDA", "NVIDIA", "nvidia.com"),
+    Holding("TSM", "Taiwan Semiconductor (ADR)", "tsmc.com"),
+    Holding("MCO", "Moody's", "moodys.com"),
+    # GOOG 是 Alphabet C 类股,但 Alphabet 主域 abc.xyz 的 favicon 太低分;
+    # 用 google.com favicon 视觉更清晰,且对用户更易识别
+    Holding("GOOG", "Alphabet C", "google.com"),
+    Holding("BRK.B", "Berkshire Hathaway B", "berkshirehathaway.com"),
+    Holding("KO", "The Coca-Cola Company", "coca-cola.com"),
+    Holding("AXP", "American Express", "americanexpress.com"),
+    Holding("0700.HK", "腾讯控股", "tencent.com"),
+    Holding("9992.HK", "泡泡玛特", "popmart.com"),
 ]

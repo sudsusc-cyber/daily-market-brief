@@ -112,6 +112,10 @@
 
 1. **邮件直接做精美设计,不做丑陋占位版** → 调用 frontend-design skill,oxblood 风格
 2. **删除"为 开 源"署名** → masthead 已删除该行
+3. **每只股票前加公司 logo,iOS / 安卓默认显示** → multipart/related + Content-ID 内嵌附件,12/12 logo 全到位(Google S2 / Wikimedia / Financial Modeling Prep 三层数据源,详见 ADR-0003)
+4. **TSM、COST、GOOG 等 logo 模糊** → 加 `LOGO_OVERRIDES` override 走 Wikimedia / FMP CDN
+5. **"标的"列表头对齐 ticker 文字而非 logo** → 表头第一栏改嵌套表布局,空 logo 子列 + ticker 子列承载"标 的"
+6. **泡泡玛特 mock 显示"无数据"误读** → preview mock 统一全 OK,error 视觉测试改为临时手工注入
 
 ---
 

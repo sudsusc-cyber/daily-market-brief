@@ -60,17 +60,25 @@ def render_email(
     *,
     signals: list[StockSignal],
     generated_at: datetime,
+    logo_cids: dict[str, str] | None = None,
     sentiment: dict | None = None,
     company_news: str | None = None,
     figures: list | None = None,
     macro_news: str | None = None,
 ) -> str:
-    """渲染完整邮件 HTML"""
+    """
+    渲染完整邮件 HTML。
+
+    logo_cids: ticker -> CID 映射,如 {"NVDA": "logo_NVDA"}。
+    模板里只有 ticker 命中此映射时才会渲染 <img cid:...>;
+    其余 ticker 走文字 fallback(适用于 BRK.B 这类无 logo 的)。
+    """
     env = _build_env()
     template = env.get_template("email.html.j2")
     return template.render(
         signals=signals,
         generated_at=generated_at,
+        logo_cids=logo_cids or {},
         sentiment=sentiment,
         company_news=company_news,
         figures=figures,
