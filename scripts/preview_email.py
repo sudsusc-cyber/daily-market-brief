@@ -82,13 +82,18 @@ def _build_mock_signals() -> list[StockSignal]:
     return signals
 
 
+def _logo_path(h: Holding):
+    """按优先级查找 png/jpg/jpeg 文件,返回首个存在的 Path 或 None。"""
+    for ext in ("png", "jpg", "jpeg"):
+        p = LOGOS_DIR / f"{h.slug}.{ext}"
+        if p.exists():
+            return p
+    return None
+
+
 def _build_logo_cids() -> dict[str, str]:
-    """ticker -> CID;只对 assets/logos/<slug>.png 实际存在的入字典"""
-    cids: dict[str, str] = {}
-    for h in HOLDINGS:
-        if (LOGOS_DIR / f"{h.slug}.png").exists():
-            cids[h.ticker] = h.logo_cid
-    return cids
+    """ticker -> CID;只对 assets/logos/<slug>.{png,jpg,jpeg} 实际存在的入字典"""
+    return {h.ticker: h.logo_cid for h in HOLDINGS if _logo_path(h)}
 
 
 def _inline_logos_as_data_uri(html: str) -> str:
@@ -97,8 +102,8 @@ def _inline_logos_as_data_uri(html: str) -> str:
     from src.sender.smtp_sender import _detect_image_subtype  # 复用 sender 的检测
 
     for h in HOLDINGS:
-        path = LOGOS_DIR / f"{h.slug}.png"
-        if not path.exists():
+        path = _logo_path(h)
+        if path is None:
             continue
         data = path.read_bytes()
         subtype = _detect_image_subtype(data) or "png"

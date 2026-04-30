@@ -69,13 +69,17 @@ def _translate_all_bundles(
 
 
 def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[InlineImage]]:
-    """扫描 assets/logos/<slug>.png,组装 (cid 映射, InlineImage 列表)"""
+    """扫描 assets/logos/<slug>.{png,jpg,jpeg};按优先级取首个存在的文件。"""
     cids: dict[str, str] = {}
     images: list[InlineImage] = []
     for h in holdings:
-        path = _LOGOS_DIR / f"{h.slug}.png"
-        if not path.exists():
-            logger.warning("logo.missing ticker=%s expected=%s", h.ticker, path)
+        path = next(
+            (p for ext in ("png", "jpg", "jpeg")
+             if (p := _LOGOS_DIR / f"{h.slug}.{ext}").exists()),
+            None,
+        )
+        if path is None:
+            logger.warning("logo.missing ticker=%s expected=%s/{png,jpg}", h.ticker, _LOGOS_DIR / h.slug)
             continue
         cid = h.logo_cid
         cids[h.ticker] = cid
