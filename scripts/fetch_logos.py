@@ -47,9 +47,12 @@ def _fmp(ticker: str) -> str:
 
 
 LOGO_OVERRIDES: dict[str, str] = {
-    "TSM": _wiki("Tsmc-text.svg"),  # commons 上的 TSMC 文字版,清晰
-    "COST": _fmp("COST"),           # Wikipedia 的 Costco 是长条形,FMP 是方形
-    "BRK.B": _fmp("BRK.B"),         # Berkshire 官网无 favicon,FMP 有 8.5KB 方形 logo
+    # 移动端某些邮件客户端对非方形 inline 图片渲染不一致(M2 验收发现)。
+    # 因此凡是用 override 的,都用 **方形** 来源(FMP CDN 默认 250x250 / 128x128)。
+    # Wikimedia 的 SVG 渲染常出现长宽比不一致(TSMC 文字版 960x757),已弃用。
+    "TSM": _fmp("TSM"),     # 250x250 方形,替换 Wikimedia 的 960x757 文字版
+    "COST": _fmp("COST"),   # Wikipedia 的 Costco 是 960x344 长条形,FMP 是方形
+    "BRK.B": _fmp("BRK.B"), # Berkshire 官网无 favicon,FMP 有 8.5KB 方形 logo
 }
 
 

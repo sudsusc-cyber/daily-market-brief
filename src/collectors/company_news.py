@@ -36,6 +36,7 @@ class NewsItem:
     published_at: datetime  # aware,UTC
     url: str
     source: str  # 媒体名
+    summary: str = ""  # 摘要 / 描述,Finnhub 提供;用于相关性过滤
 
 
 @dataclass
@@ -45,6 +46,33 @@ class CompanyNewsBundle:
     items: list[NewsItem] = field(default_factory=list)
     error: str | None = None
     data_source: str = ""  # "finnhub" / "google_news_cn"
+
+
+# 相关性过滤:Finnhub 的 /company-news 把"同板块 / 竞品 / 大盘"都贴上 ticker 标签
+# (NVDA 24h 249 条里只有 1 条真正是 NVDA 主题)。这里要求标题或摘要至少含其中之一关键词。
+# 港股走 Google News 中文搜索,query 已是公司名,相关性较高,不做该过滤。
+_RELEVANCE_KEYWORDS: dict[str, list[str]] = {
+    "MSFT": ["MSFT", "Microsoft", "Satya Nadella", "Azure", "Copilot", "Windows", "Xbox"],
+    "COST": ["COST", "Costco", "Kirkland"],
+    "AAPL": ["AAPL", "Apple", "iPhone", "iPad", "Mac ", "MacBook", "Tim Cook", "Vision Pro", "Apple "],
+    "NVDA": ["NVDA", "NVIDIA", "Nvidia", "Jensen Huang", "GeForce", "CUDA", "RTX", "Blackwell"],
+    "TSM": ["TSM", "TSMC", "Taiwan Semiconductor", "台积电"],
+    "MCO": ["MCO", "Moody", "Moody's"],
+    "GOOG": ["GOOG", "GOOGL", "Google", "Alphabet", "YouTube", "Sundar Pichai", "Pixel ", "Gemini"],
+    "BRK.B": ["BRK", "Berkshire", "Buffett", "GEICO", "BNSF"],
+    "KO": ["Coca-Cola", "Coca Cola", "Coke", " KO "],  # KO 单字母太宽,只在带空格时匹配
+    "AXP": ["AXP", "American Express", "Amex"],
+}
+
+
+def _is_relevant(item: NewsItem, ticker: str) -> bool:
+    """标题或 summary 至少包含一个关键词(大小写不敏感)才视为相关"""
+    keywords = _RELEVANCE_KEYWORDS.get(ticker)
+    if not keywords:
+        return True  # 没列入字典(不应发生)则降级为不过滤
+    haystack = f" {item.title}\n{item.summary} "  # 两端 space 让 " KO " 类规则可命中
+    haystack_lower = haystack.lower()
+    return any(kw.lower() in haystack_lower for kw in keywords)
 
 
 # ---------- Finnhub(美股 / ADR) ----------
@@ -80,7 +108,13 @@ def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNew
             published_at=pub,
             url=str(n.get("url") or ""),
             source=str(n.get("source") or "Finnhub"),
+            summary=str(n.get("summary") or "").strip(),
         ))
+    # 相关性过滤(Finnhub 同板块标签噪音很重)
+    raw_count = len(items)
+    items = [it for it in items if _is_relevant(it, holding.ticker)]
+    logger.info("company_news.relevance ticker=%s raw=%d kept=%d",
+                holding.ticker, raw_count, len(items))
     items.sort(key=lambda x: x.published_at, reverse=True)
     return CompanyNewsBundle(holding=holding, items=items, data_source="finnhub")
 

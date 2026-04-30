@@ -27,12 +27,39 @@ from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
 from src.utils.dates import now_beijing
+from src.utils.translate import translate_in_place_news
 
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _LOGOS_DIR = _PROJECT_ROOT / "assets" / "logos"
 _STATE_DIR = _PROJECT_ROOT / "state"
+
+
+def _translate_all_bundles(
+    *,
+    cn_bundles: list,
+    fig_bundles: list,
+    macro_bundles: list,
+    deepseek_api_key: str,
+) -> None:
+    """
+    把所有 collector 的标题就地替换为中文。
+    只翻译模板实际渲染的"前 5 条"以控制成本(模板侧 [:5] 切片)。
+    已是中文的(港股 Google News)被 translate.py 内部跳过。
+    """
+    titles_to_translate: list[object] = []
+    # 公司新闻每只取前 5
+    for b in cn_bundles:
+        titles_to_translate.extend(b.items[:5])
+    # 关键发言每人取前 5
+    for f in fig_bundles:
+        titles_to_translate.extend(f.items[:5])
+    # 宏观每源取前 5
+    for m in macro_bundles:
+        titles_to_translate.extend(m.items[:5])
+    if titles_to_translate:
+        translate_in_place_news(titles_to_translate, api_key=deepseek_api_key)
 
 
 def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[InlineImage]]:
@@ -80,6 +107,15 @@ def main() -> int:
 
     logger.info("collect.sentiment")
     sentiment_bundle = sentiment.fetch_all(settings.fred_api_key)
+
+    # ---------- 标题翻译(M3 补丁,M4 起 processors/ 接管) ----------
+    logger.info("translate.titles")
+    _translate_all_bundles(
+        cn_bundles=cn_bundles,
+        fig_bundles=fig_bundles,
+        macro_bundles=macro_bundles,
+        deepseek_api_key=settings.deepseek_api_key,
+    )
 
     # ---------- 渲染 ----------
     logger.info("render")

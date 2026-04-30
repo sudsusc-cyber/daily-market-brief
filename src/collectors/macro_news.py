@@ -44,8 +44,8 @@ _FEEDS: dict[str, str] = {
     "WSJ": "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",
     "FT": "https://www.ft.com/?format=rss",
     "Bloomberg": "https://feeds.bloomberg.com/markets/news.rss",
-    # ADR-0001 §4 备选源(Bloomberg 失效时兜底)
-    "Reuters": "https://feeds.reuters.com/reuters/topNews",
+    # Reuters 自 2020 年起逐步关停公开 RSS,改用 CNBC Top News(财经向更贴本项目主题)
+    "CNBC": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
 }
 
 

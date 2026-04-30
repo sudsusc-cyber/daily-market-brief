@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     finnhub_api_key: str = Field(..., description="Finnhub 免费 API Key,用于持仓公司新闻")
     fred_api_key: str = Field(..., description="FRED 免费 API Key,用于宏观情绪指标")
 
+    # M3 补丁(用户要求中文标题):DeepSeek 调用用于标题翻译;M4 起 processors/ 接管
+    deepseek_api_key: str = Field(..., description="DeepSeek API Key")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
