@@ -25,6 +25,17 @@
       | replace('3','三') | replace('4','四') | replace('5','五')
       | replace('6','六') | replace('7','七') | replace('8','八')
       | replace('9','九') -%}
+{# 月、日转汉字数字:1-31 → 一/二/三/.../十/十一/.../三十一 #}
+{%- set _digit_cn = ['零','一','二','三','四','五','六','七','八','九','十'] -%}
+{%- macro num_cn(n) -%}
+{%- if n <= 10 -%}{{ _digit_cn[n] }}
+{%- elif n < 20 -%}十{{ _digit_cn[n - 10] }}
+{%- elif n % 10 == 0 -%}{{ _digit_cn[n // 10] }}十
+{%- else -%}{{ _digit_cn[n // 10] }}十{{ _digit_cn[n % 10] }}
+{%- endif -%}
+{%- endmacro -%}
+{%- set month_cn = num_cn(generated_at.month) -%}
+{%- set day_cn = num_cn(generated_at.day) -%}
 {%- set weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'] -%}
 {# 思源宋体 / Source Han Serif SC 优先;退路是 macOS 自带宋体与 Windows Cambria #}
 {%- set serif_display = "'Noto Serif SC','Source Han Serif SC','Songti SC','STSong','Newsreader','Source Serif Pro',Charter,Cambria,Georgia,serif" -%}
@@ -46,7 +57,7 @@
 <meta name="x-apple-disable-message-reformatting" />
 <meta name="color-scheme" content="light" />
 <meta name="supported-color-schemes" content="light" />
-<title>每日晨报 · {{ year_cn }} 年 {{ generated_at.month }} 月 {{ generated_at.day }} 日</title>
+<title>每日晨报 · {{ year_cn }} 年 {{ month_cn }} 月 {{ day_cn }} 日</title>
 <!--[if mso]>
 <style type="text/css">
   table,td,div,h1,h2,p { font-family: Cambria, Georgia, serif !important; }
@@ -58,7 +69,7 @@
 
 {# 收件箱预览文字(preheader),不可见 #}
 <div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:{{ color_paper }};">
-  {{ year_cn }} 年 {{ generated_at.month }} 月 {{ generated_at.day }} 日 · 持仓信号摘录 · 数据截至北京时间 {{ generated_at.strftime('%H:%M') }}
+  {{ year_cn }} 年 {{ month_cn }} 月 {{ day_cn }} 日 · 持仓信号摘录 · 数据截至北京时间 {{ generated_at.strftime('%H:%M') }}
 </div>
 <div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:{{ color_paper }};">
   &#847;&zwnj;&nbsp;&#8199;&#65279;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;
@@ -93,7 +104,7 @@
             </div>
             <div style="margin:18px auto 14px auto; height:1px; line-height:1px; font-size:0; width:48px; background-color:{{ color_accent }};">&nbsp;</div>
             <div style="font-size:13px; color:{{ color_muted }}; letter-spacing:0.10em; font-family:{{ serif_body }};">
-              {{ year_cn }} 年 {{ generated_at.month }} 月 {{ generated_at.day }} 日 · {{ weekdays[generated_at.weekday()] }}
+              {{ year_cn }} 年 {{ month_cn }} 月 {{ day_cn }} 日 · {{ weekdays[generated_at.weekday()] }}
             </div>
           </td>
         </tr>
@@ -128,9 +139,9 @@
                   {%- if holdings_intro %}
                   {{ holdings_intro }}
                   {%- else %}
-                  当前持仓十二只——美股十只,港股两只。下表展示各只标的现价相对一百二十周与二百周均线的位置。
-                  现价跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">一二〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;DCA</span>,
-                  跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">二〇〇周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;Lump-sum</span>;
+                  当前持仓十二只——美股十只,港股两只。下表展示各只标的现价相对 120 周与 200 周均线的位置。
+                  现价跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">120 周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;DCA</span>,
+                  跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">200 周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;Lump-sum</span>;
                   无信号则记录至最近均线的距离。
                   {%- endif %}
                 </td>
@@ -161,10 +172,10 @@
                     现&nbsp;价
                   </th>
                   <th align="right" style="padding:14px 0 8px 16px; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
-                    一二〇&nbsp;周
+                    120&nbsp;周
                   </th>
                   <th align="right" style="padding:14px 0 8px 16px; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
-                    二〇〇&nbsp;周
+                    200&nbsp;周
                   </th>
                   <th align="right" style="padding:14px 0 8px 16px; font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
                     信&nbsp;号

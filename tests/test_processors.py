@@ -112,6 +112,45 @@ class TestFigureFilter:
         out = fig_parse("▦ 1: yes | ok\n▦ 99: yes | out_of_range", items)
         assert len(out) == 1
 
+    def test_parse_output_merges_indices(self) -> None:
+        # LLM 把 1, 2, 3 合并为同一观点(同一场演讲不同媒体报道)
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://reuters/a", source="Reuters"),
+            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://bbg/b", source="Bloomberg"),
+            FigureMention(title="C", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://cnbc/c", source="CNBC"),
+        ]
+        out = fig_parse("▦ 1,2,3: yes | AI 推理需求增长远超预期", items)
+        assert len(out) == 1
+        # 主索引 1 应作为代表来源
+        assert out[0].source_url == "https://reuters/a"
+        assert out[0].source_name == "Reuters"
+        assert out[0].text == "AI 推理需求增长远超预期"
+
+    def test_parse_output_dedupe_same_text(self) -> None:
+        # 二重保险:LLM 误输出两条同样观点(空格差异),仍只保留一条
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
+            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
+        ]
+        out = fig_parse(
+            "▦ 1: yes | 算力是未来的核心资产\n▦ 2: yes |  算力是未来的核心资产 ",
+            items,
+        )
+        assert len(out) == 1
+
+    def test_parse_output_merge_takes_first_valid_idx(self) -> None:
+        # 合并索引 "5,2" 中第一个 5 越界,应回退到第二个 2
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
+            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
+        ]
+        out = fig_parse("▦ 5,2: yes | 观点", items)
+        assert len(out) == 1
+        assert out[0].source_url == "https://b"
+
 
 class TestSentimentJudge:
     def test_format_input(self) -> None:
