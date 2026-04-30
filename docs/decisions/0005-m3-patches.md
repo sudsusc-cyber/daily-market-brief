@@ -11,16 +11,25 @@ M2 与 M3 验收过程中,用户连续指出三个问题,本 ADR 把对应修复
 
 ## 决策
 
-### 1. M2:TSM logo 移动端不显示 → 强制方形 logo
+### 1. M2/M3:TSM logo 移动端不显示 → 方形 + 缩到 128 + strip PNG 元数据
 
-- **现象**:电脑端 QQ 邮箱看到 TSM logo,手机端 QQ 邮箱不显示
-- **根因**:Wikimedia 给的 TSM logo 是 `Tsmc-text.svg` 渲染成 **960×757** 非方形 PNG。模板里 `<img width="28" height="28">` 强制压方形,部分移动邮件客户端对长宽比偏离 1:1 的 inline 图片处理不一致(直接不渲染)
-- **决策**:`LOGO_OVERRIDES` 中所有自定义来源**必须**是方形(或 1:1 比例),其他形状可能导致移动端不渲染。Wikimedia 的 SVG 渲染缩略图常出现非方形(WSJ logo / Costco logo / TSMC 文字版),弃用
-- **当前 override 列表(全部方形)**:
-  - `TSM` → FMP 250×250(原 Wikimedia 960×757,**改**)
-  - `COST` → FMP 128×128(原 Wikimedia 960×344)
-  - `BRK.B` → FMP 240×240
-- **后续维护**:任何新 override 在 `scripts/fetch_logos.py` 跑完后用 `file assets/logos/*.png` 验证 dimensions 是否方形,不方形必须替换源
+- **现象**:M2 验收时电脑端 QQ 邮箱可见 TSM logo,手机端 QQ 邮箱不显示;M3 切到 FMP 方形版后 QQ 邮箱(电脑 + 手机 + QQ 专属 app)三端都正常,但**微信内嵌 webview 打开邮件时,I 持仓信号区块 TSM 仍不显示;同样的 cid 在 III 昨日动态区块却正常显示**
+- **三层根因**(逐步定位,每层修复一个):
+  1. **方形约束**:Wikimedia 的 `Tsmc-text.svg` 渲染成 **960×757** 非方形 PNG,部分移动客户端对长宽比偏离 1:1 的 inline 图直接不渲染 → 改用 FMP 250×250
+  2. **尺寸约束**:FMP 250×250 比其他 logo(普遍 ≤ 128px)显著大,微信 webview 在密集表格 layout 中渲染怪癖 → 用 `sips -Z 128` 缩到 128×128
+  3. **PNG 元数据干扰**(关键):FMP / Wikimedia 给的 PNG 含 `eXIf / gAMA / cHRM` 等装饰 chunks,Google S2 给的 favicon 只有 `IHDR + IDAT`。微信 webview 对带 eXIf 的 PNG 在表格 layout 里有渲染问题 → strip 所有非必要 chunks(只保留 `IHDR / PLTE / tRNS / IDAT / IEND`)
+- **决策**:`scripts/fetch_logos.py` 的 fetch_one 在保存后**两步规格化**:
+  1. 系统 `sips` 可用时(macOS)把图缩到最长边 ≤ 128
+  2. Python 标准库 `struct` 重写 PNG,只保留 5 个最小可解码 chunk(无依赖,Linux GH Actions 也能跑)
+- **后续维护**:任何新 override 在 fetch 后用 `file assets/logos/*.png` 验证 dimensions ≤ 128,用以下命令验证 chunks:
+  ```python
+  data = open('assets/logos/X.png','rb').read()
+  # 期望只有 IHDR / IDAT(若调色板图含 PLTE / tRNS)
+  ```
+- **当前 LOGO_OVERRIDES 列表(全部方形)**:
+  - `TSM` → FMP 250×250 → sips 128 → strip(140 bytes 剥离)
+  - `COST` → FMP 128×128 → strip(13 bytes)
+  - `BRK.B` → FMP 240×240 → sips 128 → strip(16 bytes)
 
 ### 2. M3:Reuters Top News RSS 完全不可达 → 替换为 CNBC
 

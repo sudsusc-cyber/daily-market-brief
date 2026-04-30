@@ -15,10 +15,35 @@ URL 模板(本脚本使用):
 
 from __future__ import annotations
 
+import shutil
+import struct
+import subprocess
 import sys
 from pathlib import Path
 
 import requests
+
+# 微信内嵌 webview 对带某些"装饰" PNG chunks(eXIf/gAMA/cHRM/sRGB 等)
+# 在密集表格 layout 中不渲染。strip 后只保留 IHDR/PLTE/tRNS/IDAT/IEND 即可
+# (这是最小可解码 PNG 集合)。M3 验收期间用户在微信打开邮件 TSM 不显示,
+# 排查发现 Wikimedia / FMP 给的 PNG 都带 eXIf,strip 后正常。
+_SAFE_PNG_CHUNKS = {b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"IEND"}
+
+
+def _strip_png_metadata(path: Path) -> None:
+    """重写 PNG 文件,去掉非必要 chunks。"""
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return  # 不是 PNG(JPEG/SVG)直接跳过
+    out = bytearray(data[:8])
+    p = 8
+    while p + 12 <= len(data):
+        chunk_len = struct.unpack(">I", data[p : p + 4])[0]
+        chunk_type = data[p + 4 : p + 8]
+        if chunk_type in _SAFE_PNG_CHUNKS:
+            out.extend(data[p : p + 12 + chunk_len])
+        p += 12 + chunk_len
+    path.write_bytes(out)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -57,7 +82,12 @@ LOGO_OVERRIDES: dict[str, str] = {
 
 
 def fetch_one(domain: str, dest: Path, override_url: str | None = None) -> tuple[bool, int, str]:
-    """返回 (成功?, 字节数, 备注)"""
+    """返回 (成功?, 字节数, 备注)。
+
+    保存后会调用 sips 把图缩到 ≤ 128px(macOS 自带,GH Actions 不需要因为
+    GH Actions 直接用入库的归一化文件)。理由:M3 验收时发现 TSM 250×250
+    在微信内嵌 webview 的密集表格 layout 里不渲染,缩到 128 后正常。
+    """
     url = override_url or f"https://www.google.com/s2/favicons?domain={domain}&sz={SIZE}"
     try:
         resp = requests.get(url, headers=UA, timeout=TIMEOUT, allow_redirects=True)
@@ -68,7 +98,24 @@ def fetch_one(domain: str, dest: Path, override_url: str | None = None) -> tuple
     if not resp.content or len(resp.content) < 100:
         return False, len(resp.content), f"响应过小({len(resp.content)} bytes),可能是 1x1 占位"
     dest.write_bytes(resp.content)
-    return True, len(resp.content), "ok"
+
+    # 归一化尺寸:用系统 sips 缩到最长边 ≤ SIZE(128)
+    if shutil.which("sips"):
+        try:
+            subprocess.run(
+                ["sips", "-Z", str(SIZE), str(dest)],
+                check=False, capture_output=True, timeout=10,
+            )
+        except Exception:  # noqa: BLE001 — normalize 失败不影响 fetch
+            pass
+
+    # 剥离非必要 PNG chunks(eXIf 等会导致微信 webview 在 I 区块不渲染)
+    try:
+        _strip_png_metadata(dest)
+    except Exception:  # noqa: BLE001
+        pass
+
+    return True, dest.stat().st_size, "ok"
 
 
 def main() -> int:
