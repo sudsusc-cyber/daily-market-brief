@@ -5,7 +5,7 @@
       "name": "email-preview",
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "python", "scripts/preview_server.py"],
-      "port": 8765
+      "port": 8766
     }
   ]
 }
