@@ -43,7 +43,7 @@ HOLDINGS: list[Holding] = [
     Holding("COST", "Costco Wholesale", "costco.com"),
     Holding("AAPL", "Apple", "apple.com"),
     Holding("NVDA", "NVIDIA", "nvidia.com"),
-    Holding("TSM", "Taiwan Semiconductor", "tsmc.com"),
+    Holding("TSM", "台積電", "tsmc.com"),
     Holding("MCO", "Moody's", "moodys.com"),
     # GOOG 是 Alphabet C 类股,但 Alphabet 主域 abc.xyz 的 favicon 太低分;
     # 用 google.com favicon 视觉更清晰,且对用户更易识别

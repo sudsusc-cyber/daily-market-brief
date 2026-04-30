@@ -57,7 +57,7 @@
 <meta name="x-apple-disable-message-reformatting" />
 <meta name="color-scheme" content="light" />
 <meta name="supported-color-schemes" content="light" />
-<title>每日晨报 · {{ year_cn }} 年 {{ month_cn }} 月 {{ day_cn }} 日</title>
+<title>每日晨报 · {{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日</title>
 <!--[if mso]>
 <style type="text/css">
   table,td,div,h1,h2,p { font-family: Cambria, Georgia, serif !important; }
@@ -69,7 +69,7 @@
 
 {# 收件箱预览文字(preheader),不可见 #}
 <div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:{{ color_paper }};">
-  {{ year_cn }} 年 {{ month_cn }} 月 {{ day_cn }} 日 · 持仓信号摘录 · 数据截至北京时间 {{ generated_at.strftime('%H:%M') }}
+  {{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日 · 持仓信号摘录 · 数据截至北京时间 {{ generated_at.strftime('%H:%M') }}
 </div>
 <div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:{{ color_paper }};">
   &#847;&zwnj;&nbsp;&#8199;&#65279;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;
@@ -104,7 +104,7 @@
             </div>
             <div style="margin:18px auto 14px auto; height:1px; line-height:1px; font-size:0; width:48px; background-color:{{ color_accent }};">&nbsp;</div>
             <div style="font-size:13px; color:{{ color_muted }}; letter-spacing:0.10em; font-family:{{ serif_body }};">
-              {{ year_cn }} 年 {{ month_cn }} 月 {{ day_cn }} 日 · {{ weekdays[generated_at.weekday()] }}
+              {{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日 · {{ weekdays[generated_at.weekday()] }}
             </div>
           </td>
         </tr>
@@ -299,7 +299,9 @@
                 {% for m in sentiment.metrics %}
                 <tr>
                   <td valign="middle" style="padding:14px 0 14px 0; border-bottom:1px solid {{ color_hairline }};">
-                    <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ color_ink }}; letter-spacing:0.02em;">{{ m.name }}</div>
+                    <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ color_ink }}; letter-spacing:0.02em;">
+                      {{ m.name }}{% if m.unit %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:4px;">({{ m.unit }})</span>{% endif %}
+                    </div>
                     {% if m.rating %}
                     <div style="margin-top:4px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; letter-spacing:0.04em;">{{ m.rating }}</div>
                     {% endif %}
@@ -307,9 +309,9 @@
                   {% if m.error %}
                   <td colspan="3" align="right" valign="middle" style="padding:14px 0; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ m.error }}</td>
                   {% else %}
-                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_display }}; font-size:16px; color:{{ color_ink }}; font-weight:500;">{{ m.current | metric_num(m.unit) }}</td>
-                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:13px; color:{{ color_muted }};">{{ m.prior | metric_num(m.unit) }}</td>
-                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:12.5px; color:{{ color_muted }};">{{ m.delta | metric_delta(m.unit) }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_display }}; font-size:16px; color:{{ color_ink }}; font-weight:500; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ m.current | metric_num }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:13px; color:{{ color_muted }}; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ m.prior | metric_num }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:12.5px; color:{{ color_muted }}; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ m.delta | metric_delta }}</td>
                   {% endif %}
                 </tr>
                 {% endfor %}
@@ -403,6 +405,16 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
+        {% if not figure_summaries %}
+        {# 全员沉默:LLM 写一句古典韵味占位语,失败时退回固定兜底 #}
+        <tr>
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_body }}; font-size:15px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.04em; font-style:italic; text-align:center;">
+              {{ figure_silence_note or "群贤皆默,市自为声。" }}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         {% if figure_summaries %}
         {# M4 LLM 第二道筛选 + 关键观点提炼;每个人物即使 0 条也展示小标题 + "昨日无发言" #}
         {% for f in figure_summaries %}

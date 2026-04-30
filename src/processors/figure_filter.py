@@ -167,3 +167,42 @@ def filter_all(
     bundles: list[FigureBundle], *, client: LLMClient, max_items: int = 5
 ) -> list[FigureSummary]:
     return [filter_one(b, client=client, max_items=max_items) for b in bundles]
+
+
+_SILENCE_INSTRUCTION = """\
+任务:今日所有关键人物都没有合格发言(无演讲、无采访、无正式声明)。
+请写**一句**短小有古典韵味的中文(12-25 字),用作晨报「关键发言」章节的占位语,
+让读者会心一笑或停顿一秒,而不是干巴巴的"今日无人发言"。
+
+【风格基调】
+- 化用古典意象、诗意句式,但不直接引用名句
+- 节制、含蓄,有哲思而不说教
+- 例如(只是范围参考,绝不要照抄):"群贤皆默,市自为声""智者三缄其口,世仍奔流不息"
+  "今日大音希声"
+- **不要**写"今日大佬未发言"这种平白叙述
+
+【硬约束】
+- 只输出**那句话本身**,不带前言、不带解释、不带 markdown、不带引号
+- 字数 12-25 字,绝不超过 25 字
+- 不要用"今天/今日"等明显时间副词
+"""
+
+
+def generate_silence_note(client: LLMClient) -> str | None:
+    """全员未发言时生成的占位语。失败返回 None,模板用兜底文案。"""
+    resp = client.chat(
+        "请写一句替代'关键发言'章节的占位语",
+        task_extra=_SILENCE_INSTRUCTION,
+        max_tokens=300,
+        temperature=0.85,
+    )
+    text = (resp.text or "").strip().strip("\"'“”「」 ")
+    if not text:
+        logger.warning("figure_silence.failed reason=%s", resp.error)
+        return None
+    if text.startswith("```"):
+        text = text.strip("` \n")
+    if len(text) > 50:
+        text = text[:50].rstrip("。!?,;:") + "。"
+    logger.info("figure_silence.ok chars=%d", len(text))
+    return text

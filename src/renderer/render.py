@@ -48,21 +48,18 @@ def _filter_pct(value: float | None) -> str:
 
 
 def _filter_metric_num(value: float | None, unit: str = "") -> str:
-    """情绪指标当前值/前一日值,带单位。None → '—'"""
+    """情绪指标当前值/前一日值。**只输出数字**(单位由模板在指标名旁单独标注),
+    使 right-align 列严格小数点对齐。unit 参数保留为兼容,内部忽略。"""
+    _ = unit  # noqa: F841
     if value is None:
         return "—"
     try:
-        # 数字大小决定保留位数
         absv = abs(value)
         if absv >= 100:
-            text = f"{value:,.1f}"
-        elif absv >= 10:
-            text = f"{value:.2f}"
-        else:
-            text = f"{value:.2f}"
+            return f"{value:,.1f}"
+        return f"{value:.2f}"
     except (TypeError, ValueError):
         return "—"
-    return f"{text}{unit}" if unit else text
 
 
 def _filter_metric_delta(delta: float | None, unit: str = "") -> str:
@@ -125,6 +122,7 @@ def render_email(
     sentiment_verdict: dict | None = None,           # {verdict, argument}
     company_news_summary: Any | None = None,          # CompanyNewsSummary {summary_html, footnotes}
     figure_summaries: list[Any] | None = None,        # list[FigureSummary]
+    figure_silence_note: str | None = None,           # 全员沉默时的占位语
     macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
 ) -> str:
     """
@@ -147,6 +145,7 @@ def render_email(
         company_news_summary=company_news_summary,
         figures=figures,
         figure_summaries=figure_summaries,
+        figure_silence_note=figure_silence_note,
         macro_news=macro_news,
         macro_news_summary=macro_news_summary,
         buffett_13f=buffett_13f,
