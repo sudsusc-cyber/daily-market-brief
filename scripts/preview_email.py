@@ -109,6 +109,17 @@ def _inline_logos_as_data_uri(html: str) -> str:
 
 
 def render_preview() -> str:
+    import datetime as dt
+    from src.collectors.header_image import pick_header_image
+    header = pick_header_image(dt.date.today())
+    header_url = header["url"]
+    # cid: 在浏览器无法加载,换用固定 Pexels URL 供预览
+    if header_url.startswith("cid:"):
+        header_url = (
+            "https://images.pexels.com/photos/691668/pexels-photo-691668.jpeg"
+            "?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop"
+        )
+
     # 复用 render.py 的 Environment(已注册全部 filter:price/pct/metric_*/bj_time/cjk_spaced)
     from src.renderer.render import _build_env
     env = _build_env()
@@ -117,6 +128,7 @@ def render_preview() -> str:
         signals=_build_mock_signals(),
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids=_build_logo_cids(),
+        header_image_url=header_url,
         # M4 加工产物 mock(模板降级到 M3 原始数据列表更接近真实情况;但提供 mock 也可)
         sentiment=None, sentiment_verdict=None,
         company_news=None, company_news_summary=None,
