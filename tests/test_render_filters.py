@@ -39,8 +39,9 @@ class TestMetricFilters:
     def test_metric_num_no_unit(self) -> None:
         assert _filter_metric_num(40.53) == "40.53"
 
-    def test_metric_num_with_unit(self) -> None:
-        assert _filter_metric_num(5.83, unit="%") == "5.83%"
+    def test_metric_num_unit_arg_ignored(self) -> None:
+        # 单位现在由模板单独标注;filter 只输出数字,unit 参数兼容保留但忽略
+        assert _filter_metric_num(5.83, unit="%") == "5.83"
 
     def test_metric_num_large(self) -> None:
         # >= 100 用 1 位小数 + 千分位
