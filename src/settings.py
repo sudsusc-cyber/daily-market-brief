@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     qq_email_auth_code: str = Field(..., description="QQ 邮箱 16 位授权码,非登录密码")
     email_recipient: str = Field(..., description="收件邮箱(通常等于 qq_email_address)")
 
+    # M3:数据采集层
+    finnhub_api_key: str = Field(..., description="Finnhub 免费 API Key,用于持仓公司新闻")
+    fred_api_key: str = Field(..., description="FRED 免费 API Key,用于宏观情绪指标")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

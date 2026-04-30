@@ -1,11 +1,15 @@
 """
-每日晨报主入口(M2 端到端最小流程)。
+每日晨报主入口(M3 端到端,5 大模块原始数据)。
 
 链路:
-    config.HOLDINGS  →  collectors/stocks.fetch_all  →  renderer/render
-                                                          ↓
-                                              sender/smtp_sender.send_html_email
-                                                  (含 logo inline 附件)
+    config.HOLDINGS  →  collectors:
+                          stocks / company_news / figures / macro_news
+                          / buffett_13f / sentiment
+                                    ↓
+                              renderer/render(原始数据 dump,无 LLM)
+                                    ↓
+                              sender/smtp_sender.send_html_email
+                                    (含 logo inline 附件)
 
 时区:全程内部用 UTC,展示与邮件标题用北京时间。
 本地运行:`uv run python -m src.main`
@@ -15,29 +19,24 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
-from src.collectors.stocks import fetch_all
+from src.collectors import buffett_13f, company_news, figures, macro_news, sentiment, stocks
 from src.config import HOLDINGS, Holding
 from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
+from src.utils.dates import now_beijing
 
 logger = logging.getLogger(__name__)
 
-_BEIJING = ZoneInfo("Asia/Shanghai")
-_LOGOS_DIR = Path(__file__).resolve().parent.parent / "assets" / "logos"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_LOGOS_DIR = _PROJECT_ROOT / "assets" / "logos"
+_STATE_DIR = _PROJECT_ROOT / "state"
 
 
 def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[InlineImage]]:
-    """
-    扫描 assets/logos/<slug>.png,组装两份产物:
-      - cids:   ticker -> CID 字符串(给模板)
-      - images: list[InlineImage](给 SMTP 嵌入)
-    缺失的 ticker(如 BRK.B 没拉到)会跳过,模板里走文字 fallback。
-    """
+    """扫描 assets/logos/<slug>.png,组装 (cid 映射, InlineImage 列表)"""
     cids: dict[str, str] = {}
     images: list[InlineImage] = []
     for h in holdings:
@@ -47,7 +46,7 @@ def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[Inl
             continue
         cid = h.logo_cid
         cids[h.ticker] = cid
-        images.append(InlineImage(cid=cid, path=path, subtype="png"))
+        images.append(InlineImage(cid=cid, path=path, subtype=None))  # 让 sender magic-bytes 推
     logger.info("logos.loaded count=%d/%d", len(cids), len(holdings))
     return cids, images
 
@@ -59,23 +58,46 @@ def main() -> int:
     )
 
     settings = load_settings()
-    now_bj = datetime.now(_BEIJING)
+    now_bj = now_beijing()
 
     logger.info("main.start  generated_at=%s", now_bj.isoformat(timespec="seconds"))
 
-    logger.info("main.collect.stocks  count=%d", len(HOLDINGS))
-    signals = fetch_all(HOLDINGS)
-    ok = sum(1 for s in signals if s.error is None)
-    logger.info("main.collect.stocks.done  ok=%d/%d", ok, len(signals))
+    # ---------- 数据采集 ----------
+    logger.info("collect.stocks count=%d", len(HOLDINGS))
+    signals = stocks.fetch_all(HOLDINGS)
 
-    logger.info("main.load_logos")
+    logger.info("collect.company_news")
+    cn_bundles = company_news.fetch_all(HOLDINGS, settings.finnhub_api_key)
+
+    logger.info("collect.macro_news")
+    macro_bundles = macro_news.fetch_all()
+
+    logger.info("collect.figures")
+    fig_bundles = figures.fetch_all(state_path=_STATE_DIR / "pushed_figures.json")
+
+    logger.info("collect.buffett_13f")
+    buffett_bundle = buffett_13f.fetch(state_path=_STATE_DIR / "last_13f.json")
+
+    logger.info("collect.sentiment")
+    sentiment_bundle = sentiment.fetch_all(settings.fred_api_key)
+
+    # ---------- 渲染 ----------
+    logger.info("render")
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
+    html = render_email(
+        signals=signals,
+        generated_at=now_bj,
+        logo_cids=logo_cids,
+        sentiment=sentiment_bundle,
+        company_news=cn_bundles,
+        figures=fig_bundles,
+        macro_news=macro_bundles,
+        buffett_13f=buffett_bundle,
+    )
 
-    logger.info("main.render")
-    html = render_email(signals=signals, generated_at=now_bj, logo_cids=logo_cids)
-
+    # ---------- 发送 ----------
     subject = f"每日晨报 · {now_bj.year} 年 {now_bj.month} 月 {now_bj.day} 日"
-    logger.info("main.send  recipient=%s subject=%r", settings.email_recipient, subject)
+    logger.info("send recipient=%s subject=%r", settings.email_recipient, subject)
     send_html_email(
         sender=settings.qq_email_address,
         auth_code=settings.qq_email_auth_code,

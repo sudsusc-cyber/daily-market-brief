@@ -244,7 +244,7 @@
         {% endif %}
 
         {# ─────────────────────────  II. 情绪温度计  (M3) ───────────────────────── #}
-        {% if sentiment %}
+        {% if sentiment and sentiment.metrics %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -259,11 +259,41 @@
               </tr>
             </table>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
-            <div style="margin-top:24px; font-family:{{ serif_display }}; font-size:18px; color:{{ color_ink }}; letter-spacing:0.06em;">
-              今日情绪 · <span style="color:{{ color_accent }};">{{ sentiment.verdict }}</span>
-            </div>
-            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:14px; line-height:1.85; color:{{ color_ink_soft }};">
-              {{ sentiment.argument }}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 24px 0 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; font-family:{{ serif_body }}; color:{{ color_ink }};">
+              <thead>
+                <tr>
+                  <th align="left"  style="padding:12px 0 8px 0;  font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">指&nbsp;标</th>
+                  <th align="right" style="padding:12px 0 8px 16px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">当&nbsp;前</th>
+                  <th align="right" style="padding:12px 0 8px 16px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">一&nbsp;周&nbsp;前</th>
+                  <th align="right" style="padding:12px 0 8px 16px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">变&nbsp;化</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in sentiment.metrics %}
+                <tr>
+                  <td valign="middle" style="padding:14px 0 14px 0; border-bottom:1px solid {{ color_hairline }};">
+                    <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ color_ink }}; letter-spacing:0.02em;">{{ m.name }}</div>
+                    {% if m.rating %}
+                    <div style="margin-top:4px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; letter-spacing:0.04em;">{{ m.rating }}</div>
+                    {% endif %}
+                  </td>
+                  {% if m.error %}
+                  <td colspan="3" align="right" valign="middle" style="padding:14px 0; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ m.error }}</td>
+                  {% else %}
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_display }}; font-size:16px; color:{{ color_ink }}; font-weight:500;">{{ m.current | metric_num(m.unit) }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:13px; color:{{ color_muted }};">{{ m.prior | metric_num(m.unit) }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:12.5px; color:{{ color_muted }};">{{ m.delta | metric_delta(m.unit) }}</td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
+              "一周前"取约 5 个交易日前的可比值。LLM 综合判断与情绪结论留待 M4 接入后呈现。
             </div>
           </td>
         </tr>
@@ -285,15 +315,56 @@
               </tr>
             </table>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
-            <div style="margin-top:24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
-              {{ company_news }}
+            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
+              M3 阶段直接展示原始新闻列表(每只持仓最多 5 条标题)。M4 起 LLM 摘要为段落叙述。
             </div>
           </td>
         </tr>
+        {% for bundle in company_news %}
+        {%- set has_logo = logo_cids and (bundle.holding.ticker in logo_cids) -%}
+        <tr>
+          <td style="padding:18px 24px 0 24px;">
+            {# 持仓小标题:logo + ticker / name 横排 #}
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td valign="middle" width="36" style="padding-right:12px;">
+                  {% if has_logo %}
+                  <img src="cid:{{ logo_cids[bundle.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
+                  {% else %}
+                  <div style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ bundle.holding.ticker[:3] }}</div>
+                  {% endif %}
+                </td>
+                <td valign="middle">
+                  <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em;">{{ bundle.holding.ticker }}</span>
+                  <span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:8px;">{{ bundle.holding.name }}</span>
+                </td>
+              </tr>
+            </table>
+            {# 该股的新闻列表 / 错误 / 空 三态 #}
+            <div style="margin-top:8px; padding-left:48px;">
+              {% if bundle.error %}
+              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ bundle.error }}</div>
+              {% elif not bundle.items %}
+              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_faint }}; font-style:italic;">昨日无重要新闻</div>
+              {% else %}
+              <ul style="margin:0; padding:0; list-style:none;">
+                {% for item in bundle.items[:5] %}
+                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
+                  <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
+                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
+                  <span style="color:{{ color_faint }}; font-size:10.5px; margin-left:6px;">— {{ item.source }}</span>
+                </li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
         {% endif %}
 
         {# ─────────────────────────  IV. 关键发言  (M3) ───────────────────────── #}
-        {% if figures %}
+        {% if figures or (buffett_13f and buffett_13f.is_new) %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -308,15 +379,48 @@
               </tr>
             </table>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
-            {% for f in figures %}
-            <div style="margin-top:{{ '28px' if loop.first else '24px' }}; font-family:{{ serif_body }}; font-size:14px; line-height:1.85; color:{{ color_ink_soft }};">
-              <span style="font-family:{{ serif_display }}; color:{{ color_accent }}; letter-spacing:0.04em;">{{ f.person }}</span>
-              {% if f.context %}<span style="color:{{ color_muted }};">({{ f.context }})</span>{% endif %}
-              ·&nbsp;{{ f.content }}
+            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
+              候选发言列表 — 已通过规则筛选(标题需含 "said / told / announced" 等动词)
+              且 7 天内未推送过。LLM 第二道"是否本人原话"判断与摘要在 M4 接入。
             </div>
-            {% endfor %}
           </td>
         </tr>
+        {% for f in figures %}
+        <tr>
+          <td style="padding:18px 24px 0 24px;">
+            <div style="font-family:{{ serif_display }}; font-size:15px; color:{{ color_accent }}; letter-spacing:0.06em; font-weight:500;">{{ f.person }}</div>
+            <div style="margin-top:10px;">
+              {% if f.error %}
+              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ f.error }}</div>
+              {% elif not f.items %}
+              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_faint }}; font-style:italic;">过去 24 小时无新候选发言</div>
+              {% else %}
+              <ul style="margin:0; padding:0; list-style:none;">
+                {% for item in f.items[:5] %}
+                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
+                  <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
+                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
+                  <span style="color:{{ color_faint }}; font-size:10.5px; margin-left:6px;">— {{ item.source }}</span>
+                </li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if buffett_13f and buffett_13f.is_new %}
+        <tr>
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_display }}; font-size:15px; color:{{ color_accent }}; letter-spacing:0.06em; font-weight:500;">Berkshire 13F</div>
+            <div style="margin-top:8px; font-family:{{ serif_body }}; font-size:13px; color:{{ color_ink_soft }}; line-height:1.6;">
+              SEC EDGAR 检测到新 13F 提交(accession <span style="font-family:Charter,Cambria,serif; color:{{ color_muted }};">{{ buffett_13f.latest.accession_no }}</span>),
+              提交于北京时间 {{ buffett_13f.latest.filed_at | bj_time }}{% if buffett_13f.days_since_filed is not none %},距今 {{ buffett_13f.days_since_filed }} 天{% endif %}。
+              具体持仓变动(新增 / 加仓 / 减仓 / 清仓)将在 M4 接入 13F-HR XML 解析后呈现。
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         {% endif %}
 
         {# ─────────────────────────  V. 宏观视野  (M3) ───────────────────────── #}
@@ -335,11 +439,34 @@
               </tr>
             </table>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:18px;"></div>
-            <div style="margin-top:24px; font-family:{{ serif_body }}; font-size:14px; line-height:1.95; color:{{ color_ink_soft }}; letter-spacing:0.01em;">
-              {{ macro_news }}
+            <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
+              过去 24 小时各源头条原文。M4 起 LLM 会做"头版级别"筛选与段落叙述。
             </div>
           </td>
         </tr>
+        {% for bundle in macro_news %}
+        <tr>
+          <td style="padding:18px 24px 0 24px;">
+            <div style="font-family:{{ serif_display }}; font-size:15px; color:{{ color_accent }}; letter-spacing:0.06em; font-weight:500;">{{ bundle.source }}</div>
+            <div style="margin-top:10px;">
+              {% if bundle.error %}
+              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ bundle.error }}</div>
+              {% elif not bundle.items %}
+              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_faint }}; font-style:italic;">过去 24 小时无条目</div>
+              {% else %}
+              <ul style="margin:0; padding:0; list-style:none;">
+                {% for item in bundle.items[:5] %}
+                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
+                  <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
+                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
+                </li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
         {% endif %}
 
         {# 装饰性结尾 #}

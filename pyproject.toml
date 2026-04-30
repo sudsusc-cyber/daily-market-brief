@@ -26,7 +26,12 @@ dependencies = [
 dev = [
     "ruff>=0.6.0",
     "black>=24.0.0",
+    "pytest>=8.0.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [build-system]
 requires = ["hatchling"]
