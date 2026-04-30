@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# macOS
+.DS_Store
+
+# Claude Code worktrees(本仓库其他 session 的工作目录,不应入库)
+.claude/worktrees/
+
+# 运行时状态(state/* 由 main.py 写入;节假日表是配置应入库)
+state/pushed_figures.json
+state/last_13f.json
+
+# 其它 session 的临时 worktree 目录(无规则名)
+sharp-meninsky-e43ea3/
+

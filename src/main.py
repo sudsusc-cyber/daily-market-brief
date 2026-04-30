@@ -106,6 +106,16 @@ def main() -> int:
 
     logger.info("main.start  generated_at=%s", now_bj.isoformat(timespec="seconds"))
 
+    # ---------- 节假日预检(M6;cron 仍按周二-周六触发,但美股节假日要跳过) ----------
+    import os
+    from src.utils.holidays import should_send_today
+    if os.environ.get("FORCE_SEND") != "1":
+        ok, reason = should_send_today(now_bj.date())
+        logger.info("holidays.check ok=%s reason=%s", ok, reason)
+        if not ok:
+            logger.info("main.skipped reason=%s", reason)
+            return 0
+
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
     signals = stocks.fetch_all(HOLDINGS)
