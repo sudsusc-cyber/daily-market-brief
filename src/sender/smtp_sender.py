@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import socket
 import smtplib
+import struct
 from dataclasses import dataclass
 from email.header import Header
 from email.mime.image import MIMEImage
@@ -21,6 +23,28 @@ from email.utils import formatdate, make_msgid
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_via_dns(host: str, dns_server: str = "8.8.8.8") -> str | None:
+    """用 dig 命令通过外部 DNS 解析,绕开本机代理/VPN 接管的 DNS。
+    返回首个非 198.18.x 的 IPv4;失败返回 None,调用方退回系统解析。"""
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["dig", "+short", "+time=3", "+tries=1", f"@{dns_server}", host, "A"],
+            capture_output=True, text=True, timeout=8,
+        ).stdout.strip()
+        for line in out.splitlines():
+            line = line.strip()
+            # 过滤掉 CNAME 行(末尾带点)和代理虚拟 IP
+            if not line or line.endswith(".") or line.startswith("198.18."):
+                continue
+            parts = line.split(".")
+            if len(parts) == 4 and all(p.isdigit() for p in parts):
+                return line
+        return None
+    except Exception:
+        return None
 
 
 @dataclass(frozen=True)
@@ -101,10 +125,32 @@ def send_html_email(
     msg["Message-ID"] = make_msgid(domain="daily-market-brief.local")
 
     logger.info(
-        "smtp_send.start sender=%s recipients=%s subject=%r inline=%d",
-        sender, recipients, subject, len(inline_images),
+        "smtp_send.start sender=%s recipients=%s subject=%r inline=%d port=%d",
+        sender, recipients, subject, len(inline_images), smtp_port,
     )
-    server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout)
+    # 本机若有代理(Surge/ClashX 等)接管 DNS,smtp.qq.com 会被解到 198.18.x.x
+    # 虚拟 IP 导致 SSL 握手被截。先用外部 DNS 拿真实 IP,临时打补丁让
+    # socket.getaddrinfo 返回真实 IP(SNI 仍用 smtp_host,证书校验正确)。
+    real_ip = _resolve_via_dns(smtp_host)
+    _orig_getaddrinfo = socket.getaddrinfo
+    if real_ip:
+        logger.info("smtp_send.dns_override host=%s real_ip=%s", smtp_host, real_ip)
+
+        def _patched(host, *args, **kwargs):  # noqa: ANN001
+            if host == smtp_host:
+                return _orig_getaddrinfo(real_ip, *args, **kwargs)
+            return _orig_getaddrinfo(host, *args, **kwargs)
+        socket.getaddrinfo = _patched
+
+    try:
+        if smtp_port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=timeout)
+            server.starttls()
+    finally:
+        if real_ip:
+            socket.getaddrinfo = _orig_getaddrinfo
     try:
         server.login(sender, auth_code)
         server.sendmail(sender, recipients, msg.as_string())
