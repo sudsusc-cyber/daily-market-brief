@@ -99,10 +99,12 @@
         {# ─────────────────────────  MASTHEAD  ───────────────────────── #}
         <tr>
           <td align="center" style="padding:{% if header_image_url %}28px{% else %}0{% endif %} 24px 4px 24px; font-family:{{ serif_display }}; color:{{ color_ink }}; text-align:center;">
-            <div style="margin-bottom:18px; line-height:0; font-size:0;"><div style="display:inline-block; font-size:11px; line-height:1.4; letter-spacing:0.46em; color:{{ color_accent }}; text-transform:uppercase; font-family:{{ serif_body }};">Daily&nbsp;&nbsp;Brief</div></div>
-            <div style="line-height:0; font-size:0;"><div style="display:inline-block; font-size:42px; line-height:1.0; font-weight:500; letter-spacing:0.32em; color:{{ color_ink }}; font-family:{{ serif_display }};">每日晨报</div></div>
-            <div style="margin:18px 0 14px 0; line-height:0; font-size:0;"><div style="display:inline-block; height:1px; line-height:1px; font-size:0; width:48px; background-color:{{ color_accent }};">&nbsp;</div></div>
-            <div style="line-height:0; font-size:0;"><div style="display:inline-block; font-size:13px; line-height:1.4; color:{{ color_muted }}; letter-spacing:0.10em; font-family:{{ serif_body }};">{{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日 · {{ weekdays[generated_at.weekday()] }}</div></div>
+            {# QQ 邮箱网页版兼容性:把每个文字块用 <table align="center"> 包装 — HTML
+               表格 align 属性是邮件客户端最兼容的居中方式,优于 inline-block + CSS。 #}
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px auto;"><tr><td style="font-size:11px; line-height:1.4; letter-spacing:0.46em; color:{{ color_accent }}; text-transform:uppercase; font-family:{{ serif_body }};">Daily&nbsp;&nbsp;Brief</td></tr></table>
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td style="font-size:42px; line-height:1.0; font-weight:500; letter-spacing:0.32em; color:{{ color_ink }}; font-family:{{ serif_display }};">每日晨报</td></tr></table>
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:18px auto 14px auto;"><tr><td style="height:1px; line-height:1px; font-size:0; width:48px; background-color:{{ color_accent }};">&nbsp;</td></tr></table>
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td style="font-size:13px; line-height:1.4; color:{{ color_muted }}; letter-spacing:0.10em; font-family:{{ serif_body }};">{{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日 · {{ weekdays[generated_at.weekday()] }}</td></tr></table>
           </td>
         </tr>
 
