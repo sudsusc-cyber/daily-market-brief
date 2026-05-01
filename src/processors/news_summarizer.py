@@ -154,15 +154,26 @@ def _build_footnotes(
         idx = _re_idx(m)
         if idx not in used_indexes:
             used_indexes.append(idx)
-    # 重新编号:用户读到的 [1] [2] ... 必须按出现顺序排
+    # 重新编号:用户读到的 [1] [2] ... 必须按出现顺序连续排,中间不能跳号
+    # 修复:旧版 enumerate 在中间项越界跳过时 new_idx 不回退导致跳号(1,3 缺 2)
     footnotes: list[Footnote] = []
     rewrite: dict[int, int] = {}
-    for new_idx, old_idx in enumerate(used_indexes, start=1):
-        if 1 <= old_idx <= len(flat_items):
-            it = flat_items[old_idx - 1]
-            if it.url:
-                footnotes.append(Footnote(index=new_idx, url=it.url, source=it.source or ""))
-                rewrite[old_idx] = new_idx
+    skipped: list[int] = []
+    new_idx = 0
+    for old_idx in used_indexes:
+        if not (1 <= old_idx <= len(flat_items)):
+            skipped.append(old_idx)
+            continue
+        it = flat_items[old_idx - 1]
+        if not it.url:
+            skipped.append(old_idx)
+            continue
+        new_idx += 1
+        footnotes.append(Footnote(index=new_idx, url=it.url, source=it.source or ""))
+        rewrite[old_idx] = new_idx
+    if skipped:
+        logger.warning("news_summarizer.footnote_dropped indexes=%s flat_items=%d",
+                       skipped, len(flat_items))
     # 把 html 里的旧 [N] 改成新顺序,且包成 oxblood 无下划线 <a>
     url_by_new_idx = {f.index: f.url for f in footnotes}
 
