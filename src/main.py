@@ -116,6 +116,13 @@ def main() -> int:
             logger.info("main.skipped reason=%s", reason)
             return 0
 
+    # ---------- 幂等性预检(双 cron 触发时,后触发的若发现今天已发过 → 跳过) ----------
+    if os.environ.get("FORCE_SEND") != "1":
+        from src.utils.idempotency import already_sent_today
+        if already_sent_today():
+            logger.info("main.skipped reason=今日已通过另一次 cron 成功发送,跳过双触发")
+            return 0
+
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
     signals = stocks.fetch_all(HOLDINGS)
