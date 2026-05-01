@@ -63,18 +63,21 @@ def _filter_metric_num(value: float | None, unit: str = "") -> str:
 
 
 def _filter_metric_delta(delta: float | None, unit: str = "") -> str:
-    """情绪指标变化值,带正负号。None → '—'"""
+    """情绪指标变化值,带正负号。None / 接近零 → '—',避免 '+0.00' 噪音。
+    unit 参数为兼容保留,不再附在数字尾(单位由模板侧标注)。"""
+    _ = unit  # noqa: F841
     if delta is None:
         return "—"
     try:
         absv = abs(delta)
+        # 浮点容差:绝对值 < 0.005(2 位小数四舍五入会显示 0.00)视为无变化
+        if absv < 0.005:
+            return "—"
         if absv >= 100:
-            text = f"{delta:+,.1f}"
-        else:
-            text = f"{delta:+.2f}"
+            return f"{delta:+,.1f}"
+        return f"{delta:+.2f}"
     except (TypeError, ValueError):
         return "—"
-    return f"{text}{unit}" if unit else text
 
 
 def _filter_bj_time(dt: datetime | None) -> str:
