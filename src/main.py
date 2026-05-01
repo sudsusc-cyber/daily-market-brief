@@ -242,6 +242,7 @@ def main() -> int:
     logger.info("send recipients=%s subject=%r", recipients, subject)
     send_html_email(
         sender=settings.qq_email_address,
+        sender_display_name="每日期刊",
         auth_code=settings.qq_email_auth_code,
         recipient=recipients,
         subject=subject,
