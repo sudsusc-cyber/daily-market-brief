@@ -60,7 +60,7 @@
 <meta name="x-apple-disable-message-reformatting" />
 <meta name="color-scheme" content="light" />
 <meta name="supported-color-schemes" content="light" />
-<title>每日晨报 · {{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日</title>
+<title>朝闻录 · {{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日</title>
 <!--[if mso]>
 <style type="text/css">
   table,td,div,h1,h2,p { font-family: Cambria, Georgia, serif !important; }
@@ -101,10 +101,12 @@
           <td align="center" style="padding:{% if header_image_url %}28px{% else %}0{% endif %} 24px 4px 24px; font-family:{{ serif_display }}; color:{{ color_ink }}; text-align:center;">
             {# QQ 邮箱网页版兼容性:把每个文字块用 <table align="center"> 包装 — HTML
                表格 align 属性是邮件客户端最兼容的居中方式,优于 inline-block + CSS。 #}
-            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px auto;"><tr><td style="font-size:11px; line-height:1.4; letter-spacing:0.46em; color:{{ color_accent }}; text-transform:uppercase; font-family:{{ serif_body }};">Daily&nbsp;&nbsp;Brief</td></tr></table>
-            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td style="font-size:42px; line-height:1.0; font-weight:500; letter-spacing:0.32em; color:{{ color_ink }}; font-family:{{ serif_display }};">每日晨报</td></tr></table>
+            {# text-indent = letter-spacing/2:抵消 QQ 邮箱网页版"尾部 letter-spacing 不参与
+               居中"的渲染偏移(末字符后的字距让文字看起来偏左半个字距,需把整段右推抵消) #}
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px auto;"><tr><td style="font-size:11px; line-height:1.4; letter-spacing:0.46em; text-indent:0.46em; color:{{ color_accent }}; text-transform:uppercase; font-family:{{ serif_body }};">Morning&nbsp;&nbsp;Journal</td></tr></table>
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td style="font-size:42px; line-height:1.0; font-weight:500; letter-spacing:0.35em; text-indent:0.35em; color:{{ color_ink }}; font-family:{{ serif_display }};">朝闻录</td></tr></table>
             <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:18px auto 14px auto;"><tr><td style="height:1px; line-height:1px; font-size:0; width:48px; background-color:{{ color_accent }};">&nbsp;</td></tr></table>
-            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td style="font-size:13px; line-height:1.4; color:{{ color_muted }}; letter-spacing:0.10em; font-family:{{ serif_body }};">{{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日 · {{ weekdays[generated_at.weekday()] }}</td></tr></table>
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td style="font-size:13px; line-height:1.4; letter-spacing:0.10em; text-indent:0.10em; color:{{ color_muted }}; font-family:{{ serif_body }};">{{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日 · {{ weekdays[generated_at.weekday()] }}</td></tr></table>
           </td>
         </tr>
 

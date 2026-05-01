@@ -236,7 +236,7 @@ def main() -> int:
         if n % 10 == 0:
             return f"{_digit_cn[n // 10]}十"
         return f"{_digit_cn[n // 10]}十{_digit_cn[n % 10]}"
-    subject = f"每日晨报 · {_year_cn}年 · {_num_cn(now_bj.month)}月{_num_cn(now_bj.day)}日"
+    subject = f"朝闻录 · {_year_cn}年 · {_num_cn(now_bj.month)}月{_num_cn(now_bj.day)}日"
     logger.info("send recipients=%s subject=%r", recipients, subject)
     send_html_email(
         sender=settings.qq_email_address,
