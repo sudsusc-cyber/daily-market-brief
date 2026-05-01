@@ -432,33 +432,7 @@
         </tr>
         {% endif %}
         {% endfor %}
-        {% else %}
-        {# 降级:展示 M3 原始候选列表 #}
-        {% for f in figures %}
-        <tr>
-          <td style="padding:18px 24px 0 24px;">
-            <div style="font-family:{{ serif_display }}; font-size:15px; color:{{ color_accent }}; letter-spacing:0.06em; font-weight:500;">{{ f.person }}</div>
-            <div style="margin-top:10px;">
-              {% if f.error %}
-              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ f.error }}</div>
-              {% elif not f.items %}
-              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_faint }}; font-style:italic;">过去 24 小时无新候选发言</div>
-              {% else %}
-              <ul style="margin:0; padding:0; list-style:none;">
-                {% for item in f.items[:5] %}
-                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.7; color:{{ color_ink_soft }};">
-                  <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
-                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
-                  <span style="color:{{ color_faint }}; font-size:10.5px; margin-left:6px;">— {{ item.source }}</span>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-        {% endif %}{# end figure_summaries / figures fallback #}
+        {% endif %}{# end figure_summaries — M3 fallback 已删除,质量门槛优先 #}
         {% if buffett_13f and buffett_13f.is_new %}
         <tr>
           <td style="padding:24px 24px 0 24px;">
