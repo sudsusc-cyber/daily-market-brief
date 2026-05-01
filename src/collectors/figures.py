@@ -98,14 +98,41 @@ def _fetch_google_news(query: str, lang: str = "en") -> list[FigureMention]:
 
 
 def _content_hash(person: str, item: FigureMention) -> str:
-    h = hashlib.sha1(f"{person}|{item.title}".encode("utf-8")).hexdigest()
+    """归一化 hash:去空白/标点/媒体后缀,让不同媒体的近似 title 共享同一 hash,
+    避免"第一财经报道 X 与 搜狐转载 X" 在 7 天窗口内重复推送。"""
+    title = (item.title or "").lower()
+    # 去掉常见媒体后缀(如 " - MSN" / " — 新浪财经" / " - Reuters")
+    title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
+    # 去标点和空白,只保留字母数字和中日韩文字
+    title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
+    # 截前 80 字符,避免过长 title 因尾部差异错过去重
+    title = title[:80]
+    h = hashlib.sha1(f"{person}|{title}".encode("utf-8")).hexdigest()
     return h[:16]
 
 
+_HISTORICAL_YEAR_RE = re.compile(
+    # 命中"历史年份关键词"——出现在标题/摘要里通常是历史发言追忆,而非当前发声
+    # 仅过滤过去 7 年(2018-2024),避免误杀今年/去年(2025/2026)与不带年份的内容
+    r"\b(?:2018|2019|2020|2021|2022|2023|2024)\s*年"
+    r"|\b(?:2018|2019|2020|2021|2022|2023|2024)[\s\-/](?:年|股东大会|GTC|演讲|致股东信)"
+    r"|当年(?:曾)?(?:说|表示|讲|认为|指出)"
+    r"|年终(?:回顾|盘点|精选)"
+    r"|历(?:史|年)(?:经典|名言|发言)"
+)
+
+
 def _passes_first_filter(item: FigureMention) -> bool:
-    """第一道规则筛选:标题 / 摘要必须包含动词类关键词"""
+    """第一道规则筛选:
+    - 标题/摘要必须含"动词类"关键词(发言、说、表示等)
+    - **不得**含历史年份/年终盘点关键词(避免推送 2019 年旧闻)
+    """
     text = f"{item.title}\n{item.snippet}"
-    return bool(_VERB_RE.search(text))
+    if not _VERB_RE.search(text):
+        return False
+    if _HISTORICAL_YEAR_RE.search(text):
+        return False
+    return True
 
 
 # ---------- 状态持久化(7 天去重) ----------
