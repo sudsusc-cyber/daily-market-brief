@@ -226,6 +226,7 @@ __marimo__/
 # 运行时状态(state/* 由 main.py 写入;节假日表是配置应入库)
 state/pushed_figures.json
 state/last_13f.json
+state/subject_cache.json
 
 # 其它 session 的临时 worktree 目录(无规则名)
 sharp-meninsky-e43ea3/
