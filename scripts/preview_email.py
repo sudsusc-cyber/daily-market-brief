@@ -144,14 +144,49 @@ def render_preview() -> str:
     from src.renderer.render import _build_env
     env = _build_env()
     template = env.get_template("email.html.j2")
+
+    # mock 昨日动态:用 news_summarizer 的真实渲染逻辑跑一段
+    from src.processors.news_summarizer import CompanyNewsSummary, Footnote
+    mock_lines = [
+        "<strong>苹果</strong> —— App Store 抽成案被驳回,案件移交最高法院。",
+        "<strong>英伟达</strong> —— Arrive AI 部署 Isaac Sim 与 Blackwell GPU 用于机器人视觉训练。",
+        "<strong>泡泡玛特</strong> —— LABUBU 冰箱开售秒罄,二手市场溢价 4000 元。",
+        "<strong>腾讯</strong> —— 4 月获 154 款游戏版号,开源轻量端侧翻译模型。",
+    ]
+    name_style = "color:#7A1F2B; letter-spacing:0.04em;"
+    sep_style = "color:#D9D2BE; margin:0 6px;"
+    row_style = (
+        "margin:0 0 10px 0; padding:0;"
+        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',Charter,Cambria,Georgia,serif;"
+        "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
+    )
+    body_html = ""
+    import re as _re
+    row_re = _re.compile(r"<strong>(.+?)</strong>\s*[——\-:、]+\s*(.+)")
+    for line in mock_lines:
+        m = row_re.match(line)
+        if m:
+            cn, summary = m.group(1).strip(), m.group(2).strip()
+            body_html += (
+                f'<div style="{row_style}">'
+                f'<span style="{name_style}">{cn}</span>'
+                f'<span style="{sep_style}">│</span>'
+                f'{summary}</div>'
+            )
+    mock_summary = CompanyNewsSummary(
+        summary_html=body_html,
+        footnotes=[Footnote(index=1, url='https://example.com/1', source='新浪财经'),
+                   Footnote(index=2, url='https://example.com/2', source='Reuters')],
+    )
+
     html = template.render(
         signals=_build_mock_signals(),
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids=_build_logo_cids(),
         header_image_url=header_url,
-        # M4 加工产物 mock(模板降级到 M3 原始数据列表更接近真实情况;但提供 mock 也可)
+        # company_news 只需 truthy(jinja2 if 检查),company_news_summary 提供真实 mock
         sentiment=None, sentiment_verdict=None,
-        company_news=None, company_news_summary=None,
+        company_news=[1], company_news_summary=mock_summary,
         figures=None, figure_summaries=None,
         macro_news=None, macro_news_summary=None,
         buffett_13f=None,

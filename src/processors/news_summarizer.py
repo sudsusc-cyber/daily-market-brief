@@ -214,7 +214,7 @@ def summarize(
         line = _ensure_strong_wrapping(line)
         cleaned.append(line)
 
-    # 拆出 (公司名, 摘要) 两列;LLM 偶尔不带分隔符,兜底进单列。
+    # 拆出 (公司名, 摘要);LLM 偶尔不带分隔符,兜底进无公司名条目。
     row_re = re.compile(r"<strong>(.+?)</strong>\s*[——\-:、]+\s*(.+)")
     rows: list[tuple[str, str]] = []
     for line in cleaned:
@@ -222,35 +222,37 @@ def summarize(
         if m:
             rows.append((m.group(1).strip(), m.group(2).strip()))
         else:
-            # 没匹配上:整行进右列,左列空
             stripped = re.sub(r"</?strong>", "", line)
             rows.append(("", stripped))
 
-    # 公司名列:90px 固定宽 + 字距 0.3em(中文需要),思源宋体
-    # 摘要列:line-height 1.9 与上一节正文呼应,vertical-align:top 与公司名首行对齐
+    # M5.10 视觉:每条新闻渲染为单行的 "公司名 │ 摘要"。
+    # - 公司名:与正文同字号同字重同字体,仅用 oxblood 强调色 + 极轻字距区分
+    # - 分隔符:U+2502 竖线,左右空格,浅灰(color_hairline #D9D2BE)
+    # - 摘要:正文样式 16px / 1.9 / 黑色
     name_style = (
-        "width:88px; vertical-align:top; padding:8px 16px 8px 0;"
-        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',serif;"
-        "font-size:16px; font-weight:500; color:#1A1A1A;"
-        "letter-spacing:0.3em; white-space:nowrap;"
+        "color:#7A1F2B; letter-spacing:0.04em;"  # oxblood 同 DAILY BRIEF;轻字距而非宽
     )
-    summary_style = (
-        "vertical-align:top; padding:8px 0;"
+    sep_style = (
+        "color:#D9D2BE; margin:0 6px;"  # 浅灰竖线,与摘要 letter-spacing 对齐
+    )
+    row_style = (
+        "margin:0 0 10px 0; padding:0;"
         "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',Charter,Cambria,Georgia,serif;"
         "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
     )
-    body_html = (
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        'border="0" style="border-collapse:collapse;">'
-    )
+    body_html = ""
     for cn, summary in rows:
-        body_html += (
-            "<tr>"
-            f'<td style="{name_style}">{cn}</td>'
-            f'<td style="{summary_style}">{summary}</td>'
-            "</tr>"
-        )
-    body_html += "</table>"
+        if cn:
+            body_html += (
+                f'<div style="{row_style}">'
+                f'<span style="{name_style}">{cn}</span>'
+                f'<span style="{sep_style}">│</span>'
+                f'{summary}'
+                "</div>"
+            )
+        else:
+            # 无公司名:整行作为正文(全部公司无新闻时的兜底文本)
+            body_html += f'<div style="{row_style}">{summary}</div>'
 
     body_html, footnotes = _build_footnotes(body_html, flat_items)
     logger.info("news_summarizer.ok rows=%d footnotes=%d", len(rows), len(footnotes))
