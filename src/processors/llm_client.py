@@ -101,26 +101,39 @@ class LLMClient:
         user_prompt: str,
         *,
         task_extra: str | None = None,
+        system_override: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.3,
         timeout: int = 90,
+        top_p: float | None = None,
     ) -> LLMResponse:
         """
         发起一次 chat completion。
         失败返回 LLMResponse(text=None, error=...),不抛异常。
+
+        - system_override:若传入则**完全替换** INVESTMENT_FRAMEWORK 基础 prompt
+          (用于主题生成等需要纯文学风格的场景);为 None 维持原行为
+          (system = INVESTMENT_FRAMEWORK + 时间 + task_extra)
+        - top_p:可选 nucleus sampling;为 None 使用模型默认
         """
-        system = build_system_prompt(task_extra=task_extra)
+        if system_override is not None:
+            system = system_override
+        else:
+            system = build_system_prompt(task_extra=task_extra)
         try:
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
+            kwargs: dict[str, Any] = {
+                "model": self._model,
+                "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=max_tokens,
-                temperature=temperature,
-                timeout=timeout,
-            )
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "timeout": timeout,
+            }
+            if top_p is not None:
+                kwargs["top_p"] = top_p
+            resp = self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 — 失败降级,绝不阻断邮件
             logger.exception("llm.chat_failed model=%s", self._model)
             return LLMResponse(

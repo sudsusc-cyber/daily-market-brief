@@ -19,6 +19,7 @@ from email.header import Header
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from email.utils import formatdate, make_msgid
 from pathlib import Path
 
@@ -96,6 +97,7 @@ def send_html_email(
     recipient: str | list[str],
     subject: str,
     html_body: str,
+    sender_display_name: str | None = None,
     inline_images: list[InlineImage] | None = None,
     smtp_host: str = "smtp.qq.com",
     smtp_port: int = 465,
@@ -118,7 +120,12 @@ def send_html_email(
     else:
         msg = MIMEText(html_body, "html", "utf-8")
 
-    msg["From"] = sender
+    # From:含中文显示名时用 formataddr + Header utf-8 编码,否则中文会乱码
+    if sender_display_name:
+        encoded_name = Header(sender_display_name, "utf-8").encode()
+        msg["From"] = formataddr((encoded_name, sender))
+    else:
+        msg["From"] = sender
     msg["To"] = ", ".join(recipients)
     msg["Subject"] = Header(subject, "utf-8")
     msg["Date"] = formatdate(localtime=False)

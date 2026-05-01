@@ -223,23 +223,26 @@ def main() -> int:
         buffett_13f=buffett_bundle,
     )
 
+    # ---------- 主题生成(M5.11:DeepSeek 8 字两段四言古典对仗) ----------
+    from src.processors.subject.extractor import extract_subject_data
+    from src.processors.subject.generator import generate_subject
+    subject_data = extract_subject_data(
+        today_bj=now_bj.date(),
+        signals=signals,
+        sentiment_verdict=sentiment_verdict,
+        sentiment_bundle=sentiment_bundle,
+        company_news_summary=company_news_summary,
+        macro_news_summary=macro_news_summary,
+        email_html=html,
+    )
+    subject = generate_subject(subject_data, llm=llm, today_bj=now_bj.date())
+
     # ---------- 发送 ----------
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
-    # 主题汉字化(与模板内日期一致)
-    _digit_cn = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]
-    _year_cn = "".join(_digit_cn[int(d)] if d.isdigit() else d for d in str(now_bj.year))
-    def _num_cn(n: int) -> str:
-        if n <= 10:
-            return ["零","一","二","三","四","五","六","七","八","九","十"][n]
-        if n < 20:
-            return f"十{_digit_cn[n - 10]}" if n > 10 else "十"
-        if n % 10 == 0:
-            return f"{_digit_cn[n // 10]}十"
-        return f"{_digit_cn[n // 10]}十{_digit_cn[n % 10]}"
-    subject = f"朝闻录 · {_year_cn}年 · {_num_cn(now_bj.month)}月{_num_cn(now_bj.day)}日"
     logger.info("send recipients=%s subject=%r", recipients, subject)
     send_html_email(
         sender=settings.qq_email_address,
+        sender_display_name="每日期刊",
         auth_code=settings.qq_email_auth_code,
         recipient=recipients,
         subject=subject,
