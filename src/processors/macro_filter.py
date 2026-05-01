@@ -95,19 +95,36 @@ def _format_input(bundles: list[MacroFeedBundle]) -> tuple[str, list[MacroNewsIt
 
 
 def _rebuild_footnotes(html: str, flat_items: list[MacroNewsItem]) -> tuple[str, list[Footnote]]:
+    """重新编号 [N]:按出现顺序连续 1,2,3...
+    Bug 修复:旧版用 enumerate 给 new_idx,中间越界条目被跳过会导致 new_idx
+    跳号(如 1,3 缺 2)。改用独立 counter,只在真正写入 footnotes 时递增。"""
     used_indexes: list[int] = []
     for m in _FOOTNOTE_RE.finditer(html):
         idx = _re_idx(m)
         if idx not in used_indexes:
             used_indexes.append(idx)
+
     footnotes: list[Footnote] = []
     rewrite: dict[int, int] = {}
-    for new_idx, old_idx in enumerate(used_indexes, start=1):
-        if 1 <= old_idx <= len(flat_items):
-            it = flat_items[old_idx - 1]
-            if it.url:
-                footnotes.append(Footnote(index=new_idx, url=it.url, source=it.source or ""))
-                rewrite[old_idx] = new_idx
+    skipped: list[int] = []
+    new_idx = 0  # 只在真正加入 footnotes 时才递增
+    for old_idx in used_indexes:
+        if not (1 <= old_idx <= len(flat_items)):
+            skipped.append(old_idx)
+            continue
+        it = flat_items[old_idx - 1]
+        if not it.url:
+            skipped.append(old_idx)
+            continue
+        new_idx += 1
+        footnotes.append(Footnote(index=new_idx, url=it.url, source=it.source or ""))
+        rewrite[old_idx] = new_idx
+    if skipped:
+        logger.warning(
+            "macro_filter.footnote_dropped indexes=%s flat_items=%d "
+            "(LLM 越界引用或空 url)",
+            skipped, len(flat_items),
+        )
 
     url_by_new_idx = {f.index: f.url for f in footnotes}
 
@@ -115,13 +132,13 @@ def _rebuild_footnotes(html: str, flat_items: list[MacroNewsItem]) -> tuple[str,
         old = _re_idx(match)
         if old not in rewrite:
             return ""
-        new_idx = rewrite[old]
-        url = url_by_new_idx.get(new_idx, "")
+        new_i = rewrite[old]
+        url = url_by_new_idx.get(new_i, "")
         return (
             f'<sup><a href="{url}" target="_blank" rel="noopener" '
             f'style="color:#0563C1;text-decoration:none;font-size:11px;'
             f'font-family:Charter,Georgia,serif;margin-left:1px;">'
-            f'[{new_idx}]</a></sup>'
+            f'[{new_i}]</a></sup>'
         )
 
     new_html = _FOOTNOTE_RE.sub(_sub, html)
