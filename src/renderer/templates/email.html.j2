@@ -100,7 +100,8 @@
         <tr>
           <td align="center" style="padding:{% if header_image_url %}28px{% else %}0{% endif %} 24px 4px 24px; font-family:{{ serif_display }}; color:{{ color_ink }}; text-align:center;">
             <div style="margin-bottom:18px; line-height:0; font-size:0;"><div style="display:inline-block; font-size:11px; line-height:1.4; letter-spacing:0.46em; color:{{ color_accent }}; text-transform:uppercase; font-family:{{ serif_body }};">Daily&nbsp;&nbsp;Brief</div></div>
-            <div style="margin-bottom:33px; line-height:0; font-size:0;"><div style="display:inline-block; font-size:42px; line-height:1.0; font-weight:500; letter-spacing:0.32em; color:{{ color_ink }}; font-family:{{ serif_display }};">每日晨报</div></div>
+            <div style="line-height:0; font-size:0;"><div style="display:inline-block; font-size:42px; line-height:1.0; font-weight:500; letter-spacing:0.32em; color:{{ color_ink }}; font-family:{{ serif_display }};">每日晨报</div></div>
+            <div style="margin:18px 0 14px 0; line-height:0; font-size:0;"><div style="display:inline-block; height:1px; line-height:1px; font-size:0; width:48px; background-color:{{ color_accent }};">&nbsp;</div></div>
             <div style="line-height:0; font-size:0;"><div style="display:inline-block; font-size:13px; line-height:1.4; color:{{ color_muted }}; letter-spacing:0.10em; font-family:{{ serif_body }};">{{ year_cn }}年 · {{ month_cn }}月{{ day_cn }}日 · {{ weekdays[generated_at.weekday()] }}</div></div>
           </td>
         </tr>
