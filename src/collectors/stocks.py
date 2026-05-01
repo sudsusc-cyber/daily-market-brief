@@ -14,6 +14,7 @@ from typing import Literal
 import yfinance as yf
 
 from src.config import Holding
+from src.utils.retry import retry
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,12 @@ def _judge_signal(last_close: float, sma_120: float, sma_200: float) -> SignalKi
     return "NONE"
 
 
+@retry(max_attempts=3, base_delay=2.0, backoff=2.5)
+def _yf_history(symbol: str):
+    """yfinance 周线拉取,带重试退避(限流时 2s/5s/12s 三次重试)。"""
+    return yf.Ticker(symbol).history(period="5y", interval="1wk", auto_adjust=False)
+
+
 def fetch_one(holding: Holding) -> StockSignal:
     """
     拉单只股票的周线并计算信号。
@@ -53,7 +60,7 @@ def fetch_one(holding: Holding) -> StockSignal:
     """
     symbol = holding.yfinance_symbol
     try:
-        hist = yf.Ticker(symbol).history(period="5y", interval="1wk", auto_adjust=False)
+        hist = _yf_history(symbol)
     except Exception as exc:  # noqa: BLE001
         logger.exception("yfinance.fetch_failed ticker=%s symbol=%s", holding.ticker, symbol)
         return _failed(holding, f"yfinance 异常: {type(exc).__name__}: {exc}")

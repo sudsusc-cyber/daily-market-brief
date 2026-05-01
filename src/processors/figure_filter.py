@@ -51,6 +51,15 @@ class FigureKeyPoint:
     text: str  # 中文摘要,1-2 句
     source_url: str  # 原报道链接
     source_name: str  # 媒体名
+    footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
+
+
+@dataclass
+class FigureFootnote:
+    """章节底部统一展示的脚注"""
+    index: int
+    url: str
+    source: str
 
 
 @dataclass
@@ -60,6 +69,23 @@ class FigureSummary:
     items: list[FigureKeyPoint] = field(default_factory=list)
     fallback_raw: list[FigureMention] = field(default_factory=list)  # LLM 失败时模板用
     error: str | None = None
+
+
+def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
+    """跨人物给所有 items 分配 [1] [2] ... 全章节统一编号,返回 footnote 列表。
+    主入口由 main.py 调,在 render_email 之前执行。"""
+    footnotes: list[FigureFootnote] = []
+    idx = 0
+    for s in summaries:
+        for kp in s.items:
+            idx += 1
+            kp.footnote_index = idx
+            footnotes.append(FigureFootnote(
+                index=idx,
+                url=kp.source_url,
+                source=kp.source_name,
+            ))
+    return footnotes
 
 
 _TASK_INSTRUCTION = """\

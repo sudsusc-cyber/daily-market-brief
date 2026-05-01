@@ -40,6 +40,9 @@
 {# 思源宋体 / Source Han Serif SC 优先;退路是 macOS 自带宋体与 Windows Cambria #}
 {%- set serif_display = "'Noto Serif SC','Source Han Serif SC','Songti SC','STSong','Newsreader','Source Serif Pro',Charter,Cambria,Georgia,serif" -%}
 {%- set serif_body = "'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',Charter,Cambria,Georgia,'Times New Roman',Times,serif" -%}
+{# 引语专用字体:中文宋体优先,**不夹西文字体**,让阿拉伯数字也走思源宋体的内置数字
+   字形,与中文笔触一致(避免 Charter 西文 italic 与中文 Songti 混排不协调) #}
+{%- set serif_quote = "'Noto Serif SC','Source Han Serif SC','Songti SC','STSong','SimSun',serif" -%}
 {%- set color_paper = '#F8F5EE' -%}
 {%- set color_paper_alt = '#F2ECDC' -%}
 {%- set color_ink = '#1A1A1A' -%}
@@ -414,24 +417,36 @@
         </tr>
         {% endif %}
         {% if figure_summaries %}
-        {# M5.10 voice-item 视觉:人物姓名降级为小灰字;引语 italic + 17px + 左 1px oxblood 竖线 #}
+        {# M5.10 voice-item:人物姓名小灰字;引语 italic + 左 1px oxblood 竖线;
+           来源采用与"宏观视野/昨日动态"一致的脚注样式([N] 上标 + 章节底部统一列出) #}
         {% for f in figure_summaries %}
         {% if f.items %}
         <tr>
           <td style="padding:24px 24px 0 24px;">
-            {# 人物姓名:小一号、灰色、字距适中,不抢"关键发言"主章节标题的注意力 #}
             <div style="font-family:{{ serif_body }}; font-size:14px; color:{{ color_muted }}; letter-spacing:0.2em; margin:0 0 10px 0;">{{ f.person }}</div>
             {% for kp in f.items %}
             <blockquote style="margin:0 0 14px 0; padding:2px 0 2px 16px; border-left:1px solid {{ color_accent }};
-                                font-family:{{ serif_body }}; font-size:17px; font-style:italic;
+                                font-family:{{ serif_quote }}; font-size:17px; font-style:italic;
                                 line-height:1.8; color:{{ color_ink }}; letter-spacing:0.02em;">
-              {{ kp.text | cjk_spaced }}{%- if kp.source_url %} <a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; font-style:normal; letter-spacing:0.02em; margin-left:6px; vertical-align:1px;">[{{ kp.source_name }}]</a>{%- endif %}
+              {{ kp.text | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1;text-decoration:none;font-size:11px;font-family:Charter,Georgia,serif;font-style:normal;margin-left:1px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
             </blockquote>
             {% endfor %}
           </td>
         </tr>
         {% endif %}
         {% endfor %}
+        {# 章节底部统一脚注列表:与"宏观视野"和"昨日动态"风格一致 #}
+        {% if figure_footnotes %}
+        <tr>
+          <td style="padding:8px 24px 0 24px;">
+            <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
+              {% for fn in figure_footnotes %}
+              <a href="{{ fn.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ fn.index }}] {{ fn.source }}</a>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
         {% endif %}{# end figure_summaries — M3 fallback 已删除,质量门槛优先 #}
         {% if buffett_13f and buffett_13f.is_new %}
         <tr>
