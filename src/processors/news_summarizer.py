@@ -208,24 +208,50 @@ def summarize(
     lines = [line.strip() for line in raw_html.splitlines() if line.strip()]
     cleaned = []
     for line in lines:
-        # 若 LLM 自己写了 "1." "1、" 之类前缀,剥掉(我们 Python 端统一加)
+        # 若 LLM 自己写了 "1." "1、" 之类前缀,剥掉
         line = re.sub(r"^[0-9]+[.、。\s]+", "", line)
         # Fallback:LLM 没输出 <strong> 时,用已知中文公司名反查包成 <strong>
         line = _ensure_strong_wrapping(line)
         cleaned.append(line)
-    # 序号与正文同字号同字体(思源宋体),只用淡灰色区分;不再用 Charter 西文字体
-    seq_style = (
-        "color:#6B6B6B; font-family:'Noto Serif SC','Source Han Serif SC',"
-        "'Songti SC','STSong',Charter,Cambria,Georgia,serif; "
-        "font-size:16px; font-weight:400; margin-right:12px;"
+
+    # 拆出 (公司名, 摘要) 两列;LLM 偶尔不带分隔符,兜底进单列。
+    row_re = re.compile(r"<strong>(.+?)</strong>\s*[——\-:、]+\s*(.+)")
+    rows: list[tuple[str, str]] = []
+    for line in cleaned:
+        m = row_re.match(line)
+        if m:
+            rows.append((m.group(1).strip(), m.group(2).strip()))
+        else:
+            # 没匹配上:整行进右列,左列空
+            stripped = re.sub(r"</?strong>", "", line)
+            rows.append(("", stripped))
+
+    # 公司名列:90px 固定宽 + 字距 0.3em(中文需要),思源宋体
+    # 摘要列:line-height 1.9 与上一节正文呼应,vertical-align:top 与公司名首行对齐
+    name_style = (
+        "width:88px; vertical-align:top; padding:8px 16px 8px 0;"
+        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',serif;"
+        "font-size:16px; font-weight:500; color:#1A1A1A;"
+        "letter-spacing:0.3em; white-space:nowrap;"
     )
-    body_html = "\n".join(
-        f'<div style="margin:0 0 10px 0;">'
-        f'<span style="{seq_style}">{i + 1}.</span>'
-        f"{line}</div>"
-        for i, line in enumerate(cleaned)
+    summary_style = (
+        "vertical-align:top; padding:8px 0;"
+        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',Charter,Cambria,Georgia,serif;"
+        "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
     )
+    body_html = (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'border="0" style="border-collapse:collapse;">'
+    )
+    for cn, summary in rows:
+        body_html += (
+            "<tr>"
+            f'<td style="{name_style}">{cn}</td>'
+            f'<td style="{summary_style}">{summary}</td>'
+            "</tr>"
+        )
+    body_html += "</table>"
 
     body_html, footnotes = _build_footnotes(body_html, flat_items)
-    logger.info("news_summarizer.ok rows=%d footnotes=%d", len(lines), len(footnotes))
+    logger.info("news_summarizer.ok rows=%d footnotes=%d", len(rows), len(footnotes))
     return CompanyNewsSummary(summary_html=body_html, footnotes=footnotes)

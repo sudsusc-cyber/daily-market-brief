@@ -135,7 +135,7 @@
             {# 引言段:解释这个表格在看什么。M2 实用,M3 起可换成更克制的款式 #}
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td style="padding:18px 4px 8px 4px; font-family:{{ serif_body }}; font-size:15px; line-height:1.85; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
+                <td style="padding:18px 4px 8px 4px; font-family:{{ serif_body }}; font-size:15px; line-height:1.9; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
                   {%- if holdings_intro %}
                   {{ holdings_intro }}
                   {%- else %}
@@ -302,9 +302,7 @@
                     <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ color_ink }}; letter-spacing:0.02em;">
                       {{ m.name }}{% if m.unit %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:4px;">({{ m.unit }})</span>{% endif %}
                     </div>
-                    {% if m.rating %}
-                    <div style="margin-top:4px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; letter-spacing:0.04em;">{{ m.rating }}</div>
-                    {% endif %}
+                    {# m.rating(如 CNN F&G 的 "greed" 英文标签)不再显示:数字本身已传达情绪 #}
                   </td>
                   {% if m.error %}
                   <td colspan="3" align="right" valign="middle" style="padding:14px 0; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ m.error }}</td>
@@ -381,7 +379,7 @@
               {% else %}
               <ul style="margin:0; padding:0; list-style:none;">
                 {% for item in bundle.items[:5] %}
-                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
+                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.7; color:{{ color_ink_soft }};">
                   <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
                   <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
                   <span style="color:{{ color_faint }}; font-size:10.5px; margin-left:6px;">— {{ item.source }}</span>
@@ -416,42 +414,23 @@
         </tr>
         {% endif %}
         {% if figure_summaries %}
-        {# M4 LLM 第二道筛选 + 关键观点提炼;每个人物即使 0 条也展示小标题 + "昨日无发言" #}
+        {# M5.10 voice-item 视觉:人物姓名降级为小灰字;引语 italic + 17px + 左 1px oxblood 竖线 #}
         {% for f in figure_summaries %}
+        {% if f.items %}
         <tr>
-          <td style="padding:18px 24px 0 24px;">
-            {# 人物姓名作为小标题:字号 13 + 字距 + 加粗 + oxblood,与主体观点 16/1.9 区分 #}
-            <div style="font-family:{{ serif_body }}; font-size:13px; color:{{ color_accent }}; letter-spacing:0.32em; font-weight:600; margin:0 0 14px 0;">{{ f.person }}</div>
-            <div>
-              {% if f.items %}
-              <ul style="margin:0; padding:0; list-style:none;">
-                {% for kp in f.items %}
-                <li style="margin:0 0 10px 0; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
-                  {{ kp.text | cjk_spaced }}
-                  {% if kp.source_url %}
-                  <a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-left:8px;">[{{ kp.source_name }}]</a>
-                  {% endif %}
-                </li>
-                {% endfor %}
-              </ul>
-              {% elif f.fallback_raw %}
-              {# LLM 全 no:展示原始候选,样式统一 16/1.9 #}
-              <ul style="margin:0; padding:0; list-style:none;">
-                {% for item in f.fallback_raw %}
-                <li style="margin:0 0 10px 0; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
-                  {{ item.title | cjk_spaced }}
-                  {% if item.url %}
-                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-left:8px;">[{{ item.source }}]</a>
-                  {% endif %}
-                </li>
-                {% endfor %}
-              </ul>
-              {% else %}
-              <div style="font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.02em;">{{ f.error or '昨日无发言。' }}</div>
-              {% endif %}
-            </div>
+          <td style="padding:24px 24px 0 24px;">
+            {# 人物姓名:小一号、灰色、字距适中,不抢"关键发言"主章节标题的注意力 #}
+            <div style="font-family:{{ serif_body }}; font-size:14px; color:{{ color_muted }}; letter-spacing:0.2em; margin:0 0 10px 0;">{{ f.person }}</div>
+            {% for kp in f.items %}
+            <blockquote style="margin:0 0 14px 0; padding:2px 0 2px 16px; border-left:1px solid {{ color_accent }};
+                                font-family:{{ serif_body }}; font-size:17px; font-style:italic;
+                                line-height:1.8; color:{{ color_ink }}; letter-spacing:0.02em;">
+              {{ kp.text | cjk_spaced }}{%- if kp.source_url %} <a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; font-style:normal; letter-spacing:0.02em; margin-left:6px; vertical-align:1px;">[{{ kp.source_name }}]</a>{%- endif %}
+            </blockquote>
+            {% endfor %}
           </td>
         </tr>
+        {% endif %}
         {% endfor %}
         {% else %}
         {# 降级:展示 M3 原始候选列表 #}
@@ -467,7 +446,7 @@
               {% else %}
               <ul style="margin:0; padding:0; list-style:none;">
                 {% for item in f.items[:5] %}
-                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
+                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.7; color:{{ color_ink_soft }};">
                   <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
                   <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
                   <span style="color:{{ color_faint }}; font-size:10.5px; margin-left:6px;">— {{ item.source }}</span>
@@ -534,7 +513,7 @@
               {% else %}
               <ul style="margin:0; padding:0; list-style:none;">
                 {% for item in bundle.items[:5] %}
-                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.55; color:{{ color_ink_soft }};">
+                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.7; color:{{ color_ink_soft }};">
                   <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
                   <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
                 </li>

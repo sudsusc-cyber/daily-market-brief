@@ -154,12 +154,12 @@ def main() -> int:
 
     logger.info("processors.figure_filter")
     figure_summaries = figure_filter.filter_all(fig_bundles, client=llm)
-    # 过滤当天无任何合格发言的人物:items 空 + fallback_raw 空 → 整个人不渲染
+    # M5.10 质量门槛:无 items 的人物(规则层全砍 / LLM 全 no)整个不渲染
     _before = len(figure_summaries)
-    figure_summaries = [f for f in figure_summaries if f.items or f.fallback_raw]
+    figure_summaries = [f for f in figure_summaries if f.items]
     if len(figure_summaries) < _before:
         logger.info("figure_filter.dropped_silent count=%d", _before - len(figure_summaries))
-    # 全员沉默时:生成一句古典韵味的占位语
+    # 全员沉默时:LLM 写一句古典韵味的占位语
     figure_silence_note = None
     if not figure_summaries:
         figure_silence_note = figure_filter.generate_silence_note(llm)
