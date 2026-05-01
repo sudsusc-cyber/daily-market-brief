@@ -98,7 +98,7 @@
 
         {# ─────────────────────────  MASTHEAD  ───────────────────────── #}
         <tr>
-          <td align="center" style="padding:{% if header_image_url %}28px{% else %}0{% endif %} 24px 4px 24px; font-family:{{ serif_display }}; color:{{ color_ink }};">
+          <td align="center" style="padding:{% if header_image_url %}28px{% else %}0{% endif %} 24px 4px 24px; font-family:{{ serif_display }}; color:{{ color_ink }}; text-align:center;">
             <div style="font-size:11px; letter-spacing:0.46em; color:{{ color_accent }}; text-transform:uppercase; margin-bottom:18px; font-family:{{ serif_body }};">
               Daily&nbsp;&nbsp;Brief
             </div>
@@ -114,8 +114,8 @@
 
         {# 装饰性分隔(章节起始) #}
         <tr>
-          <td align="center" style="padding:36px 24px 36px 24px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <td align="center" style="padding:36px 24px 36px 24px; text-align:center;">
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
               <tr>
                 <td style="border-top:1px solid {{ color_rule }}; width:96px; line-height:1px; font-size:0;">&nbsp;</td>
                 <td style="padding:0 14px; font-size:14px; color:{{ color_accent }}; line-height:1; font-family:{{ serif_display }};">·&nbsp;·&nbsp;·</td>
