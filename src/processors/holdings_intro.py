@@ -76,7 +76,8 @@ def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION,
-        max_tokens=600,
+        # V4-Flash reasoning 容易吃 500-700 token,留两倍余量给最终输出
+        max_tokens=1800,
         temperature=0.7,
     )
     text = (resp.text or "").strip()

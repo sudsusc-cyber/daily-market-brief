@@ -51,6 +51,15 @@ class FigureKeyPoint:
     text: str  # 中文摘要,1-2 句
     source_url: str  # 原报道链接
     source_name: str  # 媒体名
+    footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
+
+
+@dataclass
+class FigureFootnote:
+    """章节底部统一展示的脚注"""
+    index: int
+    url: str
+    source: str
 
 
 @dataclass
@@ -62,14 +71,40 @@ class FigureSummary:
     error: str | None = None
 
 
+def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
+    """跨人物给所有 items 分配 [1] [2] ... 全章节统一编号,返回 footnote 列表。
+    主入口由 main.py 调,在 render_email 之前执行。"""
+    footnotes: list[FigureFootnote] = []
+    idx = 0
+    for s in summaries:
+        for kp in s.items:
+            idx += 1
+            kp.footnote_index = idx
+            footnotes.append(FigureFootnote(
+                index=idx,
+                url=kp.source_url,
+                source=kp.source_name,
+            ))
+    return footnotes
+
+
 _TASK_INSTRUCTION = """\
 任务:对下面"人物的候选发言列表"做三件事:
-1. **质量门槛**:判断每条是否真的是**本人公开原话**(直接引语 / 演讲 / 采访 / 正式声明 /
-   公开信),且具体观点要**有实质内容**(数字、明确判断、具体事件)。空洞口号("AI 是
-   未来""市场需要谨慎")、新闻标题党、媒体转述他人评论一律 no。
+1. **质量门槛(严判!)**:判断每条是否真的是**该人物本人公开发声**(直接引语 / 演讲 /
+   采访 / 正式声明 / 公开信)。下列情况一律 no:
+   - **公司官方说法/产品发布稿**冒充人物发言(如"NVIDIA 称 DLSS 5 是…",这是公司
+     口径不是黄仁勋个人)
+   - **媒体编辑标题党**:"老黄发声!""黄仁勋表态…"但内容只是产品评测/股价分析,
+     没有真正的本人原话
+   - **二手转述**:"分析师认为 X 同意"
+   - **空洞口号**:"AI 是未来""市场需要谨慎""价值投资永不过时"等没有具体数字/
+     具体事件/明确判断的话
+   - **不相关内容**:讲的是公司业务/财报数字/股价波动,没引用人物本人的话
+   - **不是该人物的发言**(标题里出现别人的名字,主要内容是别人说的)
 2. **跨媒体合并(重要)**:不同媒体(如第一财经、搜狐、Reuters、Bloomberg、CNBC)
    报道同一场演讲/采访/正式声明,即使措辞略有差异也必须**合并为一条**。
-3. 对通过 1-2 的条目,提炼 1-2 句中文关键观点(忠实原文,去标题党语气)。
+3. 对通过 1-2 的条目,提炼 1-2 句中文关键观点(**优先用 LLM 看到的双引号原话**,
+   忠实原文,去标题党语气)。
 
 输出严格按以下行格式,不要解释、不要前言:
 ▦ N: yes | <关键观点中文>             # 单条
@@ -252,7 +287,8 @@ def generate_silence_note(client: LLMClient) -> str | None:
     resp = client.chat(
         "请写一句替代'关键发言'章节的占位语",
         task_extra=_SILENCE_INSTRUCTION,
-        max_tokens=300,
+        # V4-Flash reasoning 容易吃 300+ token,余量给最终输出
+        max_tokens=1500,
         temperature=0.85,
     )
     text = (resp.text or "").strip().strip("\"'“”「」 ")

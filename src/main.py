@@ -161,8 +161,12 @@ def main() -> int:
         logger.info("figure_filter.dropped_silent count=%d", _before - len(figure_summaries))
     # 全员沉默时:LLM 写一句古典韵味的占位语
     figure_silence_note = None
+    figure_footnotes = []
     if not figure_summaries:
         figure_silence_note = figure_filter.generate_silence_note(llm)
+    else:
+        # 跨人物统一编号 [1] [2] ...,章节底部一次列出所有来源
+        figure_footnotes = figure_filter.assign_footnotes(figure_summaries)
 
     logger.info("processors.sentiment_judge")
     sentiment_verdict = sentiment_judge.judge(sentiment_bundle, client=llm)
@@ -206,6 +210,7 @@ def main() -> int:
         figures=fig_bundles,
         figure_summaries=figure_summaries,
         figure_silence_note=figure_silence_note,
+        figure_footnotes=figure_footnotes,
         macro_news=macro_bundles,
         macro_news_summary=macro_news_summary,
         buffett_13f=buffett_bundle,

@@ -126,6 +126,7 @@ def render_email(
     company_news_summary: Any | None = None,          # CompanyNewsSummary {summary_html, footnotes}
     figure_summaries: list[Any] | None = None,        # list[FigureSummary]
     figure_silence_note: str | None = None,           # 全员沉默时的占位语
+    figure_footnotes: list[Any] | None = None,        # list[FigureFootnote] 章节底部脚注
     macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
 ) -> str:
     """
@@ -149,6 +150,7 @@ def render_email(
         figures=figures,
         figure_summaries=figure_summaries,
         figure_silence_note=figure_silence_note,
+        figure_footnotes=figure_footnotes or [],
         macro_news=macro_news,
         macro_news_summary=macro_news_summary,
         buffett_13f=buffett_13f,
