@@ -13,6 +13,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
+from src.processors.html_safe import (
+    escape_text,
+    is_safe_url,
+    render_text_with_footnotes,
+    safe_anchor,
+    strip_all_tags,
+)
 from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -99,12 +106,56 @@ def _format_input(bundles: list[MacroFeedBundle]) -> tuple[str, list[MacroNewsIt
     return "\n".join(lines), flat_items
 
 
-def _rebuild_footnotes(html: str, flat_items: list[MacroNewsItem]) -> tuple[str, list[Footnote]]:
-    """重新编号 [N]:按出现顺序连续 1,2,3...
-    Bug 修复:旧版用 enumerate 给 new_idx,中间越界条目被跳过会导致 new_idx
-    跳号(如 1,3 缺 2)。改用独立 counter,只在真正写入 footnotes 时递增。"""
+_FOOTNOTE_ANCHOR_STYLE = (
+    "color:#0563C1;text-decoration:none;font-size:11px;"
+    "font-family:Charter,Georgia,serif;margin-left:1px;"
+)
+
+# Python 端写死的段落样式(不接受外部输入,杜绝 style 注入)
+_PARAGRAPH_STYLE = (
+    "margin:0 0 14px 0; padding:0;"
+    "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',"
+    "Charter,Cambria,Georgia,serif;"
+    "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
+)
+_THEME_STYLE = "color:#7A1F2B; letter-spacing:0.04em; font-weight:600;"
+
+# 主题词与正文的分隔模式:句号 / 中文句号 / 冒号
+_THEME_SPLIT_RE = re.compile(r"^([^。.::]+)[。.::]\s*(.+)$", re.DOTALL)
+
+
+def _rebuild_safe_html(
+    raw_text: str, flat_items: list[MacroNewsItem]
+) -> tuple[str, list[Footnote]]:
+    """LLM 输出 → 安全 HTML + 脚注列表。
+
+    - LLM 标签全部丢弃(只信任脚注标记 [N] 与段落分隔)
+    - 段落识别:按 `<p>...</p>` 拆,失败则按双换行拆
+    - 每段:先 strip 所有标签得纯文本,再尝试拆"主题词。正文",
+      最后用 render_text_with_footnotes 把脚注 [N] 转成安全 <a>,
+      其余文本一律 html.escape
+    - URL scheme 白名单:非 http(s) URL 的脚注被丢弃
+    """
+    # 段落分割:LLM 通常输出 <p>...</p>,先按 </p> 拆,再各自 strip 标签
+    paragraphs_raw: list[str] = []
+    if "<p" in raw_text:
+        for chunk in re.split(r"</\s*p\s*>", raw_text, flags=re.IGNORECASE):
+            text = strip_all_tags(chunk).strip()
+            if text:
+                paragraphs_raw.append(text)
+    if not paragraphs_raw:
+        # 无 <p> 包裹:按空行分段
+        for chunk in re.split(r"\n\s*\n+", raw_text):
+            text = strip_all_tags(chunk).strip()
+            if text:
+                paragraphs_raw.append(text)
+    if not paragraphs_raw:
+        paragraphs_raw = [strip_all_tags(raw_text).strip()]
+
+    # 全文扫一遍 [N],按出现顺序确定 rewrite + footnotes(URL 走白名单)
+    combined = "\n".join(paragraphs_raw)
     used_indexes: list[int] = []
-    for m in _FOOTNOTE_RE.finditer(html):
+    for m in _FOOTNOTE_RE.finditer(combined):
         idx = _re_idx(m)
         if idx not in used_indexes:
             used_indexes.append(idx)
@@ -112,13 +163,13 @@ def _rebuild_footnotes(html: str, flat_items: list[MacroNewsItem]) -> tuple[str,
     footnotes: list[Footnote] = []
     rewrite: dict[int, int] = {}
     skipped: list[int] = []
-    new_idx = 0  # 只在真正加入 footnotes 时才递增
+    new_idx = 0
     for old_idx in used_indexes:
         if not (1 <= old_idx <= len(flat_items)):
             skipped.append(old_idx)
             continue
         it = flat_items[old_idx - 1]
-        if not it.url:
+        if not is_safe_url(it.url):  # 仅 http/https
             skipped.append(old_idx)
             continue
         new_idx += 1
@@ -127,27 +178,45 @@ def _rebuild_footnotes(html: str, flat_items: list[MacroNewsItem]) -> tuple[str,
     if skipped:
         logger.warning(
             "macro_filter.footnote_dropped indexes=%s flat_items=%d "
-            "(LLM 越界引用或空 url)",
+            "(越界 / URL scheme 非 http(s) / 缺 url)",
             skipped, len(flat_items),
         )
 
     url_by_new_idx = {f.index: f.url for f in footnotes}
 
-    def _sub(match: re.Match[str]) -> str:
-        old = _re_idx(match)
-        if old not in rewrite:
+    def _build_anchor(idx: int) -> str:
+        new_i = rewrite.get(idx)
+        if new_i is None:
             return ""
-        new_i = rewrite[old]
         url = url_by_new_idx.get(new_i, "")
-        return (
-            f'<sup><a href="{url}" target="_blank" rel="noopener" '
-            f'style="color:#0563C1;text-decoration:none;font-size:11px;'
-            f'font-family:Charter,Georgia,serif;margin-left:1px;">'
-            f'[{new_i}]</a></sup>'
-        )
+        anchor = safe_anchor(url, f"[{new_i}]", style=_FOOTNOTE_ANCHOR_STYLE)
+        return f"<sup>{anchor}</sup>"
 
-    new_html = _FOOTNOTE_RE.sub(_sub, html)
-    return new_html, footnotes
+    # 重建 HTML:每段一个 <p>,主题词加粗 oxblood
+    parts: list[str] = []
+    for para in paragraphs_raw:
+        m = _THEME_SPLIT_RE.match(para)
+        if m:
+            theme_text = m.group(1).strip()
+            body_text = m.group(2).strip()
+            safe_theme = escape_text(theme_text)
+            safe_body = render_text_with_footnotes(
+                body_text, _FOOTNOTE_RE, _re_idx, _build_anchor,
+            )
+            parts.append(
+                f'<p style="{_PARAGRAPH_STYLE}">'
+                f'<span style="{_THEME_STYLE}">{safe_theme}。</span>'
+                f'{safe_body}'
+                f'</p>'
+            )
+        else:
+            # 无主题词分隔 → 整段当正文
+            safe_body = render_text_with_footnotes(
+                para, _FOOTNOTE_RE, _re_idx, _build_anchor,
+            )
+            parts.append(f'<p style="{_PARAGRAPH_STYLE}">{safe_body}</p>')
+
+    return "".join(parts), footnotes
 
 
 def summarize(
@@ -170,6 +239,6 @@ def summarize(
     if not resp.text:
         logger.warning("macro_filter.failed reason=%s", resp.error)
         return None
-    body_html, footnotes = _rebuild_footnotes(resp.text.strip(), flat_items)
-    logger.info("macro_filter.ok footnotes=%d", len(footnotes))
+    body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items)
+    logger.info("macro_filter.ok footnotes=%d (sanitized)", len(footnotes))
     return MacroNewsSummary(summary_html=body_html, footnotes=footnotes)

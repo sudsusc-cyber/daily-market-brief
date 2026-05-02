@@ -143,7 +143,15 @@ def _build_data(s: Scenario) -> SubjectData:
 
 
 def _try_load_llm():
-    """尝试初始化 LLMClient;失败返回 None(走纯静态兜底测试)。"""
+    """尝试初始化 LLMClient,默认离线。
+
+    - 默认(无 RUN_LLM_DRYRUN)→ 返回 None,主题生成走 static_fallback
+      纯离线、零网络、零 token 消耗 —— 单测套件可以无副作用跑完
+    - 显式 RUN_LLM_DRYRUN=1(或 true)才尝试加载 DEEPSEEK_API_KEY 真调 LLM
+      这是"探索性 dryrun"专用,不应在 CI 单测里默认开
+    """
+    if os.environ.get("RUN_LLM_DRYRUN", "").strip().lower() not in ("1", "true"):
+        return None
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         try:
@@ -235,8 +243,20 @@ def run_dryrun(rounds: int = 3) -> None:
 # pytest 入口:跑 1 轮(避免单测时间过长)
 def test_dryrun_one_round() -> None:
     """pytest 模式:跑 1 轮快速 smoke test。
-    完整 3 轮请用 run_dryrun() 或 python -m tests.test_subject_dryrun"""
+    默认无网络无 LLM(走 static_fallback);完整 3 轮真调 DeepSeek 请显式
+        RUN_LLM_DRYRUN=1 uv run pytest tests/test_subject_dryrun.py -s
+    或:
+        python -m tests.test_subject_dryrun
+    """
     run_dryrun(rounds=1)
+    # 离线模式断言:所有兜底主题都必须能通过 validator
+    # (run_dryrun 内部已 print 表格,这里再加一道硬断言防 fallback 模板回归)
+    if os.environ.get("RUN_LLM_DRYRUN", "").strip().lower() not in ("1", "true"):
+        for sc in SCENARIOS:
+            data = _build_data(sc)
+            subject = generate_subject(data, llm=None, today_bj=sc.today, use_cache=False)
+            ok, reason = validate(subject)
+            assert ok, f"{sc.name} 兜底主题未过 validator:{subject!r} reason={reason}"
 
 
 if __name__ == "__main__":

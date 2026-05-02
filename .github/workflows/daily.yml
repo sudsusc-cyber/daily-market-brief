@@ -52,5 +52,38 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      # GH runner 每次 fresh checkout,state 不持久化:
+      #   - state/pushed_figures.json     (figures 7 天去重)
+      #   - state/last_13f.json           (Berkshire 13F 提交比对)
+      #   - state/subject_cache.json      (主题日内幂等缓存)
+      #   - state/subject_generation.log  (主题生成审计日志)
+      #   - state/header_cache/           (刊头图本地缓存,避免 Pexels 重复请求)
+      #   - .state/duan_last_seen.json    (段永平雪球已见 id 下限)
+      #   - .state/last_mail_sent.json    (段永平时间下限)
+      #   - .state/duan_health.json       (健康监控连续 streak)
+      # 用 actions/cache 把这两个目录跨 run 持久化。
+      # cache key 用 run_id 唯一(每次 save 都成功),restore-keys 用前缀回退到最近一次。
+      - name: Restore state from previous run
+        uses: actions/cache/restore@v4
+        id: state-restore
+        with:
+          path: |
+            state
+            .state
+          key: daily-state-${{ github.run_id }}
+          restore-keys: |
+            daily-state-
+
       - name: Send daily market brief
         run: uv run python src/main.py
+
+      # 无论发送成功或失败,都尽量保存 state(失败时也可能更新过 pushed_figures 等)。
+      # 但不缓存 secrets:state 目录里只有 dedup id / 时间戳 / 缓存图,无敏感数据。
+      - name: Save state for next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            state
+            .state
+          key: daily-state-${{ github.run_id }}

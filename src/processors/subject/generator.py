@@ -91,9 +91,12 @@ def _call_deepseek(
 ) -> tuple[str | None, str | None]:
     """
     调用 LLMClient,返回 (text, error_msg)。
+    - llm=None(离线/dryrun)→ 直接 (None, "llm_unavailable"),让调用方走兜底
     - timeout 10s(plan 要求)
     - 不在此重试(retry 由调用方控制 — 因为重试需要带 correction)
     """
+    if llm is None:
+        return None, "llm_unavailable"
     resp = llm.chat(
         user_prompt,
         system_override=prompts.SYSTEM_PROMPT,
