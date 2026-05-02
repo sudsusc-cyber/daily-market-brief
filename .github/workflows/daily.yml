@@ -1,30 +1,21 @@
 name: daily-market-brief
 
-# cron 调度(详见 docs/decisions/0007-m6-cron-schedule.md):
-#   生产三冗余触发(对抗 GH schedule 30-50 分钟延迟):
-#     主时间:UTC 22:30 = 北京 6:30(留 30 分钟余量,延迟后仍 7:00 前到)
-#     兜底1:UTC 23:00 = 北京 7:00
-#     兜底2:UTC 23:30 = 北京 7:30
+# 触发策略(详见 docs/decisions/0007-m6-cron-schedule.md):
+#   主触发:外部 cron-job.org 调 GitHub workflow_dispatch API(秒级精度)
+#   兜底:GH schedule(不可靠,延迟 30-50 分钟常态)— 仅当外部触发器宕机时起作用
 #   幂等性:main.py 启动时通过 GH API 查询当日是否已成功发过,先成功的发,
-#         后续 cron 自动 exit 0。GITHUB_TOKEN 由 Actions 自动注入。
+#         后续触发自动 exit 0。GITHUB_TOKEN 由 Actions 自动注入。
 #   美股节假日由 main.py 启动时 should_send_today() 跳过(直接 exit 0)
-#
-#   临时测试 cron(2026-05-02):2 个,验证今日 9:00/9:15 BJT 能否自动触发,
-#   测试完毕立刻通过另一 PR 删除。
 on:
   schedule:
+    # 兜底 cron(BJT 6:30 工作日)— 不依赖准点,只防外部触发器全挂
     - cron: "30 22 * * 1-5"
-    - cron: "0 23 * * 1-5"
-    - cron: "30 23 * * 1-5"
-    - cron: "0 1 * * *"
-    - cron: "15 1 * * *"
-  # 手动触发(调试用):Actions 页面 → Run workflow
   workflow_dispatch:
     inputs:
       force_send:
-        description: "FORCE_SEND=1 跳过节假日预检"
+        description: "Force send even if already sent (true/false)"
         required: false
-        default: "0"
+        default: "false"
 
 permissions:
   contents: read
@@ -41,7 +32,7 @@ jobs:
       QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
       QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
       EMAIL_RECIPIENT:  ${{ secrets.EMAIL_RECIPIENT }}
-      FORCE_SEND:       ${{ github.event.inputs.force_send || '0' }}
+      FORCE_SEND:       ${{ github.event.inputs.force_send || 'false' }}
       PYTHONPATH:       .
       # GH 自动注入,用于双触发幂等性查询(已发过就跳过)
       GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
