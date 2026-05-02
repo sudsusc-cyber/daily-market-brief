@@ -233,19 +233,19 @@
                     数据获取失败 · {{ s.error }}
                   </td>
                   {% else %}
-                  {# 现价 #}
-                  <td valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_display }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.01em; line-height:1.1; white-space:nowrap;">
+                  {# 现价 — tabular-nums 让小数点跨行对齐 #}
+                  <td valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_display }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.01em; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
                     {{ s.last_close | price }}
                   </td>
-                  {# 120w #}
-                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap;">
-                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_120 | price }}</div>
-                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap;">{{ s.delta_120 | pct }}</div>
+                  {# 120w — 主数与百分比都加 tabular-nums #}
+                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
+                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.sma_120 | price }}</div>
+                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.delta_120 | pct }}</div>
                   </td>
                   {# 200w #}
-                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap;">
-                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_200 | price }}</div>
-                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap;">{{ s.delta_200 | pct }}</div>
+                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
+                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.sma_200 | price }}</div>
+                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.delta_200 | pct }}</div>
                   </td>
                   {# 信号 #}
                   <td valign="middle" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; white-space:nowrap;">
@@ -432,25 +432,51 @@
         </tr>
         {% endif %}
         {% if figure_summaries %}
-        {# M5.10 voice-item:人物姓名小灰字;引语 italic + 左 1px oxblood 竖线;
-           来源采用与"宏观视野/昨日动态"一致的脚注样式([N] 上标 + 章节底部统一列出) #}
+        {# Voice block:
+           - byline 英文署名放该作者所有引语之后(右对齐 + 36px 实线短横,
+             用 inline-block border 画线,避免 —— 字符在 letter-spacing 下被撕开)
+           - 回复型帖子:原帖卡片在前(metadata 行 + 1px hairline 左竖引用块),
+             段永平回复在后(2px oxblood + serif italic),回复多缩进 18px
+             与原帖卡片错开,形成"上下文 → 回复"的层级对话
+           - 引用编号 [N] 维持原蓝色超链接,与全文其它脚注一致 #}
         {% for f in figure_summaries %}
         {% if f.items %}
         <tr>
           <td style="padding:24px 24px 0 24px;">
-            <div style="font-family:{{ serif_body }}; font-size:14px; color:{{ color_muted }}; letter-spacing:0.2em; margin:0 0 10px 0;">{{ f.person }}</div>
             {% for kp in f.items %}
-            <blockquote style="margin:0 0 14px 0; padding:2px 0 2px 16px; border-left:1px solid {{ color_accent }};
+            {%- if kp.parent_text %}
+            {# Quote-reply 卡片:metadata 顶行 + 暗灰引用块。
+               不带 oxblood,视觉上明显比下方"段永平回复"轻一档,提示这只是上下文。
+               metadata 行结构:label(原帖) + byline(@作者(平台)),无中点分隔符,
+               靠字号 / 颜色 / 间距三层差异建立信息层级。 #}
+            <div style="margin:0 0 6px 14px; font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif; line-height:1.5;">
+              <span style="font-size:10px; color:{{ color_faint }}; letter-spacing:0.25em; margin-right:14px;">原帖</span>
+              {%- if kp.parent_author %}<span style="font-size:12px; color:{{ color_muted }};">@{{ kp.parent_author }}</span>{% endif %}
+              {%- if kp.source_name %}<span style="font-size:11px; color:{{ color_muted }};">({{ kp.source_name }})</span>{% endif %}
+            </div>
+            <div style="margin:0 0 8px 14px; padding:2px 0 2px 14px; border-left:1px solid {{ color_hairline }};
+                        font-family:{{ serif_body }}; font-size:13px; line-height:1.65; color:{{ color_muted }};
+                        letter-spacing:0.01em; font-style:normal;">
+              {{ kp.parent_text | cjk_spaced }}
+            </div>
+            {%- endif %}
+            {# 主引语:oxblood 2px 左竖线 + serif italic。回复型多缩进 18px 与原帖卡片错开 #}
+            <blockquote style="margin:0 0 14px {%- if kp.parent_text %} 18px{% else %} 0{% endif %}; padding:2px 0 2px 16px; border-left:2px solid {{ color_accent }};
                                 font-family:{{ serif_quote }}; font-size:17px; font-style:italic;
                                 line-height:1.8; color:{{ color_ink }}; letter-spacing:0.02em;">
               {{ kp.text | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1;text-decoration:none;font-size:11px;font-family:Charter,Georgia,serif;font-style:normal;margin-left:1px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
             </blockquote>
             {% endfor %}
+            {# Editorial byline:右对齐,中文署名前接 36px 实线短横(用 inline-block
+               border-top 画线,避免 letter-spacing 把 —— 字符撕成两截)。 #}
+            <div align="right" style="margin:6px 0 0 0; font-family:{{ serif_body }}; font-size:12px; letter-spacing:0.25em; color:{{ color_faint }}; line-height:1.4;">
+              <span style="display:inline-block; width:36px; height:0; border-top:1px solid {{ color_faint }}; vertical-align:middle; margin-right:10px; margin-bottom:3px; line-height:0; font-size:0;">&nbsp;</span>{{ f.person }}
+            </div>
           </td>
         </tr>
         {% endif %}
         {% endfor %}
-        {# 章节底部统一脚注列表:与"宏观视野"和"昨日动态"风格一致 #}
+        {# 章节底部统一脚注列表:维持原蓝色超链接,与全文其它脚注一致 #}
         {% if figure_footnotes %}
         <tr>
           <td style="padding:8px 24px 0 24px;">
@@ -544,14 +570,39 @@
           </td>
         </tr>
 
+        {# ─────────────────────────  系统告警(数据源异常时显示) ───────────────────────── #}
+        {# 仅在 system_alerts 非空时渲染。空数组 → 整块不渲染,版式不变。
+           样式:页脚之上一条暗黄背景小条,文字小号、不抢戏,但读者扫一眼就能看到。 #}
+        {% if system_alerts %}
+        <tr>
+          <td style="padding:12px 24px 0 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                   style="background-color:#FBF4E0; border-left:3px solid #C7884A;">
+              <tr>
+                <td style="padding:12px 14px; font-family:{{ serif_body }}; font-size:11.5px;
+                           line-height:1.75; color:#7A5A1F; letter-spacing:0.04em;">
+                  <div style="font-family:Charter,Georgia,serif; font-size:10px; font-weight:600;
+                              letter-spacing:0.22em; text-transform:uppercase; margin-bottom:6px; color:#7A5A1F;">数据源提示</div>
+                  {# 段落式叙述,多条用横线分隔(替代 list 风格 · 项目符号),保持刊物语气 #}
+                  {% for msg in system_alerts %}
+                  {%- if not loop.first %}<div style="margin:6px 0; height:0; border-top:0.5px dashed #C7884A; opacity:0.5;"></div>{% endif %}
+                  <div>{{ msg }}</div>
+                  {% endfor %}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
         {# ─────────────────────────  COLOPHON / FOOTER  ───────────────────────── #}
         <tr>
           <td align="center" style="padding:0 24px 0 24px; font-family:{{ serif_body }};">
             <div style="font-size:11.5px; color:{{ color_ink_soft }}; line-height:1.7; letter-spacing:0.06em;">
               本邮件由开源的私人晨报系统发送
             </div>
-            <div style="margin-top:6px; font-size:10.5px; color:{{ color_faint }}; letter-spacing:0.04em;">
-              数据截至北京时间 {{ generated_at.strftime('%Y-%m-%d %H:%M') }}
+            <div style="margin-top:6px; font-family:Charter,Georgia,serif; font-size:10.5px; color:{{ color_faint }}; letter-spacing:0.18em; text-transform:uppercase;">
+              刊发时间&nbsp;·&nbsp;{{ generated_at.strftime('%Y-%m-%d %H:%M') }}&nbsp;CST
             </div>
           </td>
         </tr>
