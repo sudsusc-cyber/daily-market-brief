@@ -28,13 +28,6 @@ permissions:
   contents: read
   actions: read   # idempotency.already_sent_today() 查 /actions/runs 必需
 
-# 防止 cron-job.org 主触发与 GH schedule 兜底并发跑(两个 run 都 restore 同一份
-# 旧 state,各自 fetch + save 不同 cache key,胜出方可能让 last_seen_id 回退):
-# cancel-in-progress=false → 后到的排队等前一个跑完(idempotency 检查也会让它 skip)。
-concurrency:
-  group: daily-send
-  cancel-in-progress: false
-
 jobs:
   send:
     name: collect + render + send
@@ -78,11 +71,7 @@ jobs:
       #   - .state/last_mail_sent.json    (段永平时间下限)
       #   - .state/duan_health.json       (健康监控连续 streak)
       # 用 actions/cache 把这两个目录跨 run 持久化。
-      #
-      # 经典 GH 模式:save 用 run_id 唯一 key 确保每次写入成功(actions/cache@v4
-      # 的 key 不可变,同 key save 会 no-op);restore 用前缀 `daily-state-` 拿
-      # 最近一次成功保存的 cache。state 文件总量 < 1MB,30 个/月 × 30 年 才到
-      # 10GB,无实际累积压力。
+      # cache key 用 run_id 唯一(每次 save 都成功),restore-keys 用前缀回退到最近一次。
       - name: Restore state from previous run
         uses: actions/cache/restore@v4
         id: state-restore
@@ -97,11 +86,8 @@ jobs:
       - name: Send daily market brief
         run: uv run python src/main.py
 
-      # 仅发送成功时保存 state(if: success())—— 失败 run 不应固化 state,
-      # 否则可能让"本应发送但实际没送达"的内容(figures dedup / Duan last_seen 等)
-      # 被永久跳过,下次重跑也不会重新处理。next run 的 restore-keys 前缀匹配
-      # 会回退到最近一次成功保存的 cache,保证 state 链路完整。
-      # 不缓存 secrets:state 目录只有 dedup id / 时间戳 / 缓存图,无敏感数据。
+      # 仅发送成功时保存 state,避免失败 run 也记录"已处理"导致未送达内容被跳过。
+      # 注意:actions/cache/save 的 key 每天唯一,下一次 restore 回退到最近一次成功的 state。
       - name: Save state for next run
         if: success()
         uses: actions/cache/save@v4

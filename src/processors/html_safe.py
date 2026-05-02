@@ -57,7 +57,6 @@ def safe_anchor(
 ) -> str:
     """生成安全的 <a> 标签。
     - URL 不在白名单 → 不生成 <a>,只输出 escape 后的 label
-    - URL 先 strip 前后空白再 escape(让 href 不含前导/尾随空格)
     - URL 与 label 都做 HTML escape
     - 总是带 target="_blank" rel="noopener" 防 tabnabbing
     - style 与 extra_attrs 由调用方提供,假定来自 Python 端常量(不来自外部输入)
@@ -65,8 +64,7 @@ def safe_anchor(
     safe_label = escape_text(label)
     if not is_safe_url(url):
         return safe_label
-    # 与 is_safe_url 内部一致地 strip,避免 href 残留前导空白
-    safe_href = escape_text(str(url).strip())
+    safe_href = escape_text(url)
     style_attr = f' style="{style}"' if style else ""
     extra = f" {extra_attrs}" if extra_attrs else ""
     return (

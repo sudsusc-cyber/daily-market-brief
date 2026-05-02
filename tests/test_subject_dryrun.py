@@ -1,14 +1,16 @@
-"""tests/test_subject_dryrun.py — 主题生成 dryrun(默认离线)。
+"""tests/test_subject_dryrun.py — 离线 60 条主题生成 dryrun。
 
 按 plan Step 4 + 验证规范:
-- 20 组模拟数据,默认 1 轮(pytest);手动可跑 3 轮 = 60 条
-- 不发邮件,只生成主题打印 + 验证
+- 准备 20 组模拟数据,跑 3 轮 = 60 条
+- 不发邮件,只生成主题打印
+- 表格输出:输入摘要 + 生成主题 + 是否兜底
+- 运行方式:
+    uv run python -m pytest tests/test_subject_dryrun.py -s
+  或直接:
+    PYTHONPATH=. uv run python tests/test_subject_dryrun.py
 
-【关键:默认 100% 离线零网络】
-- 单测套件 `uv run pytest -q` 跑这个文件 → 走 static_fallback,不调 DeepSeek
-- 显式打开真调:RUN_LLM_DRYRUN=1 uv run pytest tests/test_subject_dryrun.py -s
-- 直接运行(脚本式):PYTHONPATH=. uv run python tests/test_subject_dryrun.py
-  （脚本入口默认也是离线;真要调 LLM 仍需 RUN_LLM_DRYRUN=1）
+注:此 dryrun 默认会调用 DeepSeek API(消耗 token);若 DEEPSEEK_API_KEY
+未设置或想纯离线,会自动回退到只测兜底模板。
 """
 
 from __future__ import annotations
