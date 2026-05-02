@@ -8,7 +8,8 @@ name: daily-market-brief
 #   美股节假日由 main.py 启动时 should_send_today() 跳过(直接 exit 0)
 on:
   schedule:
-    # 兜底 cron(BJT 6:30 工作日)— 不依赖准点,只防外部触发器全挂
+    # 兜底 cron(UTC Mon-Fri 22:30 = BJT Tue-Sat 06:30,美股 Mon-Fri 收盘后)
+    # 不依赖准点,只防外部触发器全挂;monitor.yml 的 "30 0 * * 2-6" 与此对齐(BJT Tue-Sat 08:30)
     - cron: "30 22 * * 1-5"
   workflow_dispatch:
     inputs:
@@ -16,6 +17,12 @@ on:
         description: "Force send even if already sent (true/false)"
         required: false
         default: "false"
+
+# 防止 cron-job.org 与 GH schedule 兜底几乎同秒触发时双跑挤压幂等窗口。
+# 不取消正在跑的(发邮件 ≠ 可取消的纯计算),只串行化新触发。
+concurrency:
+  group: daily-market-brief
+  cancel-in-progress: false
 
 permissions:
   contents: read
