@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import UTC
 from pathlib import Path
 
 from src.collectors import (
@@ -361,11 +362,11 @@ def main() -> int:
     # 关键:用 duan_quotes_all(全部 parsed)推进 last_seen,而非 relevant 子集 ——
     # 否则被相关性筛选丢弃的帖子下次还会再被判一次,白烧 token
     try:
-        from datetime import datetime as _dt, timezone as _tz
+        from datetime import datetime as _dt
         xueqiu_duan.commit_state(
             _DUAN_STATE_DIR,
             duan_quotes_all,
-            sent_at=_dt.now(tz=_tz.utc),
+            sent_at=_dt.now(tz=UTC),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("xueqiu_duan.commit_state_failed exc=%r", exc)

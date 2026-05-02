@@ -18,7 +18,6 @@ import html
 import re
 from urllib.parse import urlparse
 
-
 # 仅允许的 URL scheme(其它如 javascript: / data: / file: / vbscript: 一律拒绝)
 _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 

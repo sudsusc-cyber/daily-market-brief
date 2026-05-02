@@ -33,7 +33,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from src.utils.dates import to_beijing
@@ -162,9 +162,7 @@ def _is_pure_retweet(retweet_status_id: int | None, text: str) -> bool:
     """无评论的转发:有 retweet_status_id 且自己没添加内容(text 是空或转发模板)。"""
     if not retweet_status_id:
         return False
-    if not text or _PURE_RT_RE.match(text):
-        return True
-    return False
+    return bool(not text or _PURE_RT_RE.match(text))
 
 
 def _looks_like_reply(text: str) -> bool:
@@ -219,7 +217,7 @@ def _parse_status(status: dict, uid: str) -> DuanQuote | None:
     ts_ms = status.get("created_at")
     if not isinstance(ts_ms, (int, float)) or ts_ms <= 0:
         return None
-    created = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
+    created = datetime.fromtimestamp(ts_ms / 1000.0, tz=UTC)
 
     raw_html = status.get("text") or ""
     text = _html_to_text(str(raw_html))
@@ -277,7 +275,7 @@ def _load_last_mail_sent(state_dir: Path) -> datetime | None:
         data = json.loads(p.read_text(encoding="utf-8"))
         ts = datetime.fromisoformat(str(data.get("sent_at")))
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
         return ts
     except Exception as exc:  # noqa: BLE001
         logger.warning("duan.last_mail_sent.parse_failed exc=%s; treat=None", exc)
@@ -318,7 +316,7 @@ def fetch_new_quotes(
     if not token:
         logger.info("duan.warn XQ_A_TOKEN_missing 仍尝试请求")
 
-    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    now_utc = (now or datetime.now(UTC)).astimezone(UTC)
     last_seen = _load_last_seen(state_dir)
     last_mail_sent = _load_last_mail_sent(state_dir)
     cold_start = last_seen is None and last_mail_sent is None
@@ -393,7 +391,7 @@ def commit_state(
 
     quotes 为空时只更新 last_mail_sent(下次时间窗口推进)。
     """
-    sent_utc = sent_at.astimezone(timezone.utc) if sent_at.tzinfo else sent_at.replace(tzinfo=timezone.utc)
+    sent_utc = sent_at.astimezone(UTC) if sent_at.tzinfo else sent_at.replace(tzinfo=UTC)
     _write_json_atomic(
         state_dir / LAST_MAIL_SENT_FILE,
         {"sent_at": sent_utc.isoformat()},
@@ -459,7 +457,7 @@ def update_health(
                                   raw_count == 0 → consecutive_empty_returns += 1
       - skip_reason 非空:        视作"尚未尝试 API",计数器都不动,只记 skip_reason
     """
-    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    now_utc = (now or datetime.now(UTC)).astimezone(UTC)
     h = _load_health(state_dir)
     h.last_run_at = now_utc.isoformat()
     h.last_skip_reason = result.skip_reason

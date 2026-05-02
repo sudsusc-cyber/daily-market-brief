@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
@@ -24,7 +24,7 @@ from src.processors.html_safe import (
 )
 from src.processors.llm_client import LLMResponse, LLMUsage
 
-_DUMMY_DT = datetime(2026, 5, 3, tzinfo=timezone.utc)
+_DUMMY_DT = datetime(2026, 5, 3, tzinfo=UTC)
 
 
 # ────────────────────  低层 helper 单测  ────────────────────

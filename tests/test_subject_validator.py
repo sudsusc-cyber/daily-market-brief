@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from src.processors.subject.validator import is_valid, validate
+from src.processors.subject.validator import (
+    is_valid,
+    validate,
+    validate_season_imagery,
+)
 
 
 class TestValidLength:
@@ -96,7 +100,6 @@ class TestEdge:
 
 
 # ───────────────────────  季节意象一致性  ───────────────────────
-from src.processors.subject.validator import validate_season_imagery, SEASON_TABOOS
 
 
 class TestSeasonImagery:

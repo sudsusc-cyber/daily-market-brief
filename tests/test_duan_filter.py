@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.collectors.xueqiu_duan import DuanQuote
 from src.processors import duan_filter
@@ -21,7 +21,7 @@ from src.processors.llm_client import LLMResponse, LLMUsage
 def _q(sid: int, text: str) -> DuanQuote:
     return DuanQuote(
         id=sid,
-        created_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+        created_at=datetime(2026, 5, 3, tzinfo=UTC),
         text=text,
         url=f"https://xueqiu.com/u/{sid}",
         truncated=False,
@@ -135,12 +135,12 @@ def test_judge_input_includes_parent_context_for_replies() -> None:
     """带 parent_text 的 quote → LLM 输入里同时包含原帖与段永平回复。"""
     quotes = [
         DuanQuote(
-            id=1, created_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+            id=1, created_at=datetime(2026, 5, 3, tzinfo=UTC),
             text="想多了。", url="https://xueqiu.com/u/1", truncated=False,
             parent_text="茅台 PE=40 已是泡沫", parent_author="股民甲",
         ),
         DuanQuote(
-            id=2, created_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+            id=2, created_at=datetime(2026, 5, 3, tzinfo=UTC),
             text="本分就是做对的事。", url="https://xueqiu.com/u/2", truncated=False,
         ),
     ]
@@ -164,7 +164,7 @@ from src.processors.duan_filter import (  # noqa: E402
 def _qp(sid: int, text: str, parent_text: str | None, parent_author: str | None = None) -> DuanQuote:
     return DuanQuote(
         id=sid,
-        created_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+        created_at=datetime(2026, 5, 3, tzinfo=UTC),
         text=text,
         url=f"https://xueqiu.com/u/{sid}",
         truncated=False,

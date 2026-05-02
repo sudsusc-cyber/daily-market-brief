@@ -46,7 +46,10 @@ from src.collectors.header_image import pick_header_image  # noqa: E402
 from src.collectors.stocks import StockSignal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
 from src.processors.figure_filter import (  # noqa: E402
-    FigureFootnote, FigureKeyPoint, FigureSummary, assign_footnotes,
+    FigureFootnote,
+    FigureKeyPoint,
+    FigureSummary,
+    assign_footnotes,
 )
 from src.renderer.render import render_email  # noqa: E402
 from src.sender.smtp_sender import InlineImage, send_html_email  # noqa: E402

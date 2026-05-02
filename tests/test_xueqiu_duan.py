@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -104,7 +104,7 @@ def test_parse_status_ok() -> None:
     assert q is not None
     assert q.id == 100
     assert q.url.endswith("/u123/100")
-    assert q.created_at.tzinfo == timezone.utc
+    assert q.created_at.tzinfo == UTC
     assert "二十个字符" in q.text
 
 
@@ -162,7 +162,7 @@ def test_fetch_missing_uid_returns_skip(tmp_path: Path) -> None:
 
 def test_fetch_cold_start_uses_24h_window(tmp_path: Path) -> None:
     """无状态文件 → 窗口 = now - 24h,早于 24h 的帖子丢弃。"""
-    now = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     fresh = now - timedelta(hours=2)   # 应保留
     stale = now - timedelta(hours=48)  # 应丢弃
 
@@ -186,7 +186,7 @@ def test_fetch_id_floor_drops_seen(tmp_path: Path) -> None:
     (tmp_path / "duan_last_seen.json").write_text(
         json.dumps({"last_seen_id": 300}), encoding="utf-8"
     )
-    now = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     (tmp_path / "last_mail_sent.json").write_text(
         json.dumps({"sent_at": (now - timedelta(hours=12)).isoformat()}), encoding="utf-8"
     )
@@ -203,7 +203,7 @@ def test_fetch_id_floor_drops_seen(tmp_path: Path) -> None:
 
 def test_fetch_time_floor_drops_pre_last_mail(tmp_path: Path) -> None:
     """last_mail_sent 在 created_at 之后 → 旧帖丢弃,即便 id 大于 last_seen。"""
-    now = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     last_mail_sent = now - timedelta(hours=2)
     (tmp_path / "last_mail_sent.json").write_text(
         json.dumps({"sent_at": last_mail_sent.isoformat()}), encoding="utf-8"
@@ -248,7 +248,7 @@ def test_fetch_api_ok_but_empty_records_zero_raw_count(tmp_path: Path) -> None:
 # 状态更新与 voices.json
 # ----------------------------------------------------------------------
 def test_commit_state_writes_max_id_and_sent_at(tmp_path: Path) -> None:
-    now = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     quotes = [
         DuanQuote(id=10, created_at=now - timedelta(minutes=2),
                   text="t1", url="u", truncated=False),
@@ -268,7 +268,7 @@ def test_commit_state_does_not_regress_last_seen(tmp_path: Path) -> None:
     (tmp_path / "duan_last_seen.json").write_text(
         json.dumps({"last_seen_id": 999}), encoding="utf-8"
     )
-    now = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     quotes = [DuanQuote(id=42, created_at=now, text="t", url="u", truncated=False)]
     commit_state(tmp_path, quotes, sent_at=now)
     after = json.loads((tmp_path / "duan_last_seen.json").read_text(encoding="utf-8"))
@@ -276,7 +276,7 @@ def test_commit_state_does_not_regress_last_seen(tmp_path: Path) -> None:
 
 
 def test_commit_state_empty_quotes_only_advances_time(tmp_path: Path) -> None:
-    now = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     commit_state(tmp_path, [], sent_at=now)
     assert (tmp_path / "last_mail_sent.json").exists()
     assert not (tmp_path / "duan_last_seen.json").exists()
@@ -286,7 +286,7 @@ def test_write_voices_json_shape(tmp_path: Path) -> None:
     out = tmp_path / "build" / "voices.json"
     quotes = [
         DuanQuote(
-            id=1, created_at=datetime(2026, 5, 3, 4, 0, tzinfo=timezone.utc),
+            id=1, created_at=datetime(2026, 5, 3, 4, 0, tzinfo=UTC),
             text="买股票就是买公司,长期看自由现金流。", url="https://xueqiu.com/u/1",
             truncated=False,
         ),
@@ -309,7 +309,7 @@ def test_write_voices_json_empty_writes_empty_array(tmp_path: Path) -> None:
 
 
 def test_quotes_as_dicts_serializable() -> None:
-    q = DuanQuote(id=1, created_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+    q = DuanQuote(id=1, created_at=datetime(2026, 5, 3, tzinfo=UTC),
                   text="t", url="u", truncated=False)
     serialized = json.dumps(quotes_as_dicts([q]))
     assert "2026-05-03" in serialized
@@ -320,7 +320,7 @@ def test_quotes_as_dicts_serializable() -> None:
 # ----------------------------------------------------------------------
 def test_update_health_first_run_api_ok_with_data(tmp_path: Path) -> None:
     """初次运行 + API 通 + 有数据 → 计数器全 0,两个时间戳都更新。"""
-    now = datetime(2026, 5, 3, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, 12, 0, tzinfo=UTC)
     r = xd.FetchResult(quotes=[], raw_count=5, api_failed=False)
     h = xd.update_health(tmp_path, r, now=now)
     assert h.consecutive_api_failures == 0
@@ -330,8 +330,8 @@ def test_update_health_first_run_api_ok_with_data(tmp_path: Path) -> None:
 
 
 def test_update_health_api_ok_but_empty_increments_empty_streak(tmp_path: Path) -> None:
-    now1 = datetime(2026, 5, 3, tzinfo=timezone.utc)
-    now2 = datetime(2026, 5, 4, tzinfo=timezone.utc)
+    now1 = datetime(2026, 5, 3, tzinfo=UTC)
+    now2 = datetime(2026, 5, 4, tzinfo=UTC)
     xd.update_health(tmp_path, xd.FetchResult([], raw_count=0, api_failed=False), now=now1)
     h2 = xd.update_health(tmp_path, xd.FetchResult([], raw_count=0, api_failed=False), now=now2)
     assert h2.consecutive_empty_returns == 2
@@ -342,8 +342,8 @@ def test_update_health_api_ok_but_empty_increments_empty_streak(tmp_path: Path) 
 
 
 def test_update_health_api_failure_increments_failure_streak(tmp_path: Path) -> None:
-    now1 = datetime(2026, 5, 3, tzinfo=timezone.utc)
-    now2 = datetime(2026, 5, 4, tzinfo=timezone.utc)
+    now1 = datetime(2026, 5, 3, tzinfo=UTC)
+    now2 = datetime(2026, 5, 4, tzinfo=UTC)
     xd.update_health(tmp_path, xd.FetchResult([], api_failed=True, error="x"), now=now1)
     h2 = xd.update_health(tmp_path, xd.FetchResult([], api_failed=True, error="y"), now=now2)
     assert h2.consecutive_api_failures == 2
@@ -353,8 +353,8 @@ def test_update_health_api_failure_increments_failure_streak(tmp_path: Path) -> 
 
 def test_update_health_failure_streak_resets_on_success(tmp_path: Path) -> None:
     """连续失败后一次成功 → failure 计数清零。"""
-    now1 = datetime(2026, 5, 3, tzinfo=timezone.utc)
-    now2 = datetime(2026, 5, 4, tzinfo=timezone.utc)
+    now1 = datetime(2026, 5, 3, tzinfo=UTC)
+    now2 = datetime(2026, 5, 4, tzinfo=UTC)
     xd.update_health(tmp_path, xd.FetchResult([], api_failed=True, error="x"), now=now1)
     h2 = xd.update_health(tmp_path, xd.FetchResult([], raw_count=3, api_failed=False), now=now2)
     assert h2.consecutive_api_failures == 0
@@ -363,7 +363,7 @@ def test_update_health_failure_streak_resets_on_success(tmp_path: Path) -> None:
 
 def test_update_health_skip_does_not_touch_counters(tmp_path: Path) -> None:
     """skip_reason 非空 → 不动 API 计数器(本地运行场景)。"""
-    now = datetime(2026, 5, 3, tzinfo=timezone.utc)
+    now = datetime(2026, 5, 3, tzinfo=UTC)
     h = xd.update_health(
         tmp_path,
         xd.FetchResult([], skip_reason="DUAN_USER_ID_missing"),
@@ -524,12 +524,12 @@ def test_write_voices_json_includes_parent_when_present(tmp_path: Path) -> None:
     out = tmp_path / "voices.json"
     quotes = [
         DuanQuote(
-            id=1, created_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+            id=1, created_at=datetime(2026, 5, 3, tzinfo=UTC),
             text="想多了。", url="https://xueqiu.com/u/1", truncated=False,
             parent_text="茅台估值已是泡沫", parent_author="股民甲",
         ),
         DuanQuote(
-            id=2, created_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+            id=2, created_at=datetime(2026, 5, 3, tzinfo=UTC),
             text="本分就是做对的事。", url="https://xueqiu.com/u/2", truncated=False,
         ),
     ]
