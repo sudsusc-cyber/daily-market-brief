@@ -95,11 +95,15 @@ _TASK_INSTRUCTION = """\
 """
 
 
-# 兼容三种引用写法:<sup>[N]</sup> / [N](后不跟字母数字) / ^N^
+# 兼容 LLM 输出的多种引用变体:
+#   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
+#   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号
+#   ^N^                                                ← markdown
+# 中英括号都接;括号内可有空格(\s*);避免 URL / 公式中误匹配。
 _FOOTNOTE_RE = re.compile(
-    r"<sup>\[(\d+)\]</sup>"          # 标准 HTML
-    r"|\[(\d+)\](?![a-zA-Z\d])"       # 裸 [N]
-    r"|\^(\d+)\^"                     # markdown ^N^
+    r"<sup>\s*[\[【(\(]\s*(\d+)\s*[\]】)\)]\s*</sup>"
+    r"|[\[【(\(]\s*(\d+)\s*[\]】)\)](?![a-zA-Z\d])"
+    r"|\^(\d+)\^"
 )
 
 

@@ -69,9 +69,14 @@ _TASK_INSTRUCTION = """\
 """
 
 
+# 兼容 LLM 输出的多种引用变体:
+#   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
+#   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号
+#   ^N^                                                ← markdown
+# 中英括号都接;括号内可有空格(\s*);避免 URL / 公式中误匹配。
 _FOOTNOTE_RE = re.compile(
-    r"<sup>\[(\d+)\]</sup>"
-    r"|\[(\d+)\](?![a-zA-Z\d])"
+    r"<sup>\s*[\[【(\(]\s*(\d+)\s*[\]】)\)]\s*</sup>"
+    r"|[\[【(\(]\s*(\d+)\s*[\]】)\)](?![a-zA-Z\d])"
     r"|\^(\d+)\^"
 )
 
