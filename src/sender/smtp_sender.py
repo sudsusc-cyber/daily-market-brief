@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 
 def _resolve_via_dns(host: str, dns_server: str = "8.8.8.8") -> str | None:
     """用 dig 命令通过外部 DNS 解析,绕开本机代理/VPN 接管的 DNS。
-    返回首个非 198.18.x 的 IPv4;失败返回 None,调用方退回系统解析。"""
+    返回首个非 198.18.x 的 IPv4;失败返回 None,调用方退回系统解析。
+
+    注意(并发性):send_html_email 内部对 socket.getaddrinfo 做进程级
+    monkey-patch(单线程模型下安全)。如未来引入并发(threading),
+    需改成 threading.Lock 包裹或干脆改用 contextvars 隔离。"""
     import subprocess
     try:
         out = subprocess.run(

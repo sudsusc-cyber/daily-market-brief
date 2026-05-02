@@ -2,12 +2,16 @@
 
 覆盖点(对应规格关键不变量):
 - HTML→纯文本 + 转义实体处理
-- 长度 < 20 字过滤、纯转发过滤、> 400 字截断
+- 短文本不再被规则层硬截(MIN_TEXT_CHARS 已移除,LLM 全权判定)
+- 纯转发过滤("转发"模板) + 孤儿回复过滤(//@ 但无 parent)
+- 文本 > 400 字截断
 - id 硬下限(<= last_seen 一律丢)
 - 时间下限(<= last_mail_sent 一律丢)
 - 冷启动 → 24h 窗口
 - commit_state 顺序与原子性,空 quotes 时只推进 last_mail_sent
 - 异常路径:DUAN_USER_ID 缺失 / fetch 抛错 → 返回空,主流程不受影响
+- 健康监控:连续 API 失败 / 连续空返回的 streak 计数与告警生成
+- 回复型帖子:retweeted_status 提取 parent_text/parent_author + 上下文化渲染
 """
 
 from __future__ import annotations
