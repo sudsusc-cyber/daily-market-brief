@@ -19,6 +19,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
+from src.processors.html_safe import (
+    escape_text,
+    is_safe_url,
+    render_text_with_footnotes,
+    safe_anchor,
+    strip_all_tags,
+)
 from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -148,20 +155,27 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
     return "\n".join(lines), flat_items
 
 
-def _build_footnotes(
-    html: str, flat_items: list[NewsItem]
-) -> tuple[str, list[Footnote]]:
-    """从 summary html 中提取 [N] 引用,按出现顺序重新编号 1..M。
-    返回 (new_html, footnotes),new_html 中的引用已包成 anchor。"""
+_FOOTNOTE_ANCHOR_STYLE = (
+    "color:#0563C1;text-decoration:none;font-size:11px;"
+    "font-family:Charter,Georgia,serif;margin-left:1px;"
+)
+
+
+def _resolve_footnote_mapping(
+    text: str, flat_items: list[NewsItem]
+) -> tuple[dict[int, int], list[Footnote]]:
+    """扫描 text 中所有脚注标记,按首次出现顺序重新编号 1..M。
+    丢弃越界 / URL 不安全 / URL 缺失 的引用(其位置后续被替换为空)。
+
+    返回 (rewrite_map, footnote_list)。rewrite_map 把 LLM 原始编号 → 新编号。
+    """
     used_indexes: list[int] = []
-    for m in _FOOTNOTE_RE.finditer(html):
+    for m in _FOOTNOTE_RE.finditer(text):
         idx = _re_idx(m)
         if idx not in used_indexes:
             used_indexes.append(idx)
-    # 重新编号:用户读到的 [1] [2] ... 必须按出现顺序连续排,中间不能跳号
-    # 修复:旧版 enumerate 在中间项越界跳过时 new_idx 不回退导致跳号(1,3 缺 2)
-    footnotes: list[Footnote] = []
     rewrite: dict[int, int] = {}
+    footnotes: list[Footnote] = []
     skipped: list[int] = []
     new_idx = 0
     for old_idx in used_indexes:
@@ -169,33 +183,54 @@ def _build_footnotes(
             skipped.append(old_idx)
             continue
         it = flat_items[old_idx - 1]
-        if not it.url:
+        if not is_safe_url(it.url):  # 仅 http/https 通过
             skipped.append(old_idx)
             continue
         new_idx += 1
-        footnotes.append(Footnote(index=new_idx, url=it.url, source=it.source or ""))
+        footnotes.append(Footnote(
+            index=new_idx,
+            url=it.url,
+            source=it.source or "",
+        ))
         rewrite[old_idx] = new_idx
     if skipped:
-        logger.warning("news_summarizer.footnote_dropped indexes=%s flat_items=%d",
-                       skipped, len(flat_items))
-    # 把 html 里的旧 [N] 改成新顺序,且包成 oxblood 无下划线 <a>
-    url_by_new_idx = {f.index: f.url for f in footnotes}
-
-    def _sub(match: re.Match[str]) -> str:
-        old = _re_idx(match)
-        if old not in rewrite:
-            return ""  # 没有 url 的脚注被剥掉
-        new_idx = rewrite[old]
-        url = url_by_new_idx.get(new_idx, "")
-        return (
-            f'<sup><a href="{url}" target="_blank" rel="noopener" '
-            f'style="color:#0563C1;text-decoration:none;font-size:11px;'
-            f'font-family:Charter,Georgia,serif;margin-left:1px;">'
-            f'[{new_idx}]</a></sup>'
+        logger.warning(
+            "news_summarizer.footnote_dropped indexes=%s flat_items=%d "
+            "(越界 / URL scheme 非 http(s) / 缺 url)",
+            skipped, len(flat_items),
         )
+    return rewrite, footnotes
 
-    new_html = _FOOTNOTE_RE.sub(_sub, html)
-    return new_html, footnotes
+
+def _make_footnote_anchor_builder(
+    rewrite: dict[int, int],
+    footnotes: list[Footnote],
+):
+    """构造 builder:LLM 原编号 → 安全 <sup><a>...</a></sup> 字符串。
+    URL 已在 _resolve_footnote_mapping 通过 is_safe_url 过滤,这里再走 safe_anchor
+    做二次防御(escape href 与 label)。"""
+    url_by_new = {f.index: f.url for f in footnotes}
+
+    def _build(idx: int) -> str:
+        new_i = rewrite.get(idx)
+        if new_i is None:
+            return ""  # 越界 / 不安全:吃掉脚注标记
+        url = url_by_new.get(new_i, "")
+        anchor = safe_anchor(url, f"[{new_i}]", style=_FOOTNOTE_ANCHOR_STYLE)
+        return f"<sup>{anchor}</sup>"
+
+    return _build
+
+
+def _render_summary_segment(
+    text: str,
+    rewrite: dict[int, int],
+    footnotes: list[Footnote],
+) -> str:
+    """对一段不可信文本 segment(LLM 输出),生成安全 HTML:
+    标记之间纯文本 escape,标记位置插入安全 <sup><a>。"""
+    builder = _make_footnote_anchor_builder(rewrite, footnotes)
+    return render_text_with_footnotes(text, _FOOTNOTE_RE, _re_idx, builder)
 
 
 def summarize(
@@ -219,8 +254,16 @@ def summarize(
         logger.warning("news_summarizer.failed reason=%s", resp.error)
         return None
 
-    raw_html = resp.text.strip()
-    lines = [line.strip() for line in raw_html.splitlines() if line.strip()]
+    raw_text = resp.text.strip()
+    # LLM 输出含 <strong>...</strong> 与脚注标记,但其余 HTML 一律视为不可信。
+    # 处理流程(净化优先):
+    #   1. 拆行
+    #   2. 用 row_re 抠出 <strong>cn</strong> ... 的"公司名 / 摘要"对(只识别 strong;
+    #      其它标签通通视为污染,在第 3 步净化掉)
+    #   3. 对 cn 做 strip_all_tags + escape;对 summary 做 strip_all_tags 后送
+    #      render_text_with_footnotes(其内部 escape 文本 + 安全替换 [N])
+    #   4. Python 端用受控 div/span 拼成最终 HTML
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     cleaned = []
     for line in lines:
         # 若 LLM 自己写了 "1." "1、" 之类前缀,剥掉
@@ -229,46 +272,54 @@ def summarize(
         line = _ensure_strong_wrapping(line)
         cleaned.append(line)
 
-    # 拆出 (公司名, 摘要);LLM 偶尔不带分隔符,兜底进无公司名条目。
-    row_re = re.compile(r"<strong>(.+?)</strong>\s*[——\-:、]+\s*(.+)")
-    rows: list[tuple[str, str]] = []
+    row_re = re.compile(r"<strong>(.+?)</strong>\s*[——\-:、]+\s*(.+)", re.DOTALL)
+    raw_rows: list[tuple[str, str]] = []
     for line in cleaned:
         m = row_re.match(line)
         if m:
-            rows.append((m.group(1).strip(), m.group(2).strip()))
+            raw_rows.append((m.group(1).strip(), m.group(2).strip()))
         else:
-            stripped = re.sub(r"</?strong>", "", line)
-            rows.append(("", stripped))
+            # 没匹配上 → 整行视为无公司名摘要;先剥所有标签留纯文本
+            raw_rows.append(("", strip_all_tags(line)))
 
-    # M5.10 视觉:每条新闻渲染为单行的 "公司名 │ 摘要"。
-    # - 公司名:与正文同字号同字重同字体,仅用 oxblood 强调色 + 极轻字距区分
-    # - 分隔符:U+2502 竖线,左右空格,浅灰(color_hairline #D9D2BE)
-    # - 摘要:正文样式 16px / 1.9 / 黑色
-    name_style = (
-        "color:#7A1F2B; letter-spacing:0.04em;"  # oxblood 同 DAILY BRIEF;轻字距而非宽
-    )
-    sep_style = (
-        "color:#D9D2BE; margin:0 6px;"  # 浅灰竖线,与摘要 letter-spacing 对齐
-    )
+    # 解析脚注映射:在所有 summary 文本上扫一遍,确定 LLM 旧编号 → 新编号
+    # 注意:扫描原文(含 <sup>[N]</sup>)而非 escape 后的版本,确保 <sup> 包裹的 [N] 也能识别
+    combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)
+    rewrite, footnotes = _resolve_footnote_mapping(combined_for_scan, flat_items)
+
+    # 视觉样式(写死在 Python 端,不接受外部输入)
+    name_style = "color:#7A1F2B; letter-spacing:0.04em;"
+    sep_style = "color:#D9D2BE; margin:0 6px;"
     row_style = (
         "margin:0 0 10px 0; padding:0;"
-        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',Charter,Cambria,Georgia,serif;"
+        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',"
+        "Charter,Cambria,Georgia,serif;"
         "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
     )
+
     body_html = ""
-    for cn, summary in rows:
-        if cn:
+    for cn, summary in raw_rows:
+        # cn:剥所有标签后 escape(防 <strong>)
+        safe_cn = escape_text(strip_all_tags(cn))
+        # summary:先剥标签(去掉 <sup>[N]</sup> 之外的所有 LLM HTML),
+        # 再走 render_text_with_footnotes(escape 文本 + 安全脚注锚点)
+        # 注意:strip_all_tags 会把 <sup> 也去掉,导致 <sup>[N]</sup> 中的 [N] 暴露成裸 [N],
+        # 此时再用 _FOOTNOTE_RE 匹配裸形式照样能命中,无副作用
+        clean_summary_text = strip_all_tags(summary)
+        safe_summary = _render_summary_segment(clean_summary_text, rewrite, footnotes)
+        if safe_cn:
             body_html += (
                 f'<div style="{row_style}">'
-                f'<span style="{name_style}">{cn}</span>'
+                f'<span style="{name_style}">{safe_cn}</span>'
                 f'<span style="{sep_style}">│</span>'
-                f'{summary}'
+                f'{safe_summary}'
                 "</div>"
             )
         else:
-            # 无公司名:整行作为正文(全部公司无新闻时的兜底文本)
-            body_html += f'<div style="{row_style}">{summary}</div>'
+            body_html += f'<div style="{row_style}">{safe_summary}</div>'
 
-    body_html, footnotes = _build_footnotes(body_html, flat_items)
-    logger.info("news_summarizer.ok rows=%d footnotes=%d", len(rows), len(footnotes))
+    logger.info(
+        "news_summarizer.ok rows=%d footnotes=%d (sanitized)",
+        len(raw_rows), len(footnotes),
+    )
     return CompanyNewsSummary(summary_html=body_html, footnotes=footnotes)

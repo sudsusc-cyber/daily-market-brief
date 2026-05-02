@@ -350,7 +350,11 @@
           </td>
         </tr>
         {% if company_news_summary and company_news_summary.summary_html %}
-        {# M4 LLM 公司分行简报 + 区块下方脚注列表 #}
+        {# M4 LLM 公司分行简报 + 区块下方脚注列表。
+           summary_html 由 src/processors/news_summarizer.py 经
+           src/processors/html_safe.py 净化(LLM/外部文本一律 escape,
+           URL 走 http(s) 白名单,只允许 div/span/strong/sup/a 受控标签)
+           → 这里 `| safe` 才是安全的。 #}
         <tr>
           <td style="padding:24px 24px 0 24px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
             {{ company_news_summary.summary_html | cjk_spaced | safe }}
@@ -513,7 +517,11 @@
           </td>
         </tr>
         {% if macro_news_summary and macro_news_summary.summary_html %}
-        {# M4 LLM 主题分段叙述 + 区块下方脚注 #}
+        {# M4 LLM 主题分段叙述 + 区块下方脚注。
+           summary_html 由 src/processors/macro_filter.py 经
+           src/processors/html_safe.py 净化(LLM/外部文本一律 escape,
+           URL 走 http(s) 白名单,只允许 p/span/sup/a 受控标签)
+           → 这里 `| safe` 才是安全的。 #}
         <tr>
           <td style="padding:24px 24px 0 24px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
             {{ macro_news_summary.summary_html | cjk_spaced | safe }}

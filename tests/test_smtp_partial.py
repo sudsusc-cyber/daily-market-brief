@@ -71,3 +71,66 @@ def test_all_refused_raises(monkeypatch, tmp_path) -> None:
                 subject="t",
                 html_body="<p>t</p>",
             )
+
+
+def test_partial_refusal_via_return_dict_does_not_raise(monkeypatch) -> None:
+    """sendmail() 不抛异常,但返回 dict 表示部分被拒(RFC 5321 路径)→ 视为部分成功。"""
+    from src.sender import smtp_sender
+
+    refused_dict = {"blocked@example.com": (550, b"User unknown")}
+    mock_server = MagicMock()
+    mock_server.sendmail.return_value = refused_dict   # 注意:return_value 不是 side_effect
+
+    with patch("smtplib.SMTP_SSL", return_value=mock_server):
+        monkeypatch.setattr(smtp_sender, "_resolve_via_dns", lambda *a, **k: None)
+        # 不抛异常
+        smtp_sender.send_html_email(
+            sender="me@qq.com",
+            auth_code="x",
+            recipient=["a@ok.com", "blocked@example.com", "b@ok.com"],
+            subject="t",
+            html_body="<p>t</p>",
+        )
+    assert mock_server.sendmail.called
+
+
+def test_all_refused_via_return_dict_raises(monkeypatch) -> None:
+    """sendmail() 返回 dict 涵盖所有收件人(全部被拒)→ 抛 SMTPRecipientsRefused。"""
+    from src.sender import smtp_sender
+
+    refused_dict = {
+        "a@x.com": (550, b"User unknown"),
+        "b@x.com": (550, b"User unknown"),
+    }
+    mock_server = MagicMock()
+    mock_server.sendmail.return_value = refused_dict
+
+    with patch("smtplib.SMTP_SSL", return_value=mock_server):
+        monkeypatch.setattr(smtp_sender, "_resolve_via_dns", lambda *a, **k: None)
+        with pytest.raises(smtplib.SMTPRecipientsRefused):
+            smtp_sender.send_html_email(
+                sender="me@qq.com",
+                auth_code="x",
+                recipient=["a@x.com", "b@x.com"],
+                subject="t",
+                html_body="<p>t</p>",
+            )
+
+
+def test_empty_return_dict_succeeds(monkeypatch) -> None:
+    """sendmail() 返回空 dict → 全部成功,无 warning,不抛。"""
+    from src.sender import smtp_sender
+
+    mock_server = MagicMock()
+    mock_server.sendmail.return_value = {}
+
+    with patch("smtplib.SMTP_SSL", return_value=mock_server):
+        monkeypatch.setattr(smtp_sender, "_resolve_via_dns", lambda *a, **k: None)
+        smtp_sender.send_html_email(
+            sender="me@qq.com",
+            auth_code="x",
+            recipient=["a@ok.com", "b@ok.com"],
+            subject="t",
+            html_body="<p>t</p>",
+        )
+    assert mock_server.sendmail.called
