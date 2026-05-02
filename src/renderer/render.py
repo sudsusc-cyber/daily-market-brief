@@ -21,6 +21,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.collectors.stocks import StockSignal
+from src.processors.html_safe import is_safe_url
 from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 
@@ -80,6 +81,19 @@ def _filter_metric_delta(delta: float | None, unit: str = "") -> str:
         return "—"
 
 
+def _filter_safe_href(url: str | None) -> str:
+    """Jinja 过滤器:URL 走 http(s) 白名单,不安全的(javascript: / data: / vbscript:)
+    或缺失的 → 返回 '#' 让 <a> 仍可渲染但点击无效。
+
+    用在所有不可信 URL 注入 <a href="..."> 的位置:figure / 13F / company_news /
+    macro_news 各 fallback 路径。news_summarizer / macro_filter LLM 路径已在
+    Python 端预过滤 + 包成 safe_anchor,模板侧的 safe_href 是冗余防御。
+    """
+    if is_safe_url(url):
+        return str(url).strip()
+    return "#"
+
+
 def _filter_bj_time(dt: datetime | None) -> str:
     """datetime → 北京时间 'MM-DD HH:MM' 字符串"""
     if dt is None:
@@ -103,6 +117,7 @@ def _build_env() -> Environment:
     env.filters["metric_delta"] = _filter_metric_delta
     env.filters["bj_time"] = _filter_bj_time
     env.filters["cjk_spaced"] = add_cjk_spacing
+    env.filters["safe_href"] = _filter_safe_href
     return env
 
 

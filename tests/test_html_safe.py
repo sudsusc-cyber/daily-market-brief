@@ -289,3 +289,76 @@ def test_macro_filter_strips_unknown_tags() -> None:
     assert "evil.com" not in html or "&quot;" in html  # 已 escape
     # 文本仍可见
     assert "中国经济复苏" in html
+
+
+# ────────────────────  Jinja safe_href filter(figures + fallback URL 防线)────────────────────
+
+
+def test_safe_href_filter_blocks_javascript() -> None:
+    """模板侧 safe_href 过滤器拦截 javascript: URL,即便数据层漏过滤也兜底。"""
+    from src.renderer.render import _filter_safe_href
+    assert _filter_safe_href("javascript:alert(1)") == "#"
+    assert _filter_safe_href("data:text/html,<script>") == "#"
+    assert _filter_safe_href("vbscript:msgbox") == "#"
+    assert _filter_safe_href("file:///etc/passwd") == "#"
+    assert _filter_safe_href("") == "#"
+    assert _filter_safe_href(None) == "#"
+
+
+def test_safe_href_filter_passes_https_http() -> None:
+    from src.renderer.render import _filter_safe_href
+    assert _filter_safe_href("https://example.com/x") == "https://example.com/x"
+    assert _filter_safe_href("http://example.com") == "http://example.com"
+    # strip 前后空白
+    assert _filter_safe_href("  https://x.com  ") == "https://x.com"
+
+
+def test_render_email_blocks_unsafe_url_in_figures() -> None:
+    """端到端:figure footnote URL 是 javascript: → 渲染产物不含 javascript:,
+    href 退化为 #(<a> 仍存在但点击无效)。"""
+    from datetime import datetime, timezone
+    from src.processors.figure_filter import (
+        FigureFootnote, FigureKeyPoint, FigureSummary,
+    )
+    from src.renderer.render import render_email
+
+    s = FigureSummary(person="测试", items=[
+        FigureKeyPoint(
+            text="一句话", source_url="javascript:alert(1)",
+            source_name="evil", footnote_index=1,
+        ),
+    ])
+    fn = FigureFootnote(index=1, url="javascript:alert(1)", source="evil")
+    html = render_email(
+        signals=[],
+        generated_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+        figures=[object()],  # 触发 voices 段
+        figure_summaries=[s],
+        figure_footnotes=[fn],
+    )
+    assert "javascript:" not in html
+    assert "javascript%3A" not in html  # 防 URL-encode 绕过
+
+
+def test_render_email_keeps_safe_url_in_figures() -> None:
+    from datetime import datetime, timezone
+    from src.processors.figure_filter import (
+        FigureFootnote, FigureKeyPoint, FigureSummary,
+    )
+    from src.renderer.render import render_email
+
+    s = FigureSummary(person="测试", items=[
+        FigureKeyPoint(
+            text="一句话", source_url="https://reuters.com/x",
+            source_name="Reuters", footnote_index=1,
+        ),
+    ])
+    fn = FigureFootnote(index=1, url="https://reuters.com/x", source="Reuters")
+    html = render_email(
+        signals=[],
+        generated_at=datetime(2026, 5, 3, tzinfo=timezone.utc),
+        figures=[object()],
+        figure_summaries=[s],
+        figure_footnotes=[fn],
+    )
+    assert 'href="https://reuters.com/x"' in html

@@ -260,12 +260,19 @@ def judge_relevance(
         return []
 
     payload = _format_input(quotes)
-    resp = client.chat(
-        payload,
-        task_extra=_TASK_INSTRUCTION,
-        max_tokens=600,
-        temperature=0.1,
-    )
+    try:
+        resp = client.chat(
+            payload,
+            task_extra=_TASK_INSTRUCTION,
+            max_tokens=600,
+            temperature=0.1,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "duan_filter.judge.exception exc=%r 全部丢弃,走占位逻辑(fail-safe)",
+            exc,
+        )
+        return []
     if not resp.text:
         logger.warning(
             "duan_filter.failed reason=%s 全部丢弃,走占位逻辑(fail-safe)",

@@ -37,9 +37,6 @@ class TestRegexVariants:
     def test_bare_full_width_brackets(self) -> None:
         assert _re("一段话。【6】") == [6]
 
-    def test_bare_parens_full_width(self) -> None:
-        assert _re("一段话。(7)") == [7]
-
     def test_caret_markdown(self) -> None:
         assert _re("一段话。^8^") == [8]
 
@@ -53,9 +50,28 @@ class TestRegexVariants:
         # [10]a 后跟字母 → 不匹配
         assert _re("foo[10]abc") == []
 
+    def test_no_false_positive_for_naked_half_width_parens(self) -> None:
+        """中英文里 (N) 太常见了:'iOS (14)' / '步骤 (1)' / '(3) 月度' 都是日常文本,
+        如果当成脚注会被吞掉 → 必须不匹配裸半角圆括号 (N)。"""
+        assert _re("iOS (14) 发布。") == []
+        assert _re("步骤 (1) 完成。") == []
+        assert _re("(3) 月度报告。") == []
+        # news_summarizer 同样行为
+        assert _re("iOS (14) 发布。", mod=news_summarizer) == []
+
+    def test_no_false_positive_for_naked_full_width_parens(self) -> None:
+        """全角圆括号同理 — 日常文本中常见,不当脚注。"""
+        assert _re("(图 3) 展示了趋势。") == []
+        assert _re("条款 (二) 规定。") == []
+
+    def test_sup_wrapped_parens_still_matched(self) -> None:
+        """显式 <sup>(N)</sup> / <sup>(N)</sup> 仍是脚注 —— sup 包裹语义明确,无歧义。"""
+        assert _re("结尾<sup>(7)</sup>。") == [7]
+        assert _re("结尾<sup>(8)</sup>。") == [8]
+
     def test_multiple_in_one_string(self) -> None:
-        """多个混合变体一并提取。"""
-        s = "句一<sup>[1]</sup>句二【2】句三(3)句四^4^"
+        """多个混合变体一并提取(裸圆括号已不当脚注,故用 sup 包裹形式)。"""
+        s = "句一<sup>[1]</sup>句二【2】句三<sup>(3)</sup>句四^4^"
         assert _re(s) == [1, 2, 3, 4]
 
     def test_news_summarizer_regex_same_behavior(self) -> None:
