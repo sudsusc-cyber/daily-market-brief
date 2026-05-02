@@ -1,17 +1,22 @@
-"""每日刊头图选取 — 三层降级。
+"""每日刊头图选取 — 三层降级 + 本地缓存 + inline CID 嵌入。
 
 优先级:
-  1. Pexels 白名单 (config/curated_images.json) — 按日期序数确定性选取,无网络依赖
-  2. Bing 每日壁纸 API — 5s 超时,失败静默
-  3. 本地 fallback (assets/fallback_header.jpg) — 永远成功,返回 CID
+  1. Pexels 白名单 (config/curated_images.json) — 按日期序数确定性选取
+  2. Bing 每日壁纸 API — 8s 超时
+  3. 本地 fallback (assets/fallback_header.jpg) — 永远成功
 
 返回值:
-  {"url": str, "source": "pexels" | "bing" | "local", "id": str | None}
+  {"url": "cid:header_image",
+   "source": "pexels" | "bing" | "local",
+   "id": str | None,
+   "local_path": Path}
 
-  source=="local" 时 url=="cid:header_fallback",调用方负责将
-  assets/fallback_header.jpg 作为 CID "header_fallback" 附入 MIME。
+  调用方按 cid="header_image" 把 local_path 作为 InlineImage 附入 MIME。
+  **统一走 inline 是因为 Android QQ 邮箱不会自动加载远程 <img src="https://...">**,
+  iOS / 桌面正常但 Android 用户看不到刊头图。inline CID 任何客户端都能渲染,
+  代价是邮件多 200-500 KB(可忽略)。
 
-铁律:本函数绝对不抛异常。
+铁律:本函数绝对不抛异常。下载失败 → 降级到下一层。
 """
 
 from __future__ import annotations
@@ -26,8 +31,10 @@ logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _CURATED_JSON = _PROJECT_ROOT / "config" / "curated_images.json"
-_FALLBACK_CID = "header_fallback"
-_TIMEOUT = 5
+_FALLBACK_IMAGE = _PROJECT_ROOT / "assets" / "fallback_header.jpg"
+_CACHE_DIR = _PROJECT_ROOT / "state" / "header_cache"
+_HEADER_CID = "header_image"
+_TIMEOUT = 8
 
 _SEASON_MAP = {
     1: "winter", 2: "winter",
@@ -42,6 +49,28 @@ def _pick_season(today: date) -> str:
     return _SEASON_MAP[today.month]
 
 
+def _download(url: str, dest: Path) -> Path:
+    """下载到 dest;已存在且非空 → 直接复用(免重复下载)。失败抛异常,
+    由调用方捕获并降级到下一层。"""
+    if dest.exists() and dest.stat().st_size > 0:
+        logger.info("header.cache.hit path=%s size=%d", dest.name, dest.stat().st_size)
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # ProxyHandler({}) 强制 bypass 系统代理(避免 Surge / ClashX 接管导致超时)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 daily-market-brief/1.0"},
+    )
+    with opener.open(req, timeout=_TIMEOUT) as resp:
+        data = resp.read()
+    if not data:
+        raise OSError("empty response")
+    dest.write_bytes(data)
+    logger.info("header.cache.miss path=%s size=%d", dest.name, len(data))
+    return dest
+
+
 def _tier1_pexels(today: date) -> dict:
     library = json.loads(_CURATED_JSON.read_text())
     season = _pick_season(today)
@@ -49,11 +78,19 @@ def _tier1_pexels(today: date) -> dict:
     entry = pool[today.toordinal() % len(pool)]
     sid = entry["id"]
     url = library["url_template"].replace("{id}", sid)
+    local_path = _download(url, _CACHE_DIR / f"pexels_{sid}.jpg")
     logger.info("header.pexels id=%s season=%s", sid, season)
-    return {"url": url, "source": "pexels", "id": sid}
+    return {
+        "url": f"cid:{_HEADER_CID}",
+        "source": "pexels",
+        "id": sid,
+        "local_path": local_path,
+    }
 
 
-def _tier2_bing() -> dict:
+def _tier2_bing(today: date | None = None) -> dict:
+    if today is None:
+        today = date.today()
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     api = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN"
     with opener.open(api, timeout=_TIMEOUT) as resp:
@@ -63,17 +100,28 @@ def _tier2_bing() -> dict:
     # 强制宽高参数
     if "1280" not in url:
         url = url.split("&w=")[0] + "&w=1280&h=400&rs=1&c=4"
+    local_path = _download(url, _CACHE_DIR / f"bing_{today.isoformat()}.jpg")
     logger.info("header.bing url=%s", url)
-    return {"url": url, "source": "bing", "id": None}
+    return {
+        "url": f"cid:{_HEADER_CID}",
+        "source": "bing",
+        "id": None,
+        "local_path": local_path,
+    }
 
 
 def _tier3_local() -> dict:
     logger.warning("header.fallback source=local")
-    return {"url": f"cid:{_FALLBACK_CID}", "source": "local", "id": None}
+    return {
+        "url": f"cid:{_HEADER_CID}",
+        "source": "local",
+        "id": None,
+        "local_path": _FALLBACK_IMAGE,
+    }
 
 
 def pick_header_image(today: date | None = None) -> dict:
-    """三层降级选取刊头图,永不抛异常。"""
+    """三层降级选取刊头图,永不抛异常。返回 inline CID + 本地图片路径。"""
     if today is None:
         today = date.today()
 
@@ -83,7 +131,7 @@ def pick_header_image(today: date | None = None) -> dict:
         logger.warning("header.pexels.failed error=%r", exc)
 
     try:
-        return _tier2_bing()
+        return _tier2_bing(today)
     except Exception as exc:
         logger.warning("header.bing.failed error=%r", exc)
 

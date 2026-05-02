@@ -197,12 +197,13 @@ def main() -> int:
     # ---------- 渲染 ----------
     logger.info("render")
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
-    if header["source"] == "local":
-        inline_images.append(InlineImage(
-            cid="header_fallback",
-            path=_PROJECT_ROOT / "assets" / "fallback_header.jpg",
-            subtype=None,
-        ))
+    # 刊头图统一走 inline CID(Android QQ 邮箱不会自动加载远程图,iOS/桌面正常)。
+    # header_image.pick_header_image 三层都会下载到本地并返回 local_path。
+    inline_images.append(InlineImage(
+        cid="header_image",
+        path=header["local_path"],
+        subtype=None,
+    ))
     html = render_email(
         signals=signals,
         generated_at=now_bj,
