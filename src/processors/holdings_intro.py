@@ -76,8 +76,10 @@ def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION,
-        # V4-Flash reasoning 容易吃 500-700 token,留两倍余量给最终输出
-        max_tokens=1800,
+        # V4-Flash reasoning 经常吃 500-2000 token;1800 余量在 reasoning 暴涨时
+        # 会把最终输出 token 挤到 0,导致 resp.text 为空 → 降级到 M2 静态文案。
+        # 与 subject generator 对齐到 2500,留够 reasoning + 输出双倍余量。
+        max_tokens=2500,
         temperature=0.7,
     )
     text = (resp.text or "").strip()

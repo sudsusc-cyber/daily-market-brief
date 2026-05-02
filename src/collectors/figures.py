@@ -47,16 +47,17 @@ class FigureMention:
 class FigureBundle:
     person: str  # 显示名,中文或英文
     query: str   # Google News 搜索 query
+    person_en: str = ""  # 编辑式 byline 用的英文标准写法
     items: list[FigureMention] = field(default_factory=list)
     error: str | None = None
 
 
-# 监控人物清单。第三个字段是 Google News 语言:"en" 走英文搜索,"zh" 走中文。
+# 监控人物清单。第 3 列 lang:"en" 走英文搜索,"zh" 走中文。第 4 列是 byline 用英文名。
 # 李录每日候选过少(24h 通常 0-2 条),已弃用——若以后频率上升可加回。
-FIGURES: list[tuple[str, str, str]] = [
-    ("黄仁勋", '"Jensen Huang"', "en"),
-    ("巴菲特", '"Warren Buffett"', "en"),
-    ("但斌", '"但斌"', "zh"),    # 东方港湾董事长,中文价值投资圈
+FIGURES: list[tuple[str, str, str, str]] = [
+    ("黄仁勋", '"Jensen Huang"',  "en", "Jensen Huang"),
+    ("巴菲特", '"Warren Buffett"', "en", "Warren Buffett"),
+    ("但斌",   '"但斌"',           "zh", "Dan Bin"),    # 东方港湾董事长
 ]
 
 # 规则筛选动词:英文 + 中文双语,任一命中即视为候选
@@ -179,13 +180,13 @@ def fetch_all(state_path: Path) -> list[FigureBundle]:
     new_pushed = dict(pushed)  # 本次新加入的也写入
 
     bundles: list[FigureBundle] = []
-    for person, query, lang in FIGURES:
+    for person, query, lang, name_en in FIGURES:
         try:
             raw = _fetch_google_news(query, lang=lang)
         except Exception as exc:  # noqa: BLE001
             logger.exception("figures.fetch_failed person=%s", person)
             bundles.append(FigureBundle(
-                person=person, query=query,
+                person=person, query=query, person_en=name_en,
                 error=f"{type(exc).__name__}: {exc}",
             ))
             continue
@@ -201,7 +202,7 @@ def fetch_all(state_path: Path) -> list[FigureBundle]:
             kept.append(item)
             new_pushed[h] = end_utc.isoformat()
         kept.sort(key=lambda x: x.published_at, reverse=True)
-        bundles.append(FigureBundle(person=person, query=query, items=kept))
+        bundles.append(FigureBundle(person=person, query=query, person_en=name_en, items=kept))
         logger.info("figures person=%s total=%d kept=%d", person, len(raw), len(kept))
 
     _save_pushed(state_path, new_pushed)

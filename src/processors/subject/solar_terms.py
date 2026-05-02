@@ -164,6 +164,27 @@ def _all_terms_for_year(year: int) -> list[tuple[str, date]]:
     return [(TERMS[i][0], _term_date_beijing(year, i)) for i in range(24)]
 
 
+# 季节分组(模块级常量,供 phrase 生成与季节意象 validator 复用)
+SPRING_TERMS = frozenset({"立春", "雨水", "惊蛰", "春分", "清明", "谷雨"})
+SUMMER_TERMS = frozenset({"立夏", "小满", "芒种", "夏至", "小暑", "大暑"})
+AUTUMN_TERMS = frozenset({"立秋", "处暑", "白露", "秋分", "寒露", "霜降"})
+WINTER_TERMS = frozenset({"立冬", "小雪", "大雪", "冬至", "小寒", "大寒"})
+
+
+def season_of(term: str) -> str | None:
+    """节气名 → 季节英文标签 ("spring"/"summer"/"autumn"/"winter")。
+    未知节气返回 None(供调用方决定要不要 fail-open)。"""
+    if term in SPRING_TERMS:
+        return "spring"
+    if term in SUMMER_TERMS:
+        return "summer"
+    if term in AUTUMN_TERMS:
+        return "autumn"
+    if term in WINTER_TERMS:
+        return "winter"
+    return None
+
+
 def _generate_phrase(current_name: str, days_into: int, days_to_next: int, next_name: str) -> str:
     """4 字节气短语生成规则(prompt 参考用)。
     - 节气当日(days_into <= 1):{节气}初临
@@ -175,18 +196,13 @@ def _generate_phrase(current_name: str, days_into: int, days_to_next: int, next_
         return f"{current_name}初临"
     if days_to_next <= 2:
         return f"{next_name}将至"
-    # 季节修饰
-    spring_terms = {"立春", "雨水", "惊蛰", "春分", "清明", "谷雨"}
-    summer_terms = {"立夏", "小满", "芒种", "夏至", "小暑", "大暑"}
-    autumn_terms = {"立秋", "处暑", "白露", "秋分", "寒露", "霜降"}
-    winter_terms = {"立冬", "小雪", "大雪", "冬至", "小寒", "大寒"}
-    if current_name in spring_terms:
+    if current_name in SPRING_TERMS:
         return f"{current_name}春深"
-    if current_name in summer_terms:
+    if current_name in SUMMER_TERMS:
         return f"{current_name}夏炽"
-    if current_name in autumn_terms:
+    if current_name in AUTUMN_TERMS:
         return f"{current_name}秋寒"
-    if current_name in winter_terms:
+    if current_name in WINTER_TERMS:
         return f"{current_name}冬深"
     return f"{current_name}时节"
 

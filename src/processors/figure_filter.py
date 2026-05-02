@@ -52,6 +52,10 @@ class FigureKeyPoint:
     source_url: str  # 原报道链接
     source_name: str  # 媒体名
     footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
+    # 段永平雪球回复型帖子用:原帖正文 + 作者。其他人物路径不设置,模板自动跳过。
+    # 渲染在引语之上的小字上下文,避免读者只看回复内容断章取义。
+    parent_text: str | None = None
+    parent_author: str | None = None
 
 
 @dataclass
@@ -66,6 +70,7 @@ class FigureFootnote:
 class FigureSummary:
     """单个人物的加工产物"""
     person: str
+    person_en: str = ""  # 编辑式 byline 显示用,如 "Warren Buffett"。空则模板回退到 person
     items: list[FigureKeyPoint] = field(default_factory=list)
     fallback_raw: list[FigureMention] = field(default_factory=list)  # LLM 失败时模板用
     error: str | None = None
@@ -230,17 +235,15 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
       4. Python 端再做相似度兜底
     """
     if bundle.error or not bundle.items:
-        return FigureSummary(person=bundle.person, error=bundle.error)
+        return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error)
     feed_items = bundle.items[:max_items]
-    # 规则层预筛
     qualified = [it for it in feed_items if _has_quote_marker(it)]
     logger.info(
         "figure_filter.rule_pass person=%s in=%d qualified=%d",
         bundle.person, len(feed_items), len(qualified),
     )
     if not qualified:
-        # 没有候选含直接引语 → 跳过 LLM,该人物当天**不渲染**
-        return FigureSummary(person=bundle.person)
+        return FigureSummary(person=bundle.person, person_en=bundle.person_en)
 
     payload = _format_input(qualified)
     resp = client.chat(
@@ -251,15 +254,13 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
     )
     if not resp.text:
         logger.warning("figure_filter.failed person=%s reason=%s", bundle.person, resp.error)
-        # LLM 失败:**也不渲染**(不展示原始候选,因为我们在做质量门槛)
-        return FigureSummary(person=bundle.person, error=resp.error)
+        return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=resp.error)
     kept = _parse_output(resp.text, qualified)
     logger.info(
         "figure_filter.ok person=%s qualified=%d kept=%d",
         bundle.person, len(qualified), len(kept),
     )
-    # 注意:不再用 fallback_raw 展示原始候选(质量门槛优先于"展示什么")
-    return FigureSummary(person=bundle.person, items=kept)
+    return FigureSummary(person=bundle.person, person_en=bundle.person_en, items=kept)
 
 
 def filter_all(
