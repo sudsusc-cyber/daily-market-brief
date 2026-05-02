@@ -440,7 +440,7 @@
            - byline 英文署名放该作者所有引语之后(右对齐 + 36px 实线短横,
              用 inline-block border 画线,避免 —— 字符在 letter-spacing 下被撕开)
            - 回复型帖子:原帖卡片在前(metadata 行 + 1px hairline 左竖引用块),
-             段永平回复在后(2px oxblood + serif italic),回复多缩进 18px
+             主回复在后(2px oxblood + serif italic),回复多缩进 18px
              与原帖卡片错开,形成"上下文 → 回复"的层级对话
            - 引用编号 [N] 维持原蓝色超链接,与全文其它脚注一致 #}
         {% for f in figure_summaries %}
@@ -450,7 +450,7 @@
             {% for kp in f.items %}
             {%- if kp.parent_text %}
             {# Quote-reply 卡片:metadata 顶行 + 暗灰引用块。
-               不带 oxblood,视觉上明显比下方"段永平回复"轻一档,提示这只是上下文。
+               不带 oxblood,视觉上明显比下方"主回复"轻一档,提示这只是上下文。
                metadata 行结构:label(原帖) + byline(@作者(平台)),无中点分隔符,
                靠字号 / 颜色 / 间距三层差异建立信息层级。 #}
             <div style="margin:0 0 6px 14px; font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif; line-height:1.5;">

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import UTC
 from pathlib import Path
 
 from src.collectors import (
@@ -36,11 +35,9 @@ from src.collectors import (
     macro_news,
     sentiment,
     stocks,
-    xueqiu_duan,
 )
 from src.config import HOLDINGS, Holding
 from src.processors import (
-    duan_filter,
     figure_filter,
     holdings_intro,
     macro_filter,
@@ -48,7 +45,6 @@ from src.processors import (
     sentiment_judge,
     translator,
 )
-from src.processors.figure_filter import FigureKeyPoint, FigureSummary
 from src.processors.llm_client import LLMClient
 from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
@@ -60,10 +56,6 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _LOGOS_DIR = _PROJECT_ROOT / "assets" / "logos"
 _STATE_DIR = _PROJECT_ROOT / "state"
-# 段永平模块独立状态目录(.state),与既有 state/ 完全隔离,保证纯增量
-_DUAN_STATE_DIR = _PROJECT_ROOT / ".state"
-_BUILD_DIR = _PROJECT_ROOT / "build"
-_VOICES_JSON = _BUILD_DIR / "voices.json"
 
 
 def _translate_all_bundles(
@@ -83,28 +75,6 @@ def _translate_all_bundles(
         titles_to_translate.extend(m.items[:5])
     if titles_to_translate:
         translator.translate_in_place_news(titles_to_translate, client=client)
-
-
-def _duan_summary_from_quotes(quotes: list[xueqiu_duan.DuanQuote]) -> FigureSummary:
-    """段永平雪球短文 → FigureSummary,完全绕过 figure_filter LLM 通道。
-
-    text 字段直接用 collector 输出的纯文本(已 HTML 清洗 + 截断 + 长度过滤),
-    没有任何 LLM 改写步骤,确保「关键发言」段呈现的是雪球原话。
-    source_url 指向原帖,模板渲染时会以脚注 [N] 形式给出 —— 与黄/巴/但等量齐观。
-    回复型帖子的 parent_text/parent_author 透传给 FigureKeyPoint,模板自动渲染
-    在段永平正文之上,防止读者断章取义。
-    """
-    items = [
-        FigureKeyPoint(
-            text=q.text,
-            source_url=q.url,
-            source_name="雪球",
-            parent_text=q.parent_text,
-            parent_author=q.parent_author,
-        )
-        for q in quotes
-    ]
-    return FigureSummary(person="段永平", person_en="Duan Yongping", items=items)
 
 
 def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[InlineImage]]:
@@ -175,41 +145,6 @@ def main() -> int:
     logger.info("collect.figures")
     fig_bundles = figures.fetch_all(state_path=_STATE_DIR / "pushed_figures.json")
 
-    # 段永平雪球抓取(纯增量模块):
-    # - 异常一律吞掉,绝不阻断邮件发送
-    # - 状态更新延迟到邮件发送成功之后(见文末 commit_state 调用)
-    # - duan_fetch.quotes 是全部 parsed,用于推进 last_seen(避免被判 no 的帖子下次重判)
-    # - duan_quotes_relevant 见后文 LLM 相关性筛选,只它进 voices.json 与「关键发言」段
-    # - duan_fetch 也用于 update_health(),把抓取健康状态持久化到 .state/duan_health.json
-    logger.info("collect.xueqiu_duan")
-    duan_uid = (os.environ.get("DUAN_USER_ID") or "").strip()
-    duan_token = (os.environ.get("XQ_A_TOKEN") or "").strip() or None
-    try:
-        duan_fetch = xueqiu_duan.fetch_new_quotes(
-            uid=duan_uid, token=duan_token, state_dir=_DUAN_STATE_DIR,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("xueqiu_duan.unexpected exc=%r 视为空,继续主流程", exc)
-        duan_fetch = xueqiu_duan.FetchResult(
-            quotes=[], api_failed=True, error=f"{type(exc).__name__}: {exc}",
-        )
-    duan_quotes_all = duan_fetch.quotes
-    # 健康状态立即更新(邮件是否成功不影响"抓取是否成功"的事实)
-    try:
-        duan_health = xueqiu_duan.update_health(_DUAN_STATE_DIR, duan_fetch)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("xueqiu_duan.health_update_failed exc=%r", exc)
-        duan_health = xueqiu_duan.HealthState()
-    duan_alerts = xueqiu_duan.compute_alerts(duan_health)
-    if duan_alerts:
-        for a in duan_alerts:
-            logger.warning("xueqiu_duan.alert %s", a)
-    logger.info(
-        "xueqiu_duan.collected count=%d api_failed=%s empty_streak=%d",
-        len(duan_quotes_all), duan_fetch.api_failed,
-        duan_health.consecutive_empty_returns,
-    )
-
     logger.info("collect.buffett_13f")
     buffett_bundle = buffett_13f.fetch(state_path=_STATE_DIR / "last_13f.json")
 
@@ -240,38 +175,6 @@ def main() -> int:
     figure_summaries = [f for f in figure_summaries if f.items]
     if len(figure_summaries) < _before:
         logger.info("figure_filter.dropped_silent count=%d", _before - len(figure_summaries))
-    # 段永平相关性筛选:LLM 仅做 yes/no 判定,绝不改写段永平正文。
-    # - 只投资 / 公司 / 商业 / 行业相关条目保留
-    # - 日常闲聊(遛狗 / 打球 / 家事)一律丢弃
-    # - LLM 失败时 fail-safe 返回空,章节走原占位逻辑
-    duan_quotes_relevant: list[xueqiu_duan.DuanQuote] = []
-    if duan_quotes_all:
-        try:
-            duan_quotes_relevant = duan_filter.judge_relevance(duan_quotes_all, client=llm)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("duan_filter.unexpected exc=%r 视为空,主流程继续", exc)
-            duan_quotes_relevant = []
-    # 原帖上下文 LLM 压缩:对回复型帖子,把 parent_text 替换成 ≤30 字的极短摘要,
-    # 避免占用「关键发言」过多版面。段永平本人的 .text 字段不动,保持原文。
-    if duan_quotes_relevant:
-        try:
-            duan_quotes_relevant = duan_filter.summarize_parents(
-                duan_quotes_relevant, client=llm,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("duan_filter.parent_summary_unexpected exc=%r 走原 parent_text", exc)
-    # voices.json 写入"展示用"的相关条目(便于诊断邮件实际呈现内容)
-    try:
-        xueqiu_duan.write_voices_json(_VOICES_JSON, duan_quotes_relevant)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("xueqiu_duan.voices_write_failed exc=%r", exc)
-    # 注入「关键发言」段:仅相关条目;为空时章节走原沉默 / 其他人物逻辑,完全不受影响
-    if duan_quotes_relevant:
-        figure_summaries.append(_duan_summary_from_quotes(duan_quotes_relevant))
-        logger.info(
-            "xueqiu_duan.injected items=%d (filtered from %d)",
-            len(duan_quotes_relevant), len(duan_quotes_all),
-        )
     # 全员沉默时:LLM 写一句古典韵味的占位语
     figure_silence_note = None
     figure_footnotes = []
@@ -328,7 +231,6 @@ def main() -> int:
         macro_news=macro_bundles,
         macro_news_summary=macro_news_summary,
         buffett_13f=buffett_bundle,
-        system_alerts=duan_alerts,
     )
 
     # ---------- 主题生成(M5.11:DeepSeek 8 字两段四言古典对仗) ----------
@@ -357,19 +259,6 @@ def main() -> int:
         html_body=html,
         inline_images=inline_images,
     )
-
-    # ---------- 段永平状态提交(仅在邮件发送成功后) ----------
-    # 关键:用 duan_quotes_all(全部 parsed)推进 last_seen,而非 relevant 子集 ——
-    # 否则被相关性筛选丢弃的帖子下次还会再被判一次,白烧 token
-    try:
-        from datetime import datetime as _dt
-        xueqiu_duan.commit_state(
-            _DUAN_STATE_DIR,
-            duan_quotes_all,
-            sent_at=_dt.now(tz=UTC),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("xueqiu_duan.commit_state_failed exc=%r", exc)
 
     logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0

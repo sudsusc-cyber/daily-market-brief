@@ -40,8 +40,6 @@ jobs:
       QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
       QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
       EMAIL_RECIPIENT:  ${{ secrets.EMAIL_RECIPIENT }}
-      DUAN_USER_ID:     ${{ secrets.DUAN_USER_ID }}
-      XQ_A_TOKEN:       ${{ secrets.XQ_A_TOKEN }}
       FORCE_SEND:       ${{ github.event.inputs.force_send || 'false' }}
       PYTHONPATH:       .
       # GH 自动注入,用于双触发幂等性查询(已发过就跳过)
@@ -67,10 +65,7 @@ jobs:
       #   - state/subject_cache.json      (主题日内幂等缓存)
       #   - state/subject_generation.log  (主题生成审计日志)
       #   - state/header_cache/           (刊头图本地缓存,避免 Pexels 重复请求)
-      #   - .state/duan_last_seen.json    (段永平雪球已见 id 下限)
-      #   - .state/last_mail_sent.json    (段永平时间下限)
-      #   - .state/duan_health.json       (健康监控连续 streak)
-      # 用 actions/cache 把这两个目录跨 run 持久化。
+      # 用 actions/cache 把 state/ 跨 run 持久化。
       # cache key 用 run_id 唯一(每次 save 都成功),restore-keys 用前缀回退到最近一次。
       - name: Restore state from previous run
         uses: actions/cache/restore@v4
@@ -78,7 +73,6 @@ jobs:
         with:
           path: |
             state
-            .state
           key: daily-state-${{ github.run_id }}
           restore-keys: |
             daily-state-
@@ -94,5 +88,4 @@ jobs:
         with:
           path: |
             state
-            .state
           key: daily-state-${{ github.run_id }}
