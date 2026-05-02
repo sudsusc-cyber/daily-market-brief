@@ -147,11 +147,17 @@ def _load_pushed(state_path: Path) -> dict[str, str]:
 
 
 def _save_pushed(state_path: Path, data: dict[str, str]) -> None:
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
+    """原子写入 + 失败容错:磁盘满 / 权限问题不应阻断 fetch_all 主流程。"""
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+        tmp.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        tmp.replace(state_path)
+    except OSError as exc:
+        logger.warning("pushed_figures.save_failed exc=%s; 7 天去重本轮失效,主流程继续", exc)
 
 
 def _purge_expired(pushed: dict[str, str], now: datetime, days: int = 7) -> dict[str, str]:

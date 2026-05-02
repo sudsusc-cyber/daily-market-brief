@@ -90,7 +90,7 @@
           <td style="padding:0; line-height:0; font-size:0; border-bottom:2px solid {{ color_accent }};">
             <img src="{{ header_image_url }}"
                  width="640" height="320"
-                 alt=""
+                 alt="刊头图"
                  style="display:block; width:100%; max-width:640px; height:auto; border:0; line-height:0;" />
           </td>
         </tr>
@@ -210,7 +210,7 @@
                       <tr>
                         <td valign="middle" width="36" style="padding-right:12px;">
                           {% if has_logo %}
-                          <img src="cid:{{ logo_cids[s.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
+                          <img src="cid:{{ logo_cids[s.holding.ticker] }}" width="28" height="28" alt="{{ s.holding.ticker }}" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
                           {% else %}
                           <div style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ s.holding.ticker[:3] }}</div>
                           {% endif %}
@@ -381,7 +381,7 @@
               <tr>
                 <td valign="middle" width="36" style="padding-right:12px;">
                   {% if has_logo %}
-                  <img src="cid:{{ logo_cids[bundle.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
+                  <img src="cid:{{ logo_cids[bundle.holding.ticker] }}" width="28" height="28" alt="{{ bundle.holding.ticker }}" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
                   {% else %}
                   <div style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ bundle.holding.ticker[:3] }}</div>
                   {% endif %}

@@ -35,6 +35,7 @@ _FALLBACK_IMAGE = _PROJECT_ROOT / "assets" / "fallback_header.jpg"
 _CACHE_DIR = _PROJECT_ROOT / "state" / "header_cache"
 _HEADER_CID = "header_image"
 _TIMEOUT = 8
+_BING_CACHE_KEEP_DAYS = 30  # bing_<date>.jpg 每天新增,超过 N 天删除以防 actions/cache 膨胀
 
 _SEASON_MAP = {
     1: "winter", 2: "winter",
@@ -120,10 +121,31 @@ def _tier3_local() -> dict:
     }
 
 
+def _purge_old_bing_cache(today: date, keep_days: int = _BING_CACHE_KEEP_DAYS) -> None:
+    """清理超过 keep_days 的 bing_<YYYY-MM-DD>.jpg。
+
+    Pexels 文件不动(库 ID 有限,会复用)。失败仅 warning,不阻断主流程。
+    """
+    if not _CACHE_DIR.exists():
+        return
+    cutoff = today.toordinal() - keep_days
+    for f in _CACHE_DIR.glob("bing_*.jpg"):
+        try:
+            date_str = f.stem.removeprefix("bing_")
+            file_date = date.fromisoformat(date_str)
+            if file_date.toordinal() < cutoff:
+                f.unlink()
+                logger.info("header.cache.purged path=%s", f.name)
+        except (ValueError, OSError) as exc:
+            logger.warning("header.cache.purge_failed path=%s exc=%s", f.name, exc)
+
+
 def pick_header_image(today: date | None = None) -> dict:
     """三层降级选取刊头图,永不抛异常。返回 inline CID + 本地图片路径。"""
     if today is None:
         today = date.today()
+
+    _purge_old_bing_cache(today)
 
     try:
         return _tier1_pexels(today)

@@ -107,8 +107,10 @@ def _load_last_seen(state_path: Path) -> str | None:
 
 
 def _save_last_seen(state_path: Path, filing: Filing13F, first_seen_at: datetime) -> None:
+    """原子写入(.tmp + replace),避免并发 / 崩溃时 state 文件损坏。"""
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
+    tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+    tmp.write_text(
         json.dumps({
             "accession_no": filing.accession_no,
             "filed_at": filing.filed_at.isoformat(),
@@ -117,6 +119,7 @@ def _save_last_seen(state_path: Path, filing: Filing13F, first_seen_at: datetime
         }, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    tmp.replace(state_path)
 
 
 def fetch(state_path: Path, display_window_days: int = 7) -> BuffettBundle:
