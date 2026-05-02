@@ -1,5 +1,5 @@
 """一次性脚本:用 mock 数据渲染完整邮件(头图 + 持仓表格 + logo),
-单独发到 911425759@qq.com,验证 Android QQ 邮箱里:
+发到 TEST_RECIPIENT(或 EMAIL_RECIPIENT 第一个地址),验证 Android QQ 邮箱里:
   - 头图能否显示(inline CID 修复)
   - 持仓表格里 ticker / 公司名是否被压成一字一行(white-space:nowrap 修复)
 
@@ -7,6 +7,7 @@
 不影响 idempotency 状态。
 
 用法(从 worktree 跑):
+    export TEST_RECIPIENT=xxx@qq.com   # 必须,避免把私人收件人写进公开脚本
     uv run python scripts/send_test_email.py
 """
 
@@ -103,7 +104,12 @@ def _build_logos() -> tuple[dict[str, str], list[InlineImage]]:
 def main() -> int:
     sender = os.environ["QQ_EMAIL_ADDRESS"]
     auth_code = os.environ["QQ_EMAIL_AUTH_CODE"]
-    recipient = "911425759@qq.com"
+    recipient = (
+        os.environ.get("TEST_RECIPIENT")
+        or (os.environ.get("EMAIL_RECIPIENT", "").split(",")[0].strip() or None)
+    )
+    if not recipient:
+        sys.exit("请设置 TEST_RECIPIENT 或 EMAIL_RECIPIENT 环境变量")
 
     now_bj = datetime.now(ZoneInfo("Asia/Shanghai"))
 

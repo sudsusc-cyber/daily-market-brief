@@ -161,7 +161,7 @@ Berkshire 13F atom 条目数:10
 
 **样例输出**:
 ```text
-已发送 1057971878@qq.com → 1057971878@qq.com
+已发送 <redacted>@qq.com → <redacted>@qq.com
 ```
 
 ## 验收标准对照(PLAN.md 第 7 节)

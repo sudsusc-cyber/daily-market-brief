@@ -53,7 +53,14 @@ from src.sender.smtp_sender import InlineImage, send_html_email  # noqa: E402
 
 _LOGOS_DIR = _WORKTREE_ROOT / "assets" / "logos"
 
-RECIPIENT = "1057971878@qq.com"
+# 收件人从环境变量读取,避免把私人 QQ 号硬编码到公开仓库。
+# 用法:export TEST_RECIPIENT=xxx@qq.com 后再跑;未设时 fallback 到 EMAIL_RECIPIENT(逗号分隔取第一个)。
+RECIPIENT = (
+    os.environ.get("TEST_RECIPIENT")
+    or (os.environ.get("EMAIL_RECIPIENT", "").split(",")[0].strip() or None)
+)
+if not RECIPIENT:
+    sys.exit("请设置 TEST_RECIPIENT 或 EMAIL_RECIPIENT 环境变量")
 
 
 def _mock_signals() -> list[StockSignal]:

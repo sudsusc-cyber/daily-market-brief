@@ -1,9 +1,10 @@
-"""一次性脚本:发一封极简的测试邮件给 911425759@qq.com,只包含刊头图。
+"""一次性脚本:发一封极简的测试邮件,只包含刊头图。
 
 用途:验证 Android QQ 邮箱能否显示 inline-CID 头图(原本 Pexels 远程 URL 不显示)。
 不影响 idempotency 状态(不写 already_sent_today),不调 LLM,不消耗 token。
 
 用法(从 worktree 跑):
+    export TEST_RECIPIENT=xxx@qq.com   # 必须,避免把私人收件人写进公开脚本
     uv run python scripts/send_header_test.py
 
 注意:本脚本只是验证用,合并到 main 后可删,留作历史参考亦可。
@@ -95,7 +96,12 @@ def _build_html(today_str: str, source: str, sid: str | None) -> str:
 def main() -> int:
     sender = os.environ["QQ_EMAIL_ADDRESS"]
     auth_code = os.environ["QQ_EMAIL_AUTH_CODE"]
-    recipient = "911425759@qq.com"
+    recipient = (
+        os.environ.get("TEST_RECIPIENT")
+        or (os.environ.get("EMAIL_RECIPIENT", "").split(",")[0].strip() or None)
+    )
+    if not recipient:
+        sys.exit("请设置 TEST_RECIPIENT 或 EMAIL_RECIPIENT 环境变量")
 
     now_bj = datetime.now(ZoneInfo("Asia/Shanghai"))
     today_str = now_bj.strftime("%Y-%m-%d %H:%M:%S BJT")
