@@ -102,13 +102,12 @@ class FetchResult:
 # ----------------------------------------------------------------------
 # HTTP 抓取
 # ----------------------------------------------------------------------
-@retry(max_attempts=3, base_delay=5.0, backoff=2.0, jitter=0.0)
+@retry(max_attempts=3, base_delay=5.0, backoff=1.0, jitter=0.0)
 def _fetch_timeline(uid: str, token: str | None) -> list[dict]:
-    """单次拉取雪球 timeline。失败重试 2 次,指数退避 5s / 10s。
+    """单次拉取雪球 timeline。失败重试 2 次,固定间隔 5s。
 
     返回原始 statuses 列表(雪球 API 返回结构是 {"statuses":[...]})。
     无 token 也尝试请求,但雪球通常会返回空或重定向。
-    退避用指数(backoff=2.0)避免短时密集重试触发雪球更长时间封禁。
     """
     url = f"{XUEQIU_API_BASE}?user_id={uid}&count={DEFAULT_FETCH_COUNT}"
     req = urllib.request.Request(url)
