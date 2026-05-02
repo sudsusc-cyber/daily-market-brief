@@ -160,7 +160,21 @@ def send_html_email(
             socket.getaddrinfo = _orig_getaddrinfo
     try:
         server.login(sender, auth_code)
-        server.sendmail(sender, recipients, msg.as_string())
+        try:
+            server.sendmail(sender, recipients, msg.as_string())
+        except smtplib.SMTPRecipientsRefused as exc:
+            # 部分收件人被拒(QQ 偶发屏蔽某地址)。已接受的收件人 SMTP 服务器
+            # 已经收到邮件,本次视为"部分成功":记录被拒清单但不抛异常,避免
+            # 下次幂等重试导致已收到的人收到第二封。
+            refused = list(exc.recipients.keys())
+            accepted = [r for r in recipients if r not in refused]
+            logger.warning(
+                "smtp_send.partial accepted=%s refused=%s",
+                accepted, refused,
+            )
+            if not accepted:
+                # 全部被拒 → 真失败,抛出
+                raise
     finally:
         try:
             server.quit()

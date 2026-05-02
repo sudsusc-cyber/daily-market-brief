@@ -109,7 +109,7 @@ def main() -> int:
     # ---------- 节假日预检(M6;cron 仍按周二-周六触发,但美股节假日要跳过) ----------
     import os
     from src.utils.holidays import should_send_today
-    if os.environ.get("FORCE_SEND", "").lower() not in ("1", "true"):
+    if os.environ.get("FORCE_SEND", "").strip().lower() not in ("1", "true"):
         ok, reason = should_send_today(now_bj.date())
         logger.info("holidays.check ok=%s reason=%s", ok, reason)
         if not ok:
@@ -117,7 +117,7 @@ def main() -> int:
             return 0
 
     # ---------- 幂等性预检(双 cron 触发时,后触发的若发现今天已发过 → 跳过) ----------
-    if os.environ.get("FORCE_SEND", "").lower() not in ("1", "true"):
+    if os.environ.get("FORCE_SEND", "").strip().lower() not in ("1", "true"):
         from src.utils.idempotency import already_sent_today
         if already_sent_today():
             logger.info("main.skipped reason=今日已通过另一次 cron 成功发送,跳过双触发")
