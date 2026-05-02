@@ -52,7 +52,7 @@ class FigureKeyPoint:
     source_url: str  # 原报道链接
     source_name: str  # 媒体名
     footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
-    # 段永平雪球回复型帖子用:原帖正文 + 作者。其他人物路径不设置,模板自动跳过。
+    # 回复型帖子用:原帖正文 + 作者。无回复上下文时不设置,模板自动跳过。
     # 渲染在引语之上的小字上下文,避免读者只看回复内容断章取义。
     parent_text: str | None = None
     parent_author: str | None = None

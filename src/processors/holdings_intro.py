@@ -26,7 +26,7 @@ _TASK_INSTRUCTION = """\
 (60-110 字,1-2 句),作为晨报「持仓信号」章节的首句。
 
 【风格基调(必读)】
-- 取法 Berkshire 致股东信 / Howard Marks《Memo to Oaktree Clients》/ 段永平投资问答 /
+- 取法 Berkshire 致股东信 / Howard Marks《Memo to Oaktree Clients》/
   芒格《穷查理宝典》—— 那种节制、洗练、有古典文气、读完让人回味的语调
 - 可以化用古典意象、诗句意境、东西方哲学命题(如"潮水退去""时间的复利""逆水行舟"
   "祸福相倚""大智若愚""曲突徙薪"等),但**不要直接引用名句**
