@@ -22,13 +22,24 @@ def test_local_run_returns_false(monkeypatch) -> None:
     assert already_sent_today() is False
 
 
-def test_workflow_dispatch_skips_check(monkeypatch) -> None:
-    """workflow_dispatch 手动触发不参与幂等(便于调试)"""
+def test_workflow_dispatch_also_dedups(monkeypatch) -> None:
+    """workflow_dispatch 也参与幂等检查 — 避免 cron-job.org 外部触发 + GH schedule 兜底双发。
+
+    当外部触发器(cron-job.org → workflow_dispatch)调用时,如果当日已有成功
+    run(无论是 schedule 还是 workflow_dispatch),应当跳过本次。
+    """
     _clean_env(monkeypatch)
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
-    assert already_sent_today() is False
+    monkeypatch.setenv("GH_RUN_ID", "999")  # 当前 run
+
+    today = idempotency._today_utc_iso()
+    _mock_api_response(monkeypatch, [
+        # 别的 run(GH schedule 兜底先成功了),今天成功
+        {"id": 100, "conclusion": "success", "created_at": f"{today}T22:30:00Z"},
+    ])
+    assert already_sent_today() is True
 
 
 def test_api_failure_returns_false(monkeypatch) -> None:
