@@ -1,0 +1,40 @@
+name: monitor-daily-brief
+
+# 监控:每日 BJT 8:30 检查 daily.yml 是否有今日 run。
+#   - 主触发:cron-job.org 调 workflow_dispatch(秒级精度)
+#   - 兜底:GH schedule(BJT 8:30 周二-周六,可能延迟)
+# 检查不通过 → 发告警邮件给收件人。
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 0 * * 2-6"   # UTC 0:30 = BJT 8:30 周二-周六
+
+permissions:
+  contents: read
+  actions: read   # 查询 daily.yml 的 workflow runs 必需
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      QQ_EMAIL_ADDRESS:    ${{ secrets.QQ_EMAIL_ADDRESS }}
+      QQ_EMAIL_AUTH_CODE:  ${{ secrets.QQ_EMAIL_AUTH_CODE }}
+      EMAIL_RECIPIENT:     ${{ secrets.EMAIL_RECIPIENT }}
+      GH_TOKEN:            ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO:             ${{ github.repository }}
+      PYTHONPATH:          .
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run monitor
+        run: uv run python scripts/monitor.py
