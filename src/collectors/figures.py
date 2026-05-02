@@ -24,7 +24,7 @@ import logging
 import re
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from src.utils.dates import last_24h_window, to_beijing
@@ -85,7 +85,7 @@ def _fetch_google_news(query: str, lang: str = "en") -> list[FigureMention]:
         pp = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
         if not pp:
             continue
-        pub = datetime(*pp[:6], tzinfo=timezone.utc)
+        pub = datetime(*pp[:6], tzinfo=UTC)
         title = str(getattr(e, "title", "") or "").strip()
         snippet = str(getattr(e, "summary", "") or "").strip()
         items.append(FigureMention(
@@ -108,7 +108,7 @@ def _content_hash(person: str, item: FigureMention) -> str:
     title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
     # 截前 80 字符,避免过长 title 因尾部差异错过去重
     title = title[:80]
-    h = hashlib.sha1(f"{person}|{title}".encode("utf-8")).hexdigest()
+    h = hashlib.sha1(f"{person}|{title}".encode()).hexdigest()
     return h[:16]
 
 
@@ -131,9 +131,7 @@ def _passes_first_filter(item: FigureMention) -> bool:
     text = f"{item.title}\n{item.snippet}"
     if not _VERB_RE.search(text):
         return False
-    if _HISTORICAL_YEAR_RE.search(text):
-        return False
-    return True
+    return not _HISTORICAL_YEAR_RE.search(text)
 
 
 # ---------- 状态持久化(7 天去重) ----------
@@ -163,7 +161,7 @@ def _purge_expired(pushed: dict[str, str], now: datetime, days: int = 7) -> dict
         try:
             ts = datetime.fromisoformat(v)
             if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
+                ts = ts.replace(tzinfo=UTC)
         except ValueError:
             continue
         if ts >= cutoff:

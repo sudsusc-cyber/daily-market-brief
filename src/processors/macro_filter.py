@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
 from src.processors.html_safe import (

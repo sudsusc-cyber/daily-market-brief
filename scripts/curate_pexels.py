@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 import re
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -346,7 +346,8 @@ def is_blocked(slug: str) -> tuple[bool, str]:
 
 
 # 显式禁用代理(本机 HTTPS_PROXY 指向不通 Pexels 的代理)
-import os
+import os  # noqa: E402
+
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
     os.environ.pop(_k, None)
 _NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -359,7 +360,7 @@ def head_check(photo_id: str, timeout: int = 12, retries: int = 2) -> tuple[bool
         f"?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop"
     )
     last_code = 0
-    for attempt in range(retries + 1):
+    for _attempt in range(retries + 1):
         req = urllib.request.Request(
             url,
             method="HEAD",

@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
+
+import ephem  # 纯 Python 天文计算库,VSOP87 完整级数,精度约 1 秒
 
 # 24 节气表:(名称, 太阳黄经, 大致日期 month-day ±2 天)
 # 黄经从 315°(立春)起按 15° 递增,跨 360°/0° 边界(冬至 270° → 小寒 285° → 大寒 300° → 立春 315°)
@@ -60,8 +62,8 @@ def _date_to_jd(year: int, month: int, day: float) -> float:
     if month <= 2:
         year -= 1
         month += 12
-    A = year // 100
-    B = 2 - A + A // 4  # 格里高利历修正
+    A = year // 100  # noqa: N806
+    B = 2 - A + A // 4  # noqa: N806  # 格里高利历修正
     return (
         math.floor(365.25 * (year + 4716))
         + math.floor(30.6001 * (month + 1))
@@ -73,17 +75,17 @@ def _jd_to_date(jd: float) -> tuple[int, int, int]:
     """儒略日转公历(年, 月, 日;丢小时部分)。Meeus eq. 7.4。
     结果取北京时间(JD + 8h 时区偏移由调用方处理)。"""
     jd_plus = jd + 0.5
-    Z = math.floor(jd_plus)
-    F = jd_plus - Z
+    Z = math.floor(jd_plus)  # noqa: N806
+    F = jd_plus - Z  # noqa: N806
     if Z < 2299161:
-        A = Z
+        A = Z  # noqa: N806
     else:
         alpha = math.floor((Z - 1867216.25) / 36524.25)
-        A = Z + 1 + alpha - alpha // 4
-    B = A + 1524
-    C = math.floor((B - 122.1) / 365.25)
-    D = math.floor(365.25 * C)
-    E = math.floor((B - D) / 30.6001)
+        A = Z + 1 + alpha - alpha // 4  # noqa: N806
+    B = A + 1524  # noqa: N806
+    C = math.floor((B - 122.1) / 365.25)  # noqa: N806
+    D = math.floor(365.25 * C)  # noqa: N806
+    E = math.floor((B - D) / 30.6001)  # noqa: N806
     day_real = B - D - math.floor(30.6001 * E) + F
     month = E - 1 if E < 14 else E - 13
     year = C - 4716 if month > 2 else C - 4715
@@ -91,8 +93,6 @@ def _jd_to_date(jd: float) -> tuple[int, int, int]:
 
 
 # ───────────────  太阳黄经公式  ───────────────
-
-import ephem  # 纯 Python 天文计算库,VSOP87 完整级数,精度约 1 秒
 
 
 def _solar_longitude(jd: float) -> float:

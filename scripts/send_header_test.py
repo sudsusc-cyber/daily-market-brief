@@ -23,12 +23,7 @@ _HERE = Path(__file__).resolve()
 _WORKTREE_ROOT = _HERE.parent.parent  # 本脚本所在的项目根(worktree 或主项目)
 _ENV_FILE = _WORKTREE_ROOT / ".env"
 if not _ENV_FILE.exists():
-    # worktree 内通常没有 .env,回到主项目根
-    main_root = Path("/Users/zhukaiyuan/Documents/projects/daily-market-brief")
-    _ENV_FILE = main_root / ".env"
-
-if not _ENV_FILE.exists():
-    sys.exit(f"找不到 .env: {_ENV_FILE}")
+    sys.exit(f"找不到 .env: {_ENV_FILE}（请在项目根 {_WORKTREE_ROOT} 创建 .env）")
 
 # 手动加载 .env(避免 pydantic-settings 的 cwd 依赖)
 for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():

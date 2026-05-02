@@ -5,9 +5,19 @@ from __future__ import annotations
 from datetime import date
 
 from src.processors.subject.extractor import (
-    MoodInfo, SignalSummary, SubjectData,
+    MoodInfo,
+    SignalSummary,
+    SubjectData,
 )
-from src.processors.subject.fallback import static_fallback
+from src.processors.subject.fallback import (
+    COLD_VARIANTS,
+    EXTREME_FEAR_VARIANTS,
+    EXTREME_GREED_VARIANTS,
+    LUMP_SUM_VARIANTS,
+    NEUTRAL_VARIANTS,
+    WARM_VARIANTS,
+    static_fallback,
+)
 from src.processors.subject.solar_terms import get_solar_term_context
 from src.processors.subject.validator import is_valid
 
@@ -26,11 +36,7 @@ def _data(*, dca=0, lump=0, mood_label="中性", today=date(2026, 5, 1)) -> Subj
     )
 
 
-from src.processors.subject.fallback import (
-    LUMP_SUM_VARIANTS, MULTI_DCA_VARIANTS, SINGLE_DCA_VARIANTS,
-    EXTREME_GREED_VARIANTS, EXTREME_FEAR_VARIANTS,
-    WARM_VARIANTS, COLD_VARIANTS, NEUTRAL_VARIANTS,
-)
+
 
 
 class TestFallbackPriority:

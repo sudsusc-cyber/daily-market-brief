@@ -5,10 +5,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
-from src.collectors.figures import FigureBundle, FigureMention
+from src.collectors.figures import FigureMention
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
 from src.collectors.sentiment import SentimentBundle, SentimentMetric
 from src.collectors.stocks import StockSignal  # noqa: F401  确保 import 不破坏
@@ -24,7 +24,7 @@ from src.processors.translator import _is_chinese, _parse_lines
 
 
 def _utc(year: int, month: int, day: int) -> datetime:
-    return datetime(year, month, day, 12, 0, tzinfo=timezone.utc)
+    return datetime(year, month, day, 12, 0, tzinfo=UTC)
 
 
 class TestTranslator:

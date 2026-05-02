@@ -15,6 +15,7 @@ URL 模板(本脚本使用):
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import struct
 import subprocess
@@ -101,19 +102,15 @@ def fetch_one(domain: str, dest: Path, override_url: str | None = None) -> tuple
 
     # 归一化尺寸:用系统 sips 缩到最长边 ≤ SIZE(128)
     if shutil.which("sips"):
-        try:
+        with contextlib.suppress(Exception):
             subprocess.run(
                 ["sips", "-Z", str(SIZE), str(dest)],
                 check=False, capture_output=True, timeout=10,
             )
-        except Exception:  # noqa: BLE001 — normalize 失败不影响 fetch
-            pass
 
     # 剥离非必要 PNG chunks(eXIf 等会导致微信 webview 在 I 区块不渲染)
-    try:
+    with contextlib.suppress(Exception):
         _strip_png_metadata(dest)
-    except Exception:  # noqa: BLE001
-        pass
 
     return True, dest.stat().st_size, "ok"
 

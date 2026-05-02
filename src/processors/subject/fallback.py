@@ -15,7 +15,6 @@ import hashlib
 
 from src.processors.subject.extractor import SubjectData
 
-
 # ──────────────  后 4 字兜底库(每种情境 6-8 个变体)  ──────────────
 
 LUMP_SUM_VARIANTS = [

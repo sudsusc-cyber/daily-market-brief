@@ -43,10 +43,7 @@ def _nth_weekday(year: int, month: int, n: int, weekday: int) -> date:
 
 def _last_weekday(year: int, month: int, weekday: int) -> date:
     """该月最后一个 weekday(0=周一)。"""
-    if month == 12:
-        first_of_next = date(year + 1, 1, 1)
-    else:
-        first_of_next = date(year, month + 1, 1)
+    first_of_next = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
     last_day = first_of_next - timedelta(days=1)
     days_back = (last_day.weekday() - weekday) % 7
     return last_day - timedelta(days=days_back)
@@ -61,10 +58,10 @@ def _easter_sunday(year: int) -> date:
     g = (b - f + 1) // 3
     h = (19 * a + b - d - g + 15) % 30
     i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
+    ell = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * ell) // 451
+    month = (h + ell - 7 * m + 114) // 31
+    day = ((h + ell - 7 * m + 114) % 31) + 1
     return date(year, month, day)
 
 

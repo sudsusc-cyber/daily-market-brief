@@ -20,9 +20,9 @@ M3 不出"一句结论",M4 由 LLM 综合判断。
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import requests
 import yfinance as yf
@@ -77,7 +77,7 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
     prior = None
     if historical:
         # 1 天前(前一交易日)的目标毫秒时间戳;在 historical 中找最接近的 (x: ms 时间戳, y: 分值)
-        target_ts = (datetime.now(timezone.utc) - timedelta(days=1)).timestamp() * 1000
+        target_ts = (datetime.now(UTC) - timedelta(days=1)).timestamp() * 1000
         best = min(
             historical,
             key=lambda e: abs((e.get("x") or 0) - target_ts),
@@ -223,4 +223,4 @@ def fetch_all(fred_api_key: str) -> SentimentBundle:
                 name=label, current=None, prior=None, rating=None,
                 error=f"{type(exc).__name__}: {exc}",
             ))
-    return SentimentBundle(metrics=metrics, fetched_at=datetime.now(timezone.utc))
+    return SentimentBundle(metrics=metrics, fetched_at=datetime.now(UTC))

@@ -9,18 +9,17 @@ QQ 邮箱 SMTP 发件(SSL 端口 465),支持 inline 图片(CID)。
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import mimetypes
-import socket
 import smtplib
-import struct
+import socket
 from dataclasses import dataclass
 from email.header import Header
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import formataddr
-from email.utils import formatdate, make_msgid
+from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -83,10 +82,7 @@ def _build_image_part(image: InlineImage) -> MIMEImage:
     subtype = image.subtype or _detect_image_subtype(data)
     if subtype is None:
         guessed, _ = mimetypes.guess_type(str(image.path))
-        if guessed and guessed.startswith("image/"):
-            subtype = guessed.split("/", 1)[1]
-        else:
-            subtype = "png"
+        subtype = guessed.split("/", 1)[1] if guessed and guessed.startswith("image/") else "png"
     part = MIMEImage(data, _subtype=subtype)
     part.add_header("Content-ID", f"<{image.cid}>")
     part.add_header("Content-Disposition", "inline", filename=image.path.name)
@@ -186,8 +182,6 @@ def send_html_email(
             if not accepted:
                 raise smtplib.SMTPRecipientsRefused(refused_dict)
     finally:
-        try:
+        with contextlib.suppress(Exception):
             server.quit()
-        except Exception:  # noqa: BLE001
-            pass
     logger.info("smtp_send.done")

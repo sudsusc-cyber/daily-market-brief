@@ -1,9 +1,10 @@
 """读 config/curated_images.json + /tmp/dropped.json,生成 docs/curated_images_review.md。"""
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
-ROOT = Path("/Users/zhukaiyuan/Documents/projects/daily-market-brief/.claude/worktrees/mystifying-hawking-b1b6b6")
+ROOT = Path(__file__).resolve().parent.parent
 CFG = ROOT / "config" / "curated_images.json"
 DROPPED = Path("/tmp/dropped.json")
 OUT = ROOT / "docs" / "curated_images_review.md"
@@ -24,7 +25,7 @@ def main() -> int:
     a(f"- 更新日期:{cfg['updated_at']}")
     a(f"- 图源:**{cfg['source']}**(原 SPEC 写 Unsplash,因主站反爬不可达切到 Pexels,详 ADR-0009)")
     a(f"- 季节策略:{cfg['policy']}(春 3-5 / 夏 6-8 / 秋 9-11 / 冬 12-2)")
-    a(f"- 总计:**200 张** = 4 季 × 50 张(严格)")
+    a("- 总计:**200 张** = 4 季 × 50 张(严格)")
     a(f"- CDN URL 模板:`{cfg['url_template']}`")
     a(f"- 预览页模板:`{cfg['preview_template']}`")
     a("")
@@ -50,7 +51,7 @@ def main() -> int:
 
     for season in ("spring", "summer", "autumn", "winter"):
         items = cfg["seasons"][season]
-        a(f"\n---\n")
+        a("\n---\n")
         a(f"## {SEASON_LABELS[season]}({SEASON_MONTHS[season]},{len(items)} 张)\n")
         a("| # | Photo ID | 主题 / Slug | 标签 | 调色板 | 预览 | 决定 |")
         a("|---|---|---|---|---|---|---|")

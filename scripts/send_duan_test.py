@@ -26,10 +26,7 @@ _HERE = Path(__file__).resolve()
 _WORKTREE_ROOT = _HERE.parent.parent
 _ENV_FILE = _WORKTREE_ROOT / ".env"
 if not _ENV_FILE.exists():
-    main_root = Path("/Users/zhukaiyuan/Documents/projects/daily-market-brief")
-    _ENV_FILE = main_root / ".env"
-if not _ENV_FILE.exists():
-    sys.exit(f"找不到 .env: {_ENV_FILE}")
+    sys.exit(f"找不到 .env: {_ENV_FILE}（请在项目根 {_WORKTREE_ROOT} 创建 .env）")
 for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
     line = line.strip()
     if not line or line.startswith("#") or "=" not in line:
@@ -46,7 +43,10 @@ from src.collectors.header_image import pick_header_image  # noqa: E402
 from src.collectors.stocks import StockSignal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
 from src.processors.figure_filter import (  # noqa: E402
-    FigureFootnote, FigureKeyPoint, FigureSummary, assign_footnotes,
+    FigureFootnote,
+    FigureKeyPoint,
+    FigureSummary,
+    assign_footnotes,
 )
 from src.renderer.render import render_email  # noqa: E402
 from src.sender.smtp_sender import InlineImage, send_html_email  # noqa: E402
