@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read   # idempotency.already_sent_today() 查 /actions/runs 必需
 
 jobs:
   send:
