@@ -42,8 +42,11 @@ def test_workflow_dispatch_also_dedups(monkeypatch) -> None:
     assert already_sent_today() is True
 
 
-def test_api_failure_returns_false(monkeypatch) -> None:
-    """API 调用失败 → 返回 False(不阻塞,允许发送)"""
+def test_api_failure_returns_true_fail_close(monkeypatch) -> None:
+    """API 调用失败 → 返回 True(fail-close,保守跳过本次发送)。
+
+    取舍:GH API 抖动时,宁可漏发一次也不双发(漏发用户会察觉,双发更打扰)。
+    """
     _clean_env(monkeypatch)
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
@@ -51,7 +54,47 @@ def test_api_failure_returns_false(monkeypatch) -> None:
     monkeypatch.setenv("GH_RUN_ID", "100")
 
     with patch("urllib.request.urlopen", side_effect=Exception("network error")):
-        assert already_sent_today() is False
+        assert already_sent_today() is True
+
+
+def test_in_progress_run_counts(monkeypatch) -> None:
+    """今日有 in_progress 的 run(尚未完成)→ True(避免 TOCTOU 双发)。
+
+    场景:cron-job.org 7:00 触发 Run A,GH schedule 6:30 cron 延迟到 ~7:00
+    触发 Run B。两者并发启动,A 先调用 already_sent_today() 时 B 还没创建,
+    返回 False → A 继续。30 秒后 B 启动,调用 already_sent_today(),此时
+    A 还在跑(status=in_progress,conclusion=null),仅看 conclusion=success
+    会漏判 → B 也继续 → 双发。in_progress 也算就避免这个。
+    """
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GH_RUN_ID", "999")
+
+    today = idempotency._today_utc_iso()
+    _mock_api_response(monkeypatch, [
+        # A run 还在跑
+        {"id": 100, "status": "in_progress", "conclusion": None,
+         "created_at": f"{today}T22:30:30Z"},
+    ])
+    assert already_sent_today() is True
+
+
+def test_queued_run_counts(monkeypatch) -> None:
+    """今日有 queued 的 run(刚被 GH 创建,还在排队)→ True"""
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GH_RUN_ID", "999")
+
+    today = idempotency._today_utc_iso()
+    _mock_api_response(monkeypatch, [
+        {"id": 100, "status": "queued", "conclusion": None,
+         "created_at": f"{today}T23:00:05Z"},
+    ])
+    assert already_sent_today() is True
 
 
 def _mock_api_response(monkeypatch, runs: list[dict]) -> None:

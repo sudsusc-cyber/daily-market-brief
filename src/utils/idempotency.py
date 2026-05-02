@@ -1,11 +1,17 @@
 """
 当日已发邮件检测(双触发幂等性)。
 
-背景:GH Actions cron 不保证准点触发(高峰可被 skip)。daily.yml 设了双 cron
-(7:07 / 7:23 北京)。两次都触发时,需要避免一天发两封邮件。
+背景:外部触发器(cron-job.org)+ GH schedule 兜底,可能在同一日内多次触发
+本工作流。需要避免一天发两封邮件。
 
-实现:启动时通过 GitHub Actions REST API 查询本工作流近 24 小时内是否已有
-"成功"的 run。已有 → exit(0)。
+实现:启动时通过 GitHub Actions REST API 查询本仓库今日(UTC)是否已有
+"成功 OR 正在运行" 的 run(排除当前 run)。已有 → exit(0) 跳过本次。
+
+为何也算 in-progress / queued:
+  避免 TOCTOU 竞态。例如 cron-job.org 7:00 和 GH schedule(延迟到 ~7:00)同时
+  触发,两个 run 都在 ~7:00:30 调用本函数,这时谁都还没完成("success" 都
+  没出现),只看 conclusion=success 就会漏判 → 双发。把 in_progress / queued
+  也算入,先到的 run 让后到的看到"已经在跑"→ skip。
 
 环境变量(由 daily.yml 注入,本地运行时缺失,函数返回 False 不阻塞):
 - GH_TOKEN:GitHub 自动生成的临时 token,只读 actions:read 权限够用
@@ -14,9 +20,10 @@
 
 幂等性策略:
 - 所有触发类型(schedule / workflow_dispatch / repository_dispatch)统一参与幂等
-- 适配新架构:cron-job.org 调 workflow_dispatch API + GH schedule 兜底,
-  二者同日先后触发时,先成功的发,后续 exit 0
-- FORCE_SEND=true 或 FORCE_SEND=1 跳过幂等检查(便于人工强制重发)
+- 状态判断:conclusion=success(已完成)OR status in (queued, in_progress)
+- API 调用失败 → fail-close(返回 True,跳过本次发送)
+  设计取舍:GH API 偶发抖动时,宁可漏发不重发(漏发用户会察觉,重发更打扰)
+- FORCE_SEND=true 或 FORCE_SEND=1 在 main.py 层跳过本检查(人工强制重发)
 """
 
 from __future__ import annotations
@@ -37,16 +44,10 @@ def _today_utc_iso() -> str:
 
 def already_sent_today() -> bool:
     """
-    True = 当日已有"成功"的 run(排除当前 run),应当跳过本次发送。
-    False = 未发过 / 无法判定 / 本地运行 → 允许发送。
+    True = 当日已有 run 在跑或已成功(排除当前 run)→ 应当跳过本次发送。
+    False = 本地运行 / 确认今日无并发或成功 run → 允许发送。
 
-    适用所有触发类型(schedule / workflow_dispatch / repository_dispatch),
-    避免外部触发器(cron-job.org)+ GH schedule 兜底场景下的双发。
-
-    强制重发场景:在 main.py 中通过 FORCE_SEND=true 跳过本检查。
-
-    永不抛异常:任何失败都返回 False(允许发送,以"宁可重发也不漏发"为原则的
-    反面是"宁可漏发也不重发",但本函数是后者—不在双触发场景下重复)。
+    永不抛异常。fail-close 默认:API 失败时返回 True(保守,宁可漏不重)。
     """
     token = os.environ.get("GH_TOKEN")
     repo = os.environ.get("GH_REPO")
@@ -75,21 +76,26 @@ def already_sent_today() -> bool:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.load(resp)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("idempotency.api_failed reason=%r 允许发送", exc)
-        return False
+        logger.warning(
+            "idempotency.api_failed reason=%r fail-close → 跳过本次发送(保守)", exc,
+        )
+        return True  # fail-close:API 失败 → 保守跳过,避免 GH API 抖动时双发
 
     runs = data.get("workflow_runs", []) or []
     for run in runs:
         if cur_run_id is not None and run.get("id") == cur_run_id:
             continue  # 排除自己
-        if run.get("conclusion") != "success":
-            continue  # 仅认成功的
         created_at = run.get("created_at", "") or ""
         if not created_at.startswith(today):
             continue  # 不是今日(UTC)
-        logger.info(
-            "idempotency.duplicate run_id=%s created_at=%s 已发过,跳过",
-            run.get("id"), created_at,
-        )
-        return True
+        status = run.get("status")
+        conclusion = run.get("conclusion")
+        # 已成功 OR 正在排队 / 正在跑 → 都视为"今天已经在处理了"
+        if conclusion == "success" or status in ("queued", "in_progress"):
+            logger.info(
+                "idempotency.duplicate run_id=%s status=%s conclusion=%s "
+                "created_at=%s 已发过或正在跑,跳过",
+                run.get("id"), status, conclusion, created_at,
+            )
+            return True
     return False
