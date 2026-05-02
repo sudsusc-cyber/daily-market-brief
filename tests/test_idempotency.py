@@ -33,10 +33,11 @@ def test_workflow_dispatch_also_dedups(monkeypatch) -> None:
     monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("GH_RUN_ID", "999")  # 当前 run
 
-    today = idempotency._today_utc_iso()
+    today = idempotency._today_beijing_iso()
     _mock_api_response(monkeypatch, [
         # 别的 run(GH schedule 兜底先成功了),今天成功
-        {"id": 100, "conclusion": "success", "created_at": f"{today}T22:30:00Z"},
+        # BJT today 12:00 = UTC today 04:00,确保 created_at 转 BJT 后仍是 today
+        {"id": 100, "conclusion": "success", "created_at": f"{today}T04:00:00Z"},
     ])
     assert already_sent_today() is True
 
@@ -71,11 +72,11 @@ def test_in_progress_run_counts(monkeypatch) -> None:
     monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("GH_RUN_ID", "999")
 
-    today = idempotency._today_utc_iso()
+    today = idempotency._today_beijing_iso()
     _mock_api_response(monkeypatch, [
-        # A run 还在跑
+        # A run 还在跑;BJT today 12:00 = UTC today 04:00
         {"id": 100, "status": "in_progress", "conclusion": None,
-         "created_at": f"{today}T22:30:30Z"},
+         "created_at": f"{today}T04:00:30Z"},
     ])
     assert already_sent_today() is True
 
@@ -88,10 +89,10 @@ def test_queued_run_counts(monkeypatch) -> None:
     monkeypatch.setenv("GH_EVENT_NAME", "schedule")
     monkeypatch.setenv("GH_RUN_ID", "999")
 
-    today = idempotency._today_utc_iso()
+    today = idempotency._today_beijing_iso()
     _mock_api_response(monkeypatch, [
         {"id": 100, "status": "queued", "conclusion": None,
-         "created_at": f"{today}T23:00:05Z"},
+         "created_at": f"{today}T04:00:05Z"},
     ])
     assert already_sent_today() is True
 
@@ -119,10 +120,10 @@ def test_today_success_returns_true(monkeypatch) -> None:
     monkeypatch.setenv("GH_EVENT_NAME", "schedule")
     monkeypatch.setenv("GH_RUN_ID", "999")  # 当前 run
 
-    today = idempotency._today_utc_iso()
+    today = idempotency._today_beijing_iso()
     _mock_api_response(monkeypatch, [
-        # 别的 run(不是当前),今天成功
-        {"id": 100, "conclusion": "success", "created_at": f"{today}T23:08:00Z"},
+        # 别的 run(不是当前),今天成功;BJT today 12:00 = UTC today 04:00
+        {"id": 100, "conclusion": "success", "created_at": f"{today}T04:08:00Z"},
     ])
     assert already_sent_today() is True
 
@@ -135,9 +136,9 @@ def test_excludes_current_run(monkeypatch) -> None:
     monkeypatch.setenv("GH_EVENT_NAME", "schedule")
     monkeypatch.setenv("GH_RUN_ID", "100")
 
-    today = idempotency._today_utc_iso()
+    today = idempotency._today_beijing_iso()
     _mock_api_response(monkeypatch, [
-        {"id": 100, "conclusion": "success", "created_at": f"{today}T23:08:00Z"},
+        {"id": 100, "conclusion": "success", "created_at": f"{today}T04:08:00Z"},
     ])
     assert already_sent_today() is False
 
@@ -150,11 +151,42 @@ def test_failed_run_doesnt_count(monkeypatch) -> None:
     monkeypatch.setenv("GH_EVENT_NAME", "schedule")
     monkeypatch.setenv("GH_RUN_ID", "999")
 
-    today = idempotency._today_utc_iso()
+    today = idempotency._today_beijing_iso()
     _mock_api_response(monkeypatch, [
-        {"id": 100, "conclusion": "failure", "created_at": f"{today}T23:08:00Z"},
+        {"id": 100, "conclusion": "failure", "created_at": f"{today}T04:08:00Z"},
     ])
     assert already_sent_today() is False
+
+
+def test_cross_utc_midnight_same_bjt_day(monkeypatch) -> None:
+    """跨 UTC 0 点但同 BJT 日的 run → True(回归测试 P0 cross-day bug)。
+
+    场景:cron 在 BJT 06:30 触发 = UTC 22:30(前一日)。两个触发器一前一后:
+      Run A: BJT today 06:30 = UTC yesterday 22:30:00Z
+      Run B: BJT today 06:30:30 = UTC today 22:30:30Z(若 cron-job.org 慢半拍跨过 UTC 0 点)
+    旧 UTC 比较会因 created_at 不同 UTC 日 → 漏判 → 双发。
+    新 BJT 比较应识别为同一 BJT 日 → True。
+
+    由于不能伪造 datetime.now,这里直接构造一个 created_at 对应的 UTC 字符串,
+    其在 BJT 视角等于 _today_beijing_iso() 但 UTC 视角是昨天。
+    """
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GH_RUN_ID", "999")
+
+    # BJT today 00:30 = UTC yesterday 16:30 — 跨 UTC 日但同 BJT 日
+    from datetime import datetime, timedelta
+    bjt_today = datetime.fromisoformat(idempotency._today_beijing_iso())
+    utc_yesterday_evening = (bjt_today - timedelta(hours=8) + timedelta(hours=0, minutes=30))
+    iso_str = utc_yesterday_evening.strftime("%Y-%m-%dT%H:%M:%SZ")
+    _mock_api_response(monkeypatch, [
+        {"id": 100, "conclusion": "success", "created_at": iso_str},
+    ])
+    assert already_sent_today() is True, (
+        f"BJT today 00:30 (created_at={iso_str}) 应识别为同一 BJT 日"
+    )
 
 
 def test_yesterday_doesnt_count(monkeypatch) -> None:
