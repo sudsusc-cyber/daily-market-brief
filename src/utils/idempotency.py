@@ -11,11 +11,12 @@
 - GH_TOKEN:GitHub 自动生成的临时 token,只读 actions:read 权限够用
 - GH_REPO:owner/repo 形如 sudsusc-cyber/daily-market-brief
 - GH_RUN_ID:当前 run 的 id,排除自己
-- GH_EVENT_NAME:schedule / workflow_dispatch / etc
 
 幂等性策略:
-- 仅 schedule 触发时启用幂等(workflow_dispatch 手动触发不阻挡,便于调试)
-- FORCE_SEND=1 也跳过幂等检查
+- 所有触发类型(schedule / workflow_dispatch / repository_dispatch)统一参与幂等
+- 适配新架构:cron-job.org 调 workflow_dispatch API + GH schedule 兜底,
+  二者同日先后触发时,先成功的发,后续 exit 0
+- FORCE_SEND=true 或 FORCE_SEND=1 跳过幂等检查(便于人工强制重发)
 """
 
 from __future__ import annotations
@@ -36,8 +37,13 @@ def _today_utc_iso() -> str:
 
 def already_sent_today() -> bool:
     """
-    True = 当日已有"成功"的 schedule run(排除当前 run),应当跳过本次发送。
+    True = 当日已有"成功"的 run(排除当前 run),应当跳过本次发送。
     False = 未发过 / 无法判定 / 本地运行 → 允许发送。
+
+    适用所有触发类型(schedule / workflow_dispatch / repository_dispatch),
+    避免外部触发器(cron-job.org)+ GH schedule 兜底场景下的双发。
+
+    强制重发场景:在 main.py 中通过 FORCE_SEND=true 跳过本检查。
 
     永不抛异常:任何失败都返回 False(允许发送,以"宁可重发也不漏发"为原则的
     反面是"宁可漏发也不重发",但本函数是后者—不在双触发场景下重复)。
@@ -45,13 +51,9 @@ def already_sent_today() -> bool:
     token = os.environ.get("GH_TOKEN")
     repo = os.environ.get("GH_REPO")
     cur_run_id_str = os.environ.get("GH_RUN_ID", "")
-    event_name = os.environ.get("GH_EVENT_NAME", "")
 
     if not token or not repo:
         # 本地运行:不查询,允许发送
-        return False
-    if event_name != "schedule":
-        # 手动触发(workflow_dispatch)不参与幂等
         return False
 
     try:
@@ -62,7 +64,7 @@ def already_sent_today() -> bool:
     today = _today_utc_iso()
     url = (
         f"https://api.github.com/repos/{repo}/actions/runs"
-        f"?per_page=20&event=schedule"
+        f"?per_page=20"
     )
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
