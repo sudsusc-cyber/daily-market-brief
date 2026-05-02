@@ -500,7 +500,9 @@ def compute_alerts(health: HealthState) -> list[str]:
         last_ok = health.last_api_success_at or "从未成功"
         alerts.append(
             f"段永平雪球抓取连续失败 {health.consecutive_api_failures} 次"
-            f"(上次成功:{last_ok})—— 检查 XQ_A_TOKEN 是否过期 / 雪球是否升级反爬。"
+            f"(上次成功:{last_ok})—— XQ_A_TOKEN 是雪球匿名 cookie(不绑账号),"
+            f"过期需续。本地一键续:`uv run python scripts/refresh_xq_token.py`"
+            f"(自动复制到剪贴板 + 打开 GH Secret 页,~30 秒)。"
         )
     if health.consecutive_empty_returns >= EMPTY_RETURN_SOFT_THRESHOLD:
         last_data = health.last_api_returned_data_at or "从未返回数据"
