@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-ROOT = Path("/Users/zhukaiyuan/Documents/projects/daily-market-brief/.claude/worktrees/mystifying-hawking-b1b6b6")
+ROOT = Path(__file__).resolve().parent.parent
 CFG = ROOT / "config" / "curated_images.json"
 DROPPED = Path("/tmp/dropped.json")
 OUT = ROOT / "docs" / "curated_images_review.md"

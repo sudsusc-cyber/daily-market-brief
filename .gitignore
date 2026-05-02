@@ -228,9 +228,13 @@ state/pushed_figures.json
 state/last_13f.json
 state/subject_cache.json
 state/header_cache/
+state/*.log
 
 # 段永平雪球模块运行时状态(.state/ 由 main.py 写入去重/健康/已见记录)
 .state/
+
+# 运行时构建产物
+build/
 
 # 其它 session 的临时 worktree 目录(无规则名)
 sharp-meninsky-e43ea3/
