@@ -33,6 +33,8 @@ jobs:
       QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
       QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
       EMAIL_RECIPIENT:  ${{ secrets.EMAIL_RECIPIENT }}
+      DUAN_USER_ID:     ${{ secrets.DUAN_USER_ID }}
+      XQ_A_TOKEN:       ${{ secrets.XQ_A_TOKEN }}
       FORCE_SEND:       ${{ github.event.inputs.force_send || 'false' }}
       PYTHONPATH:       .
       # GH 自动注入,用于双触发幂等性查询(已发过就跳过)
@@ -77,10 +79,10 @@ jobs:
       - name: Send daily market brief
         run: uv run python src/main.py
 
-      # 无论发送成功或失败,都尽量保存 state(失败时也可能更新过 pushed_figures 等)。
-      # 但不缓存 secrets:state 目录里只有 dedup id / 时间戳 / 缓存图,无敏感数据。
+      # 仅发送成功时保存 state,避免失败 run 也记录"已处理"导致未送达内容被跳过。
+      # 注意:actions/cache/save 的 key 每天唯一,下一次 restore 回退到最近一次成功的 state。
       - name: Save state for next run
-        if: always()
+        if: success()
         uses: actions/cache/save@v4
         with:
           path: |
