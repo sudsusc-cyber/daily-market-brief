@@ -1,5 +1,6 @@
 name: daily-market-brief
 
+# schedule re-registered 2026-05-02:首次触发未生效,push 触发 GH 重新读取 cron
 # cron 调度(详见 docs/decisions/0007-m6-cron-schedule.md):
 #   主时间:UTC 周一-五 23:07 = 北京周二-六 07:07
 #   备用:UTC 周一-五 23:23 = 北京周二-六 07:23(主时间被 GH skip 时兜底)
