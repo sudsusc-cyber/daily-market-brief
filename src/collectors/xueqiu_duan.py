@@ -51,7 +51,8 @@ DEFAULT_USER_AGENT = (
 DEFAULT_FETCH_COUNT = 20
 DEFAULT_TIMEOUT_SEC = 15
 COLD_START_WINDOW_HOURS = 24
-MIN_TEXT_CHARS = 20
+# 不再设字数下限:LLM 全权判定相关性。短而精的话(如「想多了」「本分」「不一定」)
+# 经常是段永平回复中最有价值的部分,规则层硬截会误杀。仅丢空字符串。
 MAX_TEXT_CHARS = 400
 
 LAST_SEEN_FILE = "duan_last_seen.json"
@@ -232,7 +233,8 @@ def _parse_status(status: dict, uid: str) -> DuanQuote | None:
 
     if _is_pure_retweet(rt_id, text):
         return None
-    if len(text) < MIN_TEXT_CHARS:
+    if not text:
+        # 仅丢空内容;非空内容(哪怕一个字)交给 LLM 相关性判断
         return None
 
     parent_text, parent_author = _extract_parent_context(status)

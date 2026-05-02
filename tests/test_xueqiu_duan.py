@@ -108,8 +108,17 @@ def test_parse_status_ok() -> None:
     assert "二十个字符" in q.text
 
 
-def test_parse_status_drops_short() -> None:
-    q = _parse_status(_make_status(text="<p>太短</p>"), uid="u123")
+def test_parse_status_keeps_short_for_llm_judgment() -> None:
+    """短文本不再被规则层硬截,留给 LLM 相关性判断。
+    例:"想多了"(3 字)、"本分"(2 字)是段永平经典短句,规则层不应误杀。"""
+    q = _parse_status(_make_status(text="<p>想多了</p>"), uid="u123")
+    assert q is not None
+    assert q.text == "想多了"
+
+
+def test_parse_status_drops_empty() -> None:
+    """完全空内容(HTML 清洗后无字符)→ 丢。"""
+    q = _parse_status(_make_status(text="<p></p>"), uid="u123")
     assert q is None
 
 
