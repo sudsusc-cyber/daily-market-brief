@@ -19,20 +19,21 @@ M1 阶段:数据源可行性验证脚本
 from __future__ import annotations
 
 import argparse
-import json
+import contextlib
 import os
 import smtplib
 import sys
 import textwrap
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # 把项目根加进 sys.path,避免被 cwd 影响
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -74,7 +75,7 @@ class CheckResult:
 
 # ---------- 通用工具 ----------
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _yesterday_iso() -> str:
@@ -178,7 +179,7 @@ def check_finnhub_news() -> CheckResult:
 
     samples = [f"NVDA 24h 新闻条数:{len(news)}"]
     for n in news[:3]:
-        ts = datetime.fromtimestamp(n.get("datetime", 0), tz=timezone.utc).isoformat()
+        ts = datetime.fromtimestamp(n.get("datetime", 0), tz=UTC).isoformat()
         samples.append(f"  · [{ts}] {n.get('headline', '(no title)')[:90]}")
     for s in samples:
         print(s)
@@ -351,7 +352,7 @@ def check_macro_rss() -> CheckResult:
             for e in entries:
                 pp = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
                 if pp:
-                    pub_dt = datetime(*pp[:6], tzinfo=timezone.utc)
+                    pub_dt = datetime(*pp[:6], tzinfo=UTC)
                     if pub_dt >= cutoff:
                         recent.append(e)
                 else:
@@ -505,10 +506,8 @@ def check_qq_smtp(skip: bool = False) -> CheckResult:
         server.login(addr, code)
         server.sendmail(addr, [rcpt], msg.as_string())
     finally:
-        try:
+        with contextlib.suppress(Exception):
             server.quit()
-        except Exception:
-            pass
 
     samples = [f"已发送 {addr} → {rcpt}"]
     for s in samples:
@@ -584,11 +583,11 @@ def _write_report(path: Path, results: list[CheckResult], args: argparse.Namespa
     lines: list[str] = []
     lines.append("# 数据源可行性验证报告(M1)\n")
     lines.append(f"- 生成时间(UTC):{_now_utc().isoformat(timespec='seconds')}")
-    lines.append(f"- 脚本:`scripts/verify_sources.py`")
+    lines.append("- 脚本:`scripts/verify_sources.py`")
     lines.append(f"- 命令行参数:`--skip-email={args.skip_email} --skip-llm={args.skip_llm}`")
     lines.append("")
     lines.append("## 总览\n")
-    lines.append(f"| 状态 | 个数 |\n|---|---|")
+    lines.append("| 状态 | 个数 |\n|---|---|")
     lines.append(f"| ✅ OK | {ok_n} |")
     lines.append(f"| ⚠️ WARN | {warn_n} |")
     lines.append(f"| ❌ FAIL | {fail_n} |")

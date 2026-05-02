@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import finnhub  # type: ignore[import-untyped]
 
@@ -99,7 +99,7 @@ def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNew
         ts = n.get("datetime")
         if ts is None:
             continue
-        pub = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+        pub = datetime.fromtimestamp(int(ts), tz=UTC)
         # Finnhub date filter 是 UTC,精确到日;我们再过滤一遍北京日窗口
         if not (start_utc <= pub < end_utc):
             continue
@@ -131,7 +131,7 @@ def _fetch_google_news_zh(query: str) -> list[NewsItem]:
         pp = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
         if not pp:
             continue
-        pub = datetime(*pp[:6], tzinfo=timezone.utc)
+        pub = datetime(*pp[:6], tzinfo=UTC)
         items.append(NewsItem(
             title=str(getattr(e, "title", "") or "").strip(),
             published_at=pub,

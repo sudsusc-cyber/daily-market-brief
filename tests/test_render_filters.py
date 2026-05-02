@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.renderer.render import (
     _filter_bj_time,
@@ -61,7 +61,7 @@ class TestMetricFilters:
 class TestBjTimeFilter:
     def test_utc_to_bj(self) -> None:
         # 2026-04-30 00:00 UTC = 2026-04-30 08:00 北京
-        dt = datetime(2026, 4, 30, 0, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 4, 30, 0, 0, 0, tzinfo=UTC)
         assert _filter_bj_time(dt) == "04-30 08:00"
 
     def test_none(self) -> None:

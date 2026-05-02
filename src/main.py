@@ -27,7 +27,16 @@ import logging
 import sys
 from pathlib import Path
 
-from src.collectors import buffett_13f, company_news, figures, header_image, macro_news, sentiment, stocks, xueqiu_duan
+from src.collectors import (
+    buffett_13f,
+    company_news,
+    figures,
+    header_image,
+    macro_news,
+    sentiment,
+    stocks,
+    xueqiu_duan,
+)
 from src.config import HOLDINGS, Holding
 from src.processors import (
     duan_filter,
@@ -136,6 +145,7 @@ def main() -> int:
 
     # ---------- 节假日预检(M6;cron 仍按周二-周六触发,但美股节假日要跳过) ----------
     import os
+
     from src.utils.holidays import should_send_today
     if os.environ.get("FORCE_SEND", "").strip().lower() not in ("1", "true"):
         ok, reason = should_send_today(now_bj.date())

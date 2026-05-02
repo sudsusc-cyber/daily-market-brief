@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.processors.subject.validator import validate, is_valid
+from src.processors.subject.validator import is_valid, validate
 
 
 class TestValidLength:
@@ -73,7 +73,7 @@ class TestBannedWords:
             ok, reason = validate(s)
             if "市气" in s:
                 # "市"在禁词里("市场"作为子串"市"也匹配)— 让我们看是否触发
-                assert not ok or ok  # 接受任一(以实际行为为准)
+                assert True  # 接受任一(以实际行为为准)
 
 
 class TestEdge:

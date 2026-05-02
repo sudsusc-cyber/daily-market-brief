@@ -20,12 +20,13 @@ from dataclasses import dataclass
 from datetime import date
 
 from src.processors.subject.extractor import (
-    MoodInfo, SignalSummary, SubjectData,
+    MoodInfo,
+    SignalSummary,
+    SubjectData,
 )
 from src.processors.subject.generator import generate_subject
 from src.processors.subject.solar_terms import get_solar_term_context
 from src.processors.subject.validator import validate
-
 
 # ──────────────  20 组测试场景(plan 给的 + 补充)  ──────────────
 
@@ -191,7 +192,7 @@ def run_dryrun(rounds: int = 3) -> None:
     if llm:
         print(f"\n[INFO] 用 LLMClient(DeepSeek)真实调用,跑 {rounds} 轮 × {len(SCENARIOS)} 场景")
     else:
-        print(f"\n[INFO] 无 DEEPSEEK_API_KEY,只跑兜底模板(generator 会走 LLM 错误分支 → static_fallback)")
+        print("\n[INFO] 无 DEEPSEEK_API_KEY,只跑兜底模板(generator 会走 LLM 错误分支 → static_fallback)")
 
     _print_table_header()
 

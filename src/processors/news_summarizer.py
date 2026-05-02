@@ -16,7 +16,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
 from src.processors.html_safe import (
@@ -129,7 +128,9 @@ def _ensure_strong_wrapping(line: str) -> str:
         return line
     for cn in _CN_NAMES_SORTED:
         if line.startswith(cn):
-            rest = line[len(cn):].lstrip(" —-—:、。·")
+            rest = line[len(cn):]
+            while rest and rest[0] in " —-—:、。·":
+                rest = rest[1:]
             return f"<strong>{cn}</strong> —— {rest}"
     return line
 

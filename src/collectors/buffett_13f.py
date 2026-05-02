@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import feedparser
@@ -84,7 +84,7 @@ def _fetch_atom() -> list[Filing13F]:
         upd = getattr(e, "updated_parsed", None) or getattr(e, "published_parsed", None)
         if not upd:
             continue
-        filed_at = datetime(*upd[:6], tzinfo=timezone.utc)
+        filed_at = datetime(*upd[:6], tzinfo=UTC)
         out.append(Filing13F(
             accession_no=accession.strip(),
             filed_at=filed_at,
@@ -132,7 +132,7 @@ def fetch(state_path: Path, display_window_days: int = 7) -> BuffettBundle:
 
     latest = filings[0]
     last_accession = _load_last_seen(state_path)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     is_new = last_accession != latest.accession_no
     if is_new:

@@ -23,7 +23,6 @@ from zoneinfo import ZoneInfo
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape  # noqa: E402
 
 from src.collectors.stocks import StockSignal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
@@ -130,6 +129,7 @@ def _inline_logos_as_data_uri(html: str) -> str:
 
 def render_preview() -> str:
     import datetime as dt
+
     from src.collectors.header_image import pick_header_image
     header = pick_header_image(dt.date.today())
     header_url = header["url"]

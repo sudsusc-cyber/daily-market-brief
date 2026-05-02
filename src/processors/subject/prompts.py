@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from src.processors.subject.extractor import SubjectData
 
-
 # ──────────────  System Prompt(逐字使用,不要修改)  ──────────────
 
 SYSTEM_PROMPT = """\

@@ -1,10 +1,11 @@
 """读 /tmp/curate_result.json,排除 12 张审美淘汰,生成 200 张 schema v2 JSON + review.md。"""
 from __future__ import annotations
+
 import json
 import re
 import sys
-from pathlib import Path
 from datetime import date
+from pathlib import Path
 
 # Agent 审美淘汰列表
 DROPS = {
@@ -66,7 +67,8 @@ def infer_tags(slug: str) -> list[str]:
 
 
 def main() -> int:
-    data = json.load(open("/tmp/curate_result.json"))
+    with open("/tmp/curate_result.json") as f:
+        data = json.load(f)
     valid = data["valid"]
 
     by_season: dict[str, list[dict]] = {"spring": [], "summer": [], "autumn": [], "winter": []}

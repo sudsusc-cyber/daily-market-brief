@@ -14,15 +14,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.collectors.header_image import (
-    _HEADER_CID,
     _FALLBACK_IMAGE,
+    _HEADER_CID,
     _pick_season,
     _tier1_pexels,
     _tier2_bing,
     _tier3_local,
     pick_header_image,
 )
-
 
 # ─────────────────────────  season mapping  ──────────────────────────
 
@@ -97,10 +96,12 @@ def test_tier1_propagates_download_failure(tmp_path):
     """下载失败必须把异常抛出来,让 pick_header_image 降级到 tier 2"""
     cfg = _write_library(tmp_path)
 
-    with patch("src.collectors.header_image._CURATED_JSON", cfg), \
-         patch("src.collectors.header_image._download", side_effect=OSError("network down")):
-        with pytest.raises(OSError):
-            _tier1_pexels(date(2025, 1, 1))
+    with (
+        patch("src.collectors.header_image._CURATED_JSON", cfg),
+        patch("src.collectors.header_image._download", side_effect=OSError("network down")),
+        pytest.raises(OSError),
+    ):
+        _tier1_pexels(date(2025, 1, 1))
 
 
 # ─────────────────────────  tier 2  ──────────────────────────────────

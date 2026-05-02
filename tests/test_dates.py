@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from src.utils.dates import (
     BEIJING,
@@ -19,7 +19,7 @@ from src.utils.dates import (
 class TestNow:
     def test_now_utc_aware(self) -> None:
         dt = now_utc()
-        assert dt.tzinfo is timezone.utc
+        assert dt.tzinfo is UTC
 
     def test_now_beijing_aware(self) -> None:
         dt = now_beijing()

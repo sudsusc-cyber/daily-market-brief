@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from src.processors.llm_client import LLMClient
 
@@ -89,5 +89,5 @@ def translate_in_place_news(items: Iterable, *, client: LLMClient) -> None:
     items_list = list(items)
     titles = [getattr(it, "title", "") for it in items_list]
     translated = translate_titles(titles, client=client)
-    for it, t in zip(items_list, translated):
+    for it, t in zip(items_list, translated, strict=True):
         it.title = t

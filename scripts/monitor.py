@@ -23,7 +23,7 @@ import logging
 import os
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # 让脚本能找到 src/
@@ -45,7 +45,7 @@ def check_today_status() -> tuple[bool, str]:
     if not token or not repo:
         return False, "缺少 GH_TOKEN / GH_REPO 环境变量"
 
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(UTC).date().isoformat()
     url = (
         f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
         f"?per_page=30"
@@ -96,7 +96,7 @@ def send_alert(reason: str) -> None:
     body = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
       <h2 style="color: #c0392b; margin-top: 0;">⚠️ 朝闻录监控告警</h2>
-      <p><strong>检测时间:</strong>{datetime.now(timezone.utc).isoformat(timespec='seconds')} UTC</p>
+      <p><strong>检测时间:</strong>{datetime.now(UTC).isoformat(timespec='seconds')} UTC</p>
       <p><strong>原因:</strong>{reason}</p>
 
       <hr style="border: 0; border-top: 1px solid #e0e0e0; margin: 24px 0;">

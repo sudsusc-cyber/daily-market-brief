@@ -18,7 +18,7 @@ import json
 import logging
 import re
 
-from src.collectors.sentiment import SentimentBundle, SentimentMetric
+from src.collectors.sentiment import SentimentBundle
 from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)

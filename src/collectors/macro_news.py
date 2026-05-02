@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
@@ -57,7 +57,7 @@ def _fetch_feed(url: str) -> list[MacroNewsItem]:
         pp = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
         if not pp:
             continue
-        pub = datetime(*pp[:6], tzinfo=timezone.utc)
+        pub = datetime(*pp[:6], tzinfo=UTC)
         items.append(MacroNewsItem(
             title=str(getattr(e, "title", "") or "").strip(),
             published_at=pub,

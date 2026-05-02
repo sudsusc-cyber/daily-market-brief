@@ -32,14 +32,14 @@ import json
 import logging
 import os
 import urllib.request
-from datetime import date, timezone, datetime
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
 
 def _today_utc_iso() -> str:
     """UTC 当日 ISO 日期前缀,用于匹配 created_at。"""
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 def already_sent_today() -> bool:
