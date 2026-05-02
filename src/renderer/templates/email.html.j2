@@ -439,33 +439,14 @@
         {# Voice block:
            - byline 英文署名放该作者所有引语之后(右对齐 + 36px 实线短横,
              用 inline-block border 画线,避免 —— 字符在 letter-spacing 下被撕开)
-           - 回复型帖子:原帖卡片在前(metadata 行 + 1px hairline 左竖引用块),
-             主回复在后(2px oxblood + serif italic),回复多缩进 18px
-             与原帖卡片错开,形成"上下文 → 回复"的层级对话
            - 引用编号 [N] 维持原蓝色超链接,与全文其它脚注一致 #}
         {% for f in figure_summaries %}
         {% if f.items %}
         <tr>
           <td style="padding:24px 24px 0 24px;">
             {% for kp in f.items %}
-            {%- if kp.parent_text %}
-            {# Quote-reply 卡片:metadata 顶行 + 暗灰引用块。
-               不带 oxblood,视觉上明显比下方"主回复"轻一档,提示这只是上下文。
-               metadata 行结构:label(原帖) + byline(@作者(平台)),无中点分隔符,
-               靠字号 / 颜色 / 间距三层差异建立信息层级。 #}
-            <div style="margin:0 0 6px 14px; font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif; line-height:1.5;">
-              <span style="font-size:10px; color:{{ color_faint }}; letter-spacing:0.25em; margin-right:14px;">原帖</span>
-              {%- if kp.parent_author %}<span style="font-size:12px; color:{{ color_muted }};">@{{ kp.parent_author }}</span>{% endif %}
-              {%- if kp.source_name %}<span style="font-size:11px; color:{{ color_muted }};">({{ kp.source_name }})</span>{% endif %}
-            </div>
-            <div style="margin:0 0 8px 14px; padding:2px 0 2px 14px; border-left:1px solid {{ color_hairline }};
-                        font-family:{{ serif_body }}; font-size:13px; line-height:1.65; color:{{ color_muted }};
-                        letter-spacing:0.01em; font-style:normal;">
-              {{ kp.parent_text | cjk_spaced }}
-            </div>
-            {%- endif %}
-            {# 主引语:oxblood 2px 左竖线 + serif italic。回复型多缩进 18px 与原帖卡片错开 #}
-            <blockquote style="margin:0 0 14px {%- if kp.parent_text %} 18px{% else %} 0{% endif %}; padding:2px 0 2px 16px; border-left:2px solid {{ color_accent }};
+            {# 主引语:oxblood 2px 左竖线 + serif italic #}
+            <blockquote style="margin:0 0 14px 0; padding:2px 0 2px 16px; border-left:2px solid {{ color_accent }};
                                 font-family:{{ serif_quote }}; font-size:17px; font-style:italic;
                                 line-height:1.8; color:{{ color_ink }}; letter-spacing:0.02em;">
               {{ kp.text | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1;text-decoration:none;font-size:11px;font-family:Charter,Georgia,serif;font-style:normal;margin-left:1px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
@@ -577,31 +558,6 @@
             </table>
           </td>
         </tr>
-
-        {# ─────────────────────────  系统告警(数据源异常时显示) ───────────────────────── #}
-        {# 仅在 system_alerts 非空时渲染。空数组 → 整块不渲染,版式不变。
-           样式:页脚之上一条暗黄背景小条,文字小号、不抢戏,但读者扫一眼就能看到。 #}
-        {% if system_alerts %}
-        <tr>
-          <td style="padding:12px 24px 0 24px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="background-color:#FBF4E0; border-left:3px solid #C7884A;">
-              <tr>
-                <td style="padding:12px 14px; font-family:{{ serif_body }}; font-size:11.5px;
-                           line-height:1.75; color:#7A5A1F; letter-spacing:0.04em;">
-                  <div style="font-family:Charter,Georgia,serif; font-size:10px; font-weight:600;
-                              letter-spacing:0.22em; text-transform:uppercase; margin-bottom:6px; color:#7A5A1F;">数据源提示</div>
-                  {# 段落式叙述,多条用横线分隔(替代 list 风格 · 项目符号),保持刊物语气 #}
-                  {% for msg in system_alerts %}
-                  {%- if not loop.first %}<div style="margin:6px 0; height:0; border-top:0.5px dashed #C7884A; opacity:0.5;"></div>{% endif %}
-                  <div>{{ msg }}</div>
-                  {% endfor %}
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        {% endif %}
 
         {# ─────────────────────────  COLOPHON / FOOTER  ───────────────────────── #}
         <tr>
