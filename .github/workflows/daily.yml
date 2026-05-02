@@ -12,8 +12,8 @@ on:
     - cron: "7 23 * * 1-5"
     - cron: "23 23 * * 1-5"
     # 临时测试 cron(2026-05-02):验证 GH schedule 是否准点触发,
-    # 跑一次后立刻删除。北京 8:30 = UTC 0:30,每天触发(不限工作日)。
-    - cron: "30 0 * * *"
+    # 跑一次后立刻删除。北京 8:22 = UTC 0:22,每天触发(不限工作日)。
+    - cron: "22 0 * * *"
   # 手动触发(调试用):Actions 页面 → Run workflow
   workflow_dispatch:
     inputs:
