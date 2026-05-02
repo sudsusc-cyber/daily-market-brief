@@ -63,8 +63,11 @@ def already_sent_today() -> bool:
         cur_run_id = None
 
     today = _today_utc_iso()
+    # 关键:必须按 workflow file 过滤,只查 daily.yml 的 runs。
+    # 否则 monitor.yml 等其他 workflow 今天的成功 run 会被误判为"daily.yml
+    # 已发过",导致 daily.yml 永远 skip 不发邮件。
     url = (
-        f"https://api.github.com/repos/{repo}/actions/runs"
+        f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
         f"?per_page=20"
     )
     req = urllib.request.Request(url)
