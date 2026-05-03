@@ -89,9 +89,11 @@ def already_sent_today() -> bool:
     # 关键:必须按 workflow file 过滤,只查 daily.yml 的 runs。
     # 否则 monitor.yml 等其他 workflow 今天的成功 run 会被误判为"daily.yml
     # 已发过",导致 daily.yml 永远 skip 不发邮件。
+    # per_page=100:24h 内 daily.yml run 通常 1-3 个,但 force_send 手测时容易
+    # 短时密集触发;20 太窄,真实 run 可能被挤出页面而误判为"未发"导致重发。
     url = (
         f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
-        f"?per_page=20"
+        f"?per_page=100"
     )
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")

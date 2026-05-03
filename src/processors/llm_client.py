@@ -135,11 +135,17 @@ class LLMClient:
                 kwargs["top_p"] = top_p
             resp = self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 — 失败降级,绝不阻断邮件
-            logger.exception("llm.chat_failed model=%s", self._model)
+            # 不用 logger.exception(会打整段 traceback,某些 SDK 异常会带 url
+            # 或请求 body,理论上能携带 Authorization header 痕迹);
+            # 改记 type + 截断后的 str(短消息够 debug,长 traceback 进降级)
+            logger.error(
+                "llm.chat_failed model=%s exc_type=%s msg=%s",
+                self._model, type(exc).__name__, str(exc)[:200],
+            )
             return LLMResponse(
                 text=None,
                 usage=LLMUsage(),
-                error=f"{type(exc).__name__}: {exc}",
+                error=f"{type(exc).__name__}: {str(exc)[:200]}",
             )
 
         text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
