@@ -39,16 +39,15 @@ import logging
 import os
 import urllib.request
 from datetime import datetime
-from zoneinfo import ZoneInfo
+
+from src.utils.dates import BEIJING  # 统一时区源,避免每个 module 重复 ZoneInfo
 
 logger = logging.getLogger(__name__)
-
-_BJT = ZoneInfo("Asia/Shanghai")
 
 
 def _today_beijing_iso() -> str:
     """BJT 当日 ISO 日期(YYYY-MM-DD),用于与 created_at 转 BJT 后比对。"""
-    return datetime.now(_BJT).date().isoformat()
+    return datetime.now(BEIJING).date().isoformat()
 
 
 def _bjt_date_of_iso(iso_str: str) -> str | None:
@@ -62,7 +61,7 @@ def _bjt_date_of_iso(iso_str: str) -> str | None:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
-    return dt.astimezone(_BJT).date().isoformat()
+    return dt.astimezone(BEIJING).date().isoformat()
 
 
 def already_sent_today() -> bool:
