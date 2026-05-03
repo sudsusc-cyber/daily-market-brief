@@ -72,6 +72,38 @@ def _save_cache(cache: dict[str, str]) -> None:
 
 # ──────────────  日志(可选,不影响主流程)  ──────────────
 
+# 日志大小上限 — 每行 ~1-3 KB(SubjectData 含 email_html_excerpt 等),
+# 1 MB 约 300-1000 行(1-3 年)。超限只保留尾部 ~一半,丢弃最早的记录。
+# 不做按天 rotate(简化;主用途是审查最近 prompt 漂移)。
+_LOG_MAX_BYTES = 1_000_000   # 1 MB
+_LOG_KEEP_BYTES = 500_000    # 触发 rotate 时保留尾部 ~500 KB
+
+
+def _rotate_log_if_oversized() -> None:
+    """日志超过 _LOG_MAX_BYTES → 保留尾部 _LOG_KEEP_BYTES,丢前面。
+
+    实现:读 → 切片 → 找首个完整行 → 原子写。失败仅 warning。
+    """
+    try:
+        if not LOG_PATH.exists() or LOG_PATH.stat().st_size <= _LOG_MAX_BYTES:
+            return
+        data = LOG_PATH.read_bytes()
+        tail = data[-_LOG_KEEP_BYTES:]
+        # 找第一个换行,从下一行开始(避免行被切两半)
+        nl = tail.find(b"\n")
+        if nl != -1:
+            tail = tail[nl + 1:]
+        tmp = LOG_PATH.with_suffix(LOG_PATH.suffix + ".tmp")
+        tmp.write_bytes(tail)
+        tmp.replace(LOG_PATH)
+        logger.info(
+            "subject.log_rotated old_size=%d kept_size=%d",
+            len(data), len(tail),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("subject.log_rotate_failed err=%r", exc)
+
+
 def _log_generation(
     *,
     today_iso: str,
@@ -80,9 +112,13 @@ def _log_generation(
     final_subject: str,
     fallback_layer: str,  # "llm_pass1" / "llm_pass2" / "static_fallback" / "cache"
 ) -> None:
-    """每次生成追加一行 JSON 日志,便于事后审查 prompt 漂移。"""
+    """每次生成追加一行 JSON 日志,便于事后审查 prompt 漂移。
+
+    超过 _LOG_MAX_BYTES 时自动 rotate(保留尾部),避免 GH cache 膨胀。
+    """
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _rotate_log_if_oversized()
         record = {
             "ts": today_iso,
             "data": data.to_dict(),

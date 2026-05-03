@@ -22,11 +22,11 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync --frozen
+      - name: Install dependencies (含 dev group:ruff/black/pytest/pillow)
+        run: uv sync --frozen --group dev
 
       - name: Run ruff
-        run: uv run --extra dev ruff check .
+        run: uv run ruff check .
 
   test:
     name: pytest (3.11)
@@ -43,8 +43,8 @@ jobs:
           enable-cache: true
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: uv sync --frozen
+      - name: Install dependencies (含 dev group:pytest/pillow)
+        run: uv sync --frozen --group dev
 
       - name: Run tests
         run: uv run pytest tests/ -q --ignore=tests/test_subject_dryrun.py

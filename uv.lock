@@ -322,23 +322,17 @@ dependencies = [
     { name = "yfinance" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "black" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
 [package.dev-dependencies]
 dev = [
+    { name = "black" },
     { name = "pillow" },
     { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12.3" },
-    { name = "black", marker = "extra == 'dev'", specifier = ">=24.0.0" },
     { name = "ephem", specifier = ">=4.2.1" },
     { name = "feedparser", specifier = ">=6.0.11" },
     { name = "finnhub-python", specifier = ">=2.4.20" },
@@ -346,18 +340,17 @@ requires-dist = [
     { name = "lxml", specifier = ">=5.2.0" },
     { name = "openai", specifier = ">=1.40.0" },
     { name = "pydantic-settings", specifier = ">=2.5.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "requests", specifier = ">=2.32.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6.0" },
     { name = "yfinance", specifier = ">=0.2.40" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "black", specifier = ">=24.0.0" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "pytest", specifier = ">=9.0.3" },
+    { name = "ruff", specifier = ">=0.6.0" },
 ]
 
 [[package]]

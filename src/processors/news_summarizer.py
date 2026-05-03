@@ -19,7 +19,10 @@ from dataclasses import dataclass, field
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
 from src.processors.html_safe import (
+    FOOTNOTE_ANCHOR_STYLE,
+    FOOTNOTE_RE,
     escape_text,
+    footnote_idx,
     is_safe_url,
     render_text_with_footnotes,
     safe_anchor,
@@ -105,17 +108,8 @@ _TASK_INSTRUCTION = """\
 #   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
 #   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号
 #   ^N^                                                ← markdown
-# 中英括号都接;括号内可有空格(\s*);避免 URL / 公式中误匹配。
-_FOOTNOTE_RE = re.compile(
-    r"<sup>\s*[\[【(\(]\s*(\d+)\s*[\]】)\)]\s*</sup>"
-    r"|[\[【(\(]\s*(\d+)\s*[\]】)\)](?![a-zA-Z\d])"
-    r"|\^(\d+)\^"
-)
-
-
-def _re_idx(match: re.Match[str]) -> int:
-    """三组互斥,取非 None 的那个"""
-    return int(match.group(1) or match.group(2) or match.group(3))
+# FOOTNOTE_RE / footnote_idx / FOOTNOTE_ANCHOR_STYLE 共用 html_safe.py
+# (此前与 macro_filter 各自重复定义,容易漂移)。
 
 
 _CN_NAMES_SORTED: list[str] = sorted(set(_CN_NAME_HINT.values()), key=len, reverse=True)
@@ -156,12 +150,6 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
     return "\n".join(lines), flat_items
 
 
-_FOOTNOTE_ANCHOR_STYLE = (
-    "color:#0563C1;text-decoration:none;font-size:11px;"
-    "font-family:Charter,Georgia,serif;margin-left:1px;"
-)
-
-
 def _resolve_footnote_mapping(
     text: str, flat_items: list[NewsItem]
 ) -> tuple[dict[int, int], list[Footnote]]:
@@ -171,8 +159,8 @@ def _resolve_footnote_mapping(
     返回 (rewrite_map, footnote_list)。rewrite_map 把 LLM 原始编号 → 新编号。
     """
     used_indexes: list[int] = []
-    for m in _FOOTNOTE_RE.finditer(text):
-        idx = _re_idx(m)
+    for m in FOOTNOTE_RE.finditer(text):
+        idx = footnote_idx(m)
         if idx not in used_indexes:
             used_indexes.append(idx)
     rewrite: dict[int, int] = {}
@@ -217,7 +205,7 @@ def _make_footnote_anchor_builder(
         if new_i is None:
             return ""  # 越界 / 不安全:吃掉脚注标记
         url = url_by_new.get(new_i, "")
-        anchor = safe_anchor(url, f"[{new_i}]", style=_FOOTNOTE_ANCHOR_STYLE)
+        anchor = safe_anchor(url, f"[{new_i}]", style=FOOTNOTE_ANCHOR_STYLE)
         return f"<sup>{anchor}</sup>"
 
     return _build
@@ -231,7 +219,7 @@ def _render_summary_segment(
     """对一段不可信文本 segment(LLM 输出),生成安全 HTML:
     标记之间纯文本 escape,标记位置插入安全 <sup><a>。"""
     builder = _make_footnote_anchor_builder(rewrite, footnotes)
-    return render_text_with_footnotes(text, _FOOTNOTE_RE, _re_idx, builder)
+    return render_text_with_footnotes(text, FOOTNOTE_RE, footnote_idx, builder)
 
 
 def summarize(
@@ -305,7 +293,7 @@ def summarize(
         # summary:先剥标签(去掉 <sup>[N]</sup> 之外的所有 LLM HTML),
         # 再走 render_text_with_footnotes(escape 文本 + 安全脚注锚点)
         # 注意:strip_all_tags 会把 <sup> 也去掉,导致 <sup>[N]</sup> 中的 [N] 暴露成裸 [N],
-        # 此时再用 _FOOTNOTE_RE 匹配裸形式照样能命中,无副作用
+        # 此时再用 FOOTNOTE_RE 匹配裸形式照样能命中,无副作用
         clean_summary_text = strip_all_tags(summary)
         safe_summary = _render_summary_segment(clean_summary_text, rewrite, footnotes)
         if safe_cn:

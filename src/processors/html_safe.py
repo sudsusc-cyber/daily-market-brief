@@ -22,6 +22,33 @@ from urllib.parse import urlparse
 _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 
 
+# 脚注标记识别 — LLM 输出可能用以下任一形式标注引用编号:
+#   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
+#   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号
+#   ^N^                                                ← markdown
+# 中英括号都接;括号内可有空格(\s*);避免 URL / 公式中误匹配。
+# 由 news_summarizer 与 macro_filter 共用 — 两边以前各自重复定义,容易漂移。
+FOOTNOTE_RE = re.compile(
+    r"<sup>\s*[\[【(\(]\s*(\d+)\s*[\]】)\)]\s*</sup>"
+    r"|[\[【(\(]\s*(\d+)\s*[\]】)\)](?![a-zA-Z\d])"
+    r"|\^(\d+)\^"
+)
+
+
+def footnote_idx(match: re.Match[str]) -> int:
+    """FOOTNOTE_RE 三组互斥,取非 None 的那个 → int。"""
+    return int(match.group(1) or match.group(2) or match.group(3))
+
+
+# 锚点视觉风格:Word 蓝(#0563C1)、衬线小号、上标位轻贴 — 与正文视觉协调。
+# 与 FOOTNOTE_RE 一并集中,避免 news_summarizer / macro_filter / figure_filter
+# 各自硬编码同样的 style 字符串。
+FOOTNOTE_ANCHOR_STYLE = (
+    "color:#0563C1;text-decoration:none;font-size:11px;"
+    "font-family:Charter,Georgia,serif;margin-left:1px;"
+)
+
+
 def escape_text(s: str | None) -> str:
     """把不可信文本转成 HTML 安全字符串。None 视为空。
 

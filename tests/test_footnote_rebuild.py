@@ -3,16 +3,19 @@
 修复 bug:LLM 偶尔输出 (N) / 【N】 / <sup>(N)</sup> 等变体,
 旧正则只匹配 [N] / <sup>[N]</sup> / ^N^,导致变体直接当纯文本输出
 → 既不蓝色也不可点击,且与匹配上的项混编后视觉上"跳号"。
+
+正则与 idx 抽取已上提到 src.processors.html_safe(news_summarizer 与
+macro_filter 共用,以前各自定义的 _FOOTNOTE_RE 已移除)。
 """
 
 from __future__ import annotations
 
-from src.processors import macro_filter, news_summarizer
+from src.processors.html_safe import FOOTNOTE_RE, footnote_idx
 
 
-def _re(s: str, *, mod=macro_filter) -> list[int]:
+def _re(s: str) -> list[int]:
     """提取 s 中所有匹配的脚注 idx。"""
-    return [mod._re_idx(m) for m in mod._FOOTNOTE_RE.finditer(s)]
+    return [footnote_idx(m) for m in FOOTNOTE_RE.finditer(s)]
 
 
 class TestRegexVariants:
@@ -58,7 +61,7 @@ class TestRegexVariants:
         s = "句一<sup>[1]</sup>句二【2】句三(3)句四^4^"
         assert _re(s) == [1, 2, 3, 4]
 
-    def test_news_summarizer_regex_same_behavior(self) -> None:
-        """news_summarizer 用相同正则,测一个变体足矣(后跟标点)。"""
-        assert _re("foo<sup>(99)</sup>", mod=news_summarizer) == [99]
-        assert _re("结尾【88】。", mod=news_summarizer) == [88]
+    def test_shared_regex_same_behavior(self) -> None:
+        """两个 summarizer 共用同一 FOOTNOTE_RE,任一变体都应一致命中。"""
+        assert _re("foo<sup>(99)</sup>") == [99]
+        assert _re("结尾【88】。") == [88]

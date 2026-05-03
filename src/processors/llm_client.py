@@ -104,7 +104,7 @@ class LLMClient:
         system_override: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.3,
-        timeout: int = 90,
+        timeout: int = 45,
         top_p: float | None = None,
     ) -> LLMResponse:
         """
@@ -115,6 +115,14 @@ class LLMClient:
           (用于主题生成等需要纯文学风格的场景);为 None 维持原行为
           (system = INVESTMENT_FRAMEWORK + 时间 + task_extra)
         - top_p:可选 nucleus sampling;为 None 使用模型默认
+        - timeout:默认 45s。daily.yml job timeout 是 15 分钟,主流程串行调用
+          translator + news_summarizer + macro_filter + 6×figure_filter
+          + sentiment_judge + holdings_intro + subject ≈ 12 次 LLM。
+          原 90s 默认的最坏情况(全部 timeout)= 18 分钟,撞 job timeout。
+          45s 给单调用余量足够(DeepSeek V4-Flash 实测 P95 ~ 30s),
+          总最坏 ~ 9 分钟,留 6 分钟给数据采集与渲染。
+          若某个调用真需要更长(如 subject 用 10s 短超时是反向),
+          可显式传 timeout 覆盖。
         """
         if system_override is not None:
             system = system_override
