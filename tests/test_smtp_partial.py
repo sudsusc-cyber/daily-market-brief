@@ -134,3 +134,51 @@ def test_empty_return_dict_succeeds(monkeypatch) -> None:
             html_body="<p>t</p>",
         )
     assert mock_server.sendmail.called
+
+
+def test_empty_recipient_raises_immediately(monkeypatch) -> None:
+    """空 recipient 列表 → fail-fast,不调 SMTP。"""
+    import pytest
+
+    from src.sender.smtp_sender import send_html_email
+
+    with pytest.raises(ValueError, match="收件人列表为空"):
+        send_html_email(
+            sender="x@x.com", auth_code="x",
+            recipient=[], subject="x", html_body="<p>x</p>",
+        )
+
+
+def test_whitespace_only_recipients_raise(monkeypatch) -> None:
+    """全空白 / 全空字符串 也算空。"""
+    import pytest
+
+    from src.sender.smtp_sender import send_html_email
+
+    with pytest.raises(ValueError, match="收件人列表为空"):
+        send_html_email(
+            sender="x@x.com", auth_code="x",
+            recipient=["", "  ", None],  # type: ignore[list-item]
+            subject="x", html_body="<p>x</p>",
+        )
+
+
+def test_string_recipient_with_whitespace_trimmed(monkeypatch) -> None:
+    """单字符串 + 带空格 → 不应失败,被 strip 后正常。"""
+    import smtplib
+    from unittest.mock import MagicMock, patch
+
+    from src.sender.smtp_sender import send_html_email
+
+    fake_server = MagicMock(spec=smtplib.SMTP_SSL)
+    fake_server.sendmail.return_value = {}
+
+    with patch("src.sender.smtp_sender.smtplib.SMTP_SSL", return_value=fake_server):
+        send_html_email(
+            sender="x@x.com", auth_code="x",
+            recipient="  good@x.com  ", subject="x", html_body="<p>x</p>",
+        )
+    fake_server.sendmail.assert_called_once()
+    args = fake_server.sendmail.call_args[0]
+    # 第二个 positional arg = recipients list,应该 ['good@x.com']
+    assert args[1] == ["good@x.com"]

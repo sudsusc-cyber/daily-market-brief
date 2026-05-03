@@ -106,7 +106,14 @@ def send_html_email(
     HTML 用 <img src="cid:..."> 引用;否则发简单的 text/html 单部分。
     """
     inline_images = inline_images or []
-    recipients: list[str] = [recipient] if isinstance(recipient, str) else recipient
+    recipients: list[str] = [recipient] if isinstance(recipient, str) else list(recipient)
+
+    # 防御:空收件人列表会被 SMTP 静默接收(不报错也不发任何人),返回 success
+    # → 主流程标 OK + idempotency 标已发 → 静默漏发风暴。fail-fast 直接抛。
+    cleaned = [r.strip() for r in recipients if r and r.strip()]
+    if not cleaned:
+        raise ValueError("send_html_email: 收件人列表为空(EMAIL_RECIPIENT 未配置?)")
+    recipients = cleaned
 
     if inline_images:
         msg: MIMEMultipart | MIMEText = MIMEMultipart("related")

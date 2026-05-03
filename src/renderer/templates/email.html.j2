@@ -365,7 +365,7 @@
           <td style="padding:18px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in company_news_summary.footnotes %}
-              <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ f.index }}] {{ f.source }}</a>
+              <a href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -403,7 +403,7 @@
                 {% for item in bundle.items[:5] %}
                 <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.7; color:{{ color_ink_soft }};">
                   <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
-                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
+                  <a href="{{ item.url | safe_url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
                   <span style="color:{{ color_faint }}; font-size:10.5px; margin-left:6px;">— {{ item.source }}</span>
                 </li>
                 {% endfor %}
@@ -449,7 +449,7 @@
             <blockquote style="margin:0 0 14px 0; padding:2px 0 2px 16px; border-left:2px solid {{ color_accent }};
                                 font-family:{{ serif_quote }}; font-size:17px; font-style:italic;
                                 line-height:1.8; color:{{ color_ink }}; letter-spacing:0.02em;">
-              {{ kp.text | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url }}" target="_blank" rel="noopener" style="color:#0563C1;text-decoration:none;font-size:11px;font-family:Charter,Georgia,serif;font-style:normal;margin-left:1px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
+              {{ kp.text | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1;text-decoration:none;font-size:11px;font-family:Charter,Georgia,serif;font-style:normal;margin-left:1px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
             </blockquote>
             {% endfor %}
             {# Editorial byline:右对齐,中文署名前接 36px 实线短横(用 inline-block
@@ -467,7 +467,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for fn in figure_footnotes %}
-              <a href="{{ fn.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ fn.index }}] {{ fn.source }}</a>
+              <a href="{{ fn.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ fn.index }}] {{ fn.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -513,7 +513,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in macro_news_summary.footnotes %}
-              <a href="{{ f.url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ f.index }}] {{ f.source }}</a>
+              <a href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -534,7 +534,7 @@
                 {% for item in bundle.items[:5] %}
                 <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.7; color:{{ color_ink_soft }};">
                   <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
-                  <a href="{{ item.url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
+                  <a href="{{ item.url | safe_url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
                 </li>
                 {% endfor %}
               </ul>

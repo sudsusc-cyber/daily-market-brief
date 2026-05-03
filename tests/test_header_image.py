@@ -270,15 +270,27 @@ def test_download_reuses_existing_cache(tmp_path):
     assert result.read_bytes() == b"already-here"
 
 
-def test_download_writes_to_disk(tmp_path):
-    """缓存未命中时下载并写盘"""
-    from src.collectors.header_image import _download
+# 真实 JPEG magic bytes(FF D8 FF)+ 一些填充,用于满足新 _is_image_bytes 检查
+_FAKE_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00new-image-bytes"
+_FAKE_PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00new-image-bytes"
 
+
+def _mock_image_response(content_type: str = "image/jpeg",
+                         data: bytes = _FAKE_JPEG_BYTES) -> MagicMock:
+    """构造带 Content-Type 的图片响应 mock。"""
     fake_resp = MagicMock()
     fake_resp.__enter__ = lambda s: s
     fake_resp.__exit__ = MagicMock(return_value=False)
-    fake_resp.read.return_value = b"new-image-bytes"
+    fake_resp.read.return_value = data
+    fake_resp.headers.get.return_value = content_type
+    return fake_resp
 
+
+def test_download_writes_to_disk(tmp_path):
+    """缓存未命中 + 真图字节 + image/* Content-Type → 下载并写盘"""
+    from src.collectors.header_image import _download
+
+    fake_resp = _mock_image_response()
     dest = tmp_path / "subdir" / "new.jpg"  # 子目录会被自动创建
 
     with patch("src.collectors.header_image.urllib.request.build_opener") as mock_opener:
@@ -288,18 +300,14 @@ def test_download_writes_to_disk(tmp_path):
         result = _download("https://example.com/img.jpg", dest)
 
     assert result == dest
-    assert dest.read_bytes() == b"new-image-bytes"
+    assert dest.read_bytes() == _FAKE_JPEG_BYTES
 
 
 def test_download_empty_response_raises(tmp_path):
     """空响应不能写盘缓存(否则下次会"命中"空文件)"""
     from src.collectors.header_image import _download
 
-    fake_resp = MagicMock()
-    fake_resp.__enter__ = lambda s: s
-    fake_resp.__exit__ = MagicMock(return_value=False)
-    fake_resp.read.return_value = b""
-
+    fake_resp = _mock_image_response(data=b"")
     dest = tmp_path / "empty.jpg"
 
     with patch("src.collectors.header_image.urllib.request.build_opener") as mock_opener:
@@ -310,3 +318,60 @@ def test_download_empty_response_raises(tmp_path):
             _download("https://example.com/img.jpg", dest)
 
     assert not dest.exists()
+
+
+def test_download_html_intercept_page_not_cached(tmp_path):
+    """Pexels/Bing 返回 200 HTML 拦截页 → Content-Type=text/html → 抛 + 不写盘。"""
+    from src.collectors.header_image import _download
+
+    fake_resp = _mock_image_response(
+        content_type="text/html; charset=utf-8",
+        data=b"<!DOCTYPE html><html><body>Access blocked</body></html>",
+    )
+    dest = tmp_path / "blocked.jpg"
+
+    with patch("src.collectors.header_image.urllib.request.build_opener") as mock_opener:
+        opener_inst = MagicMock()
+        mock_opener.return_value = opener_inst
+        opener_inst.open.return_value = fake_resp
+        with pytest.raises(OSError, match="non-image Content-Type"):
+            _download("https://example.com/blocked.jpg", dest)
+
+    assert not dest.exists(), "拦截页绝不能被写入缓存"
+
+
+def test_download_image_content_type_but_html_bytes_rejected(tmp_path):
+    """Content-Type 撒谎成 image/* 但实际是 HTML → magic bytes 兜底拦截。"""
+    from src.collectors.header_image import _download
+
+    fake_resp = _mock_image_response(
+        content_type="image/jpeg",
+        data=b"<!DOCTYPE html><html>not actually a jpeg</html>",
+    )
+    dest = tmp_path / "fake.jpg"
+
+    with patch("src.collectors.header_image.urllib.request.build_opener") as mock_opener:
+        opener_inst = MagicMock()
+        mock_opener.return_value = opener_inst
+        opener_inst.open.return_value = fake_resp
+        with pytest.raises(OSError, match="non-image magic bytes"):
+            _download("https://example.com/fake.jpg", dest)
+
+    assert not dest.exists()
+
+
+def test_download_png_magic_bytes_accepted(tmp_path):
+    """PNG magic bytes 也应通过(不是只接受 JPEG)。"""
+    from src.collectors.header_image import _download
+
+    fake_resp = _mock_image_response(content_type="image/png", data=_FAKE_PNG_BYTES)
+    dest = tmp_path / "ok.png"
+
+    with patch("src.collectors.header_image.urllib.request.build_opener") as mock_opener:
+        opener_inst = MagicMock()
+        mock_opener.return_value = opener_inst
+        opener_inst.open.return_value = fake_resp
+        result = _download("https://example.com/ok.png", dest)
+
+    assert result == dest
+    assert dest.read_bytes() == _FAKE_PNG_BYTES

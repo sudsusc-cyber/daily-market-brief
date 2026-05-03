@@ -50,9 +50,36 @@ def _pick_season(today: date) -> str:
     return _SEASON_MAP[today.month]
 
 
+# 常见图片格式 magic bytes(前几个字节):
+#   JPEG: FF D8 FF
+#   PNG:  89 50 4E 47 0D 0A 1A 0A
+#   GIF:  47 49 46 38 (37|39) 61
+#   WEBP: "RIFF" .... "WEBP"
+def _is_image_bytes(data: bytes) -> bool:
+    """magic bytes 嗅探:不依赖 PIL,几字节判断。
+    防"Pexels/Bing 返回 200 HTML 拦截页 → 写成 .jpg → 当 image/jpeg 附件发"。
+    """
+    if len(data) < 12:
+        return False
+    if data[:3] == b"\xff\xd8\xff":  # JPEG
+        return True
+    if data[:8] == b"\x89PNG\r\n\x1a\n":  # PNG
+        return True
+    if data[:6] in (b"GIF87a", b"GIF89a"):  # GIF
+        return True
+    return data[:4] == b"RIFF" and data[8:12] == b"WEBP"  # WEBP
+
+
 def _download(url: str, dest: Path) -> Path:
     """下载到 dest;已存在且非空 → 直接复用(免重复下载)。失败抛异常,
-    由调用方捕获并降级到下一层。"""
+    由调用方捕获并降级到下一层。
+
+    校验:
+    - HTTP Content-Type 必须 image/* (HTML 拦截页通常是 text/html)
+    - 字节 magic bytes 必须匹配 JPEG/PNG/GIF/WEBP 之一
+    任一失败 → 抛异常,由调用方降级,绝不写盘。
+    原子写:.tmp + replace,避免半下载文件残留被下次 cache 命中。
+    """
     if dest.exists() and dest.stat().st_size > 0:
         logger.info("header.cache.hit path=%s size=%d", dest.name, dest.stat().st_size)
         return dest
@@ -64,11 +91,21 @@ def _download(url: str, dest: Path) -> Path:
         headers={"User-Agent": "Mozilla/5.0 daily-market-brief/1.0"},
     )
     with opener.open(req, timeout=_TIMEOUT) as resp:
+        content_type = (resp.headers.get("Content-Type") or "").lower()
         data = resp.read()
     if not data:
         raise OSError("empty response")
-    dest.write_bytes(data)
-    logger.info("header.cache.miss path=%s size=%d", dest.name, len(data))
+    if not content_type.startswith("image/"):
+        raise OSError(f"non-image Content-Type: {content_type!r} (HTML 拦截页?)")
+    if not _is_image_bytes(data):
+        raise OSError(
+            f"non-image magic bytes: head={data[:12]!r}(声称 {content_type})"
+        )
+    # 原子写:tmp + replace,失败 / 进程被杀不会留半文件
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(dest)
+    logger.info("header.cache.miss path=%s size=%d type=%s", dest.name, len(data), content_type)
     return dest
 
 
