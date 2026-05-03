@@ -29,6 +29,7 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -225,9 +226,15 @@ def fetch_all(fred_api_key: str) -> SentimentBundle:
         try:
             metrics.append(fn())
         except Exception as exc:  # noqa: BLE001
-            logger.exception("sentiment.metric_failed label=%s", label)
+            # 关键安全:requests/urllib HTTPError 的 str 含完整 url(可能含 ?api_key=xxx),
+            # 这个 error 字段会渲染到邮件正文 + 喂给 LLM + 写 state log,必须 redact。
+            redacted_msg = redact_secrets(str(exc))[:200]
+            logger.error(
+                "sentiment.metric_failed label=%s exc_type=%s msg=%s",
+                label, type(exc).__name__, redacted_msg,
+            )
             metrics.append(SentimentMetric(
                 name=label, current=None, prior=None, rating=None,
-                error=f"{type(exc).__name__}: {exc}",
+                error=f"{type(exc).__name__}: {redacted_msg}",
             ))
     return SentimentBundle(metrics=metrics, fetched_at=datetime.now(UTC))
