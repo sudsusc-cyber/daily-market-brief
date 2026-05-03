@@ -10,6 +10,7 @@ from src.renderer.render import (
     _filter_metric_num,
     _filter_pct,
     _filter_price,
+    _filter_safe_url,
 )
 
 
@@ -66,3 +67,57 @@ class TestBjTimeFilter:
 
     def test_none(self) -> None:
         assert _filter_bj_time(None) == ""
+
+
+class TestSafeUrlFilter:
+    """模板侧 defense-in-depth — 不安全 URL → 空字符串(浏览器忽略)。"""
+
+    def test_https_passes(self) -> None:
+        assert _filter_safe_url("https://example.com/path") == "https://example.com/path"
+
+    def test_http_passes(self) -> None:
+        assert _filter_safe_url("http://example.com") == "http://example.com"
+
+    def test_javascript_blocked(self) -> None:
+        assert _filter_safe_url("javascript:alert(1)") == ""
+
+    def test_data_blocked(self) -> None:
+        assert _filter_safe_url("data:text/html,<script>") == ""
+
+    def test_vbscript_blocked(self) -> None:
+        assert _filter_safe_url("vbscript:msgbox(1)") == ""
+
+    def test_none_returns_empty(self) -> None:
+        assert _filter_safe_url(None) == ""
+
+    def test_empty_returns_empty(self) -> None:
+        assert _filter_safe_url("") == ""
+
+
+class TestSafeUrlInRenderedTemplate:
+    """端到端:把 javascript: URL 注入 footnote / 降级 list,渲染产物不能含原 URL。"""
+
+    def test_unsafe_url_in_footnote_not_rendered(self) -> None:
+        from datetime import UTC, datetime
+
+        from src.collectors.figures import FigureBundle
+        from src.collectors.stocks import StockSignal
+        from src.config import HOLDINGS
+        from src.processors.figure_filter import FigureFootnote
+        from src.renderer.render import render_email
+
+        signal = StockSignal(
+            holding=HOLDINGS[0], last_close=None, sma_120=None, sma_200=None,
+            delta_120=None, delta_200=None, signal="NONE", error="x",
+        )
+        bad_footnote = FigureFootnote(index=1, url="javascript:alert(1)", source="X")
+        html = render_email(
+            signals=[signal],
+            generated_at=datetime.now(UTC),
+            figures=[FigureBundle(person="X", query="", person_en="X", items=[])],
+            figure_summaries=[],
+            figure_footnotes=[bad_footnote],
+        )
+        assert "javascript:alert(1)" not in html, (
+            "降级路径模板 href 必须走 safe_url filter,javascript: 不能进 HTML"
+        )

@@ -21,6 +21,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.collectors.stocks import StockSignal
+from src.processors.html_safe import is_safe_url
 from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 
@@ -90,6 +91,16 @@ def _filter_bj_time(dt: datetime | None) -> str:
         return ""
 
 
+def _filter_safe_url(url: str | None) -> str:
+    """URL 白名单过滤 — 给模板里所有 <a href="{{ x | safe_url }}"> 用。
+
+    不安全 / 空 → 返回 "":浏览器视为空 href(指向当前页),绝不会执行
+    javascript:/data:/vbscript: 协议。是模板侧的 defense in depth — 即使
+    上游 collector / processor 有遗漏,模板也不会成为 XSS 出口。
+    """
+    return url if is_safe_url(url) else ""
+
+
 def _build_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(_TEMPLATE_DIR),
@@ -102,6 +113,7 @@ def _build_env() -> Environment:
     env.filters["metric_num"] = _filter_metric_num
     env.filters["metric_delta"] = _filter_metric_delta
     env.filters["bj_time"] = _filter_bj_time
+    env.filters["safe_url"] = _filter_safe_url
     env.filters["cjk_spaced"] = add_cjk_spacing
     return env
 

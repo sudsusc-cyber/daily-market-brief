@@ -202,3 +202,97 @@ def test_yesterday_doesnt_count(monkeypatch) -> None:
         {"id": 100, "conclusion": "success", "created_at": "2024-01-01T23:08:00Z"},
     ])
     assert already_sent_today() is False
+
+
+def test_leader_smallest_run_id_sends(monkeypatch) -> None:
+    """两个并发 in_progress run:run_id 较小者(=最早创建)是 leader → 发邮件。"""
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GH_RUN_ID", "100")  # 自己更小
+
+    today = idempotency._today_beijing_iso()
+    _mock_api_response(monkeypatch, [
+        # 另一个 in_progress run id=200(更大,follower)
+        {"id": 200, "status": "in_progress", "conclusion": None,
+         "created_at": f"{today}T04:00:30Z"},
+    ])
+    # leader 应当发 → already_sent_today() False(放行)
+    assert already_sent_today() is False
+
+
+def test_follower_larger_run_id_skips(monkeypatch) -> None:
+    """两个并发 in_progress run:run_id 较大者(=较晚创建)是 follower → 让位 skip。
+
+    这是 ultrareview P1 修复的核心 — 旧版会双双 skip(都看到对方 in_progress)
+    导致没人发邮件;leader election 保证恰好有一个发。
+    """
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GH_RUN_ID", "200")  # 自己更大
+
+    today = idempotency._today_beijing_iso()
+    _mock_api_response(monkeypatch, [
+        # 另一个 in_progress run id=100(更小,leader)
+        {"id": 100, "status": "in_progress", "conclusion": None,
+         "created_at": f"{today}T04:00:00Z"},
+    ])
+    # follower 让位 → already_sent_today() True(skip)
+    assert already_sent_today() is True
+
+
+def test_three_concurrent_only_min_id_runs(monkeypatch) -> None:
+    """三个并发 run:只有最小 run_id 发,其他两个 skip。"""
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
+    today = idempotency._today_beijing_iso()
+    others = [
+        {"id": 50, "status": "in_progress", "conclusion": None,
+         "created_at": f"{today}T04:00:00Z"},  # leader
+        {"id": 999, "status": "queued", "conclusion": None,
+         "created_at": f"{today}T04:00:30Z"},
+    ]
+    _mock_api_response(monkeypatch, others)
+
+    # 最小 id (50) 是 leader,自己 = 50 → 发
+    monkeypatch.setenv("GH_RUN_ID", "50")
+    _mock_api_response(monkeypatch, [
+        {"id": 999, "status": "queued", "conclusion": None,
+         "created_at": f"{today}T04:00:30Z"},
+        {"id": 100, "status": "in_progress", "conclusion": None,
+         "created_at": f"{today}T04:00:15Z"},
+    ])
+    assert already_sent_today() is False  # 50 < {999, 100} → leader
+
+    # 自己是中间 id (100) → follower
+    monkeypatch.setenv("GH_RUN_ID", "100")
+    _mock_api_response(monkeypatch, [
+        {"id": 50, "status": "in_progress", "conclusion": None,
+         "created_at": f"{today}T04:00:00Z"},
+        {"id": 999, "status": "queued", "conclusion": None,
+         "created_at": f"{today}T04:00:30Z"},
+    ])
+    assert already_sent_today() is True  # 100 > 50 → follower
+
+
+def test_leader_election_ignores_yesterday_runs(monkeypatch) -> None:
+    """昨日 run 不参与 today leader election。"""
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_EVENT_NAME", "schedule")
+    monkeypatch.setenv("GH_RUN_ID", "200")  # 较大,但今日唯一 active
+
+    _mock_api_response(monkeypatch, [
+        # 昨日有个更小 id 的 in_progress(从未完成,卡住的 run)
+        {"id": 50, "status": "in_progress", "conclusion": None,
+         "created_at": "2024-01-01T04:00:00Z"},
+        # 今日还有自己 200 一个
+    ])
+    # 200 是今日唯一 active → leader → 发
+    assert already_sent_today() is False

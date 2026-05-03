@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,24 @@ class Settings(BaseSettings):
     qq_email_address: str = Field(..., description="QQ 邮箱地址,作为 SMTP 发件方")
     qq_email_auth_code: str = Field(..., description="QQ 邮箱 16 位授权码,非登录密码")
     email_recipient: str = Field(..., description="收件邮箱;逗号分隔可填多个,如 a@qq.com,b@gmail.com")
+
+    @field_validator("email_recipient")
+    @classmethod
+    def _email_recipient_nonempty(cls, v: str) -> str:
+        """空字符串 / 全是逗号空白 → 启动失败。
+        否则会浪费完整采集 + LLM 流程,SMTP 接到空 recipients 静默 success → 漏发。"""
+        cleaned = [p.strip() for p in (v or "").split(",") if p.strip()]
+        if not cleaned:
+            raise ValueError(
+                "EMAIL_RECIPIENT 必须配置至少一个收件邮箱(逗号分隔可多个)"
+            )
+        return v
+    @field_validator("qq_email_address", "qq_email_auth_code")
+    @classmethod
+    def _nonempty(cls, v: str, info) -> str:
+        if not (v or "").strip():
+            raise ValueError(f"{info.field_name} 必须配置非空值")
+        return v
 
     # M3:数据采集层
     finnhub_api_key: str = Field(..., description="Finnhub 免费 API Key,用于持仓公司新闻")

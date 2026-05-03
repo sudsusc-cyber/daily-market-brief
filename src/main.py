@@ -143,7 +143,8 @@ def main() -> int:
     macro_bundles = macro_news.fetch_all()
 
     logger.info("collect.figures")
-    fig_bundles = figures.fetch_all(state_path=_STATE_DIR / "pushed_figures.json")
+    figures_state_path = _STATE_DIR / "pushed_figures.json"
+    fig_bundles, figures_pending_pushed = figures.fetch_all(state_path=figures_state_path)
 
     logger.info("collect.buffett_13f")
     buffett_bundle = buffett_13f.fetch(state_path=_STATE_DIR / "last_13f.json")
@@ -259,6 +260,13 @@ def main() -> int:
         html_body=html,
         inline_images=inline_images,
     )
+
+    # 邮件发送成功后才提交 figures 7 天去重 state — 失败时下次 run
+    # 仍能重新评估同批候选,避免"LLM 失败 + state 已写"导致永久遗漏。
+    try:
+        figures.commit_pushed(figures_state_path, figures_pending_pushed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("figures.commit_pushed_failed exc=%r", exc)
 
     logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0

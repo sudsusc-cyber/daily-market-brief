@@ -19,6 +19,15 @@
   没出现),只看 conclusion=success 就会漏判 → 双发。把 in_progress / queued
   也算入,先到的 run 让后到的看到"已经在跑"→ skip。
 
+Leader election(防双 fail):
+  上面的"看到 in_progress 就 skip"在两个 run 几乎同秒启动时会"双双 skip" ——
+  Run A 看到 Run B in_progress → skip;Run B 看到 Run A in_progress → skip;
+  没人发邮件 + monitor 又看到两个 run "成功"(其实都 exit 0),静默漏发。
+  解法:run_id 比较 leader election —— 只在自己的 run_id 是当日最小(最早创建)
+  时才算 leader,其他 run 都让位。GH 的 run_id 是单调递增的全局序号,可作为
+  确定性的"先到"判定。如果 leader 真挂了(crash 在 already_sent_today 之后),
+  monitor 会在 BJT 08:30 检测出"今日无成功 run"告警 — 不会静默。
+
 环境变量(由 daily.yml 注入,本地运行时缺失,函数返回 False 不阻塞):
 - GH_TOKEN:GitHub 自动生成的临时 token,只读 actions:read 权限够用
 - GH_REPO:owner/repo 形如 sudsusc-cyber/daily-market-brief
@@ -109,21 +118,49 @@ def already_sent_today() -> bool:
         return True  # fail-close:API 失败 → 保守跳过,避免 GH API 抖动时双发
 
     runs = data.get("workflow_runs", []) or []
+
+    # 第一步:已经有成功的 run → 直接 skip,毫无歧义。
     for run in runs:
         if cur_run_id is not None and run.get("id") == cur_run_id:
-            continue  # 排除自己
-        created_at = run.get("created_at", "") or ""
-        run_bjt_date = _bjt_date_of_iso(created_at)
-        if run_bjt_date != today:
-            continue  # 不是今日(BJT)
-        status = run.get("status")
-        conclusion = run.get("conclusion")
-        # 已成功 OR 正在排队 / 正在跑 → 都视为"今天已经在处理了"
-        if conclusion == "success" or status in ("queued", "in_progress"):
+            continue
+        if _bjt_date_of_iso(run.get("created_at") or "") != today:
+            continue
+        if run.get("conclusion") == "success":
             logger.info(
-                "idempotency.duplicate run_id=%s status=%s conclusion=%s "
-                "created_at=%s 已发过或正在跑,跳过",
-                run.get("id"), status, conclusion, created_at,
+                "idempotency.duplicate run_id=%s conclusion=success created_at=%s",
+                run.get("id"), run.get("created_at"),
             )
             return True
-    return False
+
+    # 第二步:没有成功 run,但有其他 run 在 queued/in_progress —— 走 leader election。
+    # 只有"自己的 run_id 是今日所有 active run 中最小(最早创建)" 才发,其他让位。
+    # 这样两个并发 run 也不会"双双 skip":必有一个是最小 id → 发。
+    if cur_run_id is None:
+        # 没有 GH_RUN_ID 不能 leader election → 保守 skip(避免重发)
+        return True
+
+    active_today_ids: list[int] = [cur_run_id]
+    for run in runs:
+        rid = run.get("id")
+        if rid is None or rid == cur_run_id:
+            continue
+        if _bjt_date_of_iso(run.get("created_at") or "") != today:
+            continue
+        if run.get("status") in ("queued", "in_progress"):
+            try:
+                active_today_ids.append(int(rid))
+            except (TypeError, ValueError):
+                continue
+
+    leader_id = min(active_today_ids)
+    if cur_run_id == leader_id:
+        logger.info(
+            "idempotency.leader run_id=%s active_today=%s → 发",
+            cur_run_id, sorted(active_today_ids),
+        )
+        return False
+    logger.info(
+        "idempotency.follower run_id=%s leader=%s → skip",
+        cur_run_id, leader_id,
+    )
+    return True

@@ -176,12 +176,22 @@ def _purge_expired(pushed: dict[str, str], now: datetime, days: int = 7) -> dict
 
 
 # ---------- 入口 ----------
-def fetch_all(state_path: Path) -> list[FigureBundle]:
-    """采集所有监控人物的过去 24h 候选发言,完成第一道筛选 + 7 天去重"""
+def fetch_all(state_path: Path) -> tuple[list[FigureBundle], dict[str, str]]:
+    """采集所有监控人物的过去 24h 候选发言,完成第一道筛选 + 7 天去重。
+
+    返回 (bundles, pending_pushed):
+      - bundles:供下游 figure_filter / 渲染消费
+      - pending_pushed:本次"应去重"的 hash → ISO time。**fetch_all 不写盘**;
+        调用方在邮件成功发送后调 commit_pushed(state_path, pending_pushed) 提交。
+
+    为何延后写盘:figure_filter 后续 LLM 调用可能失败 → 没有 figure 渲染到邮件
+    → 但若已写 pushed,这批候选未来 7 天都不会再考虑 → 用户永远看不到这批。
+    延后到邮件成功才提交,失败时下次 run 还能重新评估同批候选。
+    """
     start_utc, end_utc = last_24h_window()
 
     pushed = _purge_expired(_load_pushed(state_path), end_utc)
-    new_pushed = dict(pushed)  # 本次新加入的也写入
+    new_pushed = dict(pushed)  # 含已存在 + 本次新增
 
     bundles: list[FigureBundle] = []
     for person, query, lang, name_en in FIGURES:
@@ -209,8 +219,12 @@ def fetch_all(state_path: Path) -> list[FigureBundle]:
         bundles.append(FigureBundle(person=person, query=query, person_en=name_en, items=kept))
         logger.info("figures person=%s total=%d kept=%d", person, len(raw), len(kept))
 
-    _save_pushed(state_path, new_pushed)
-    return bundles
+    return bundles, new_pushed
+
+
+def commit_pushed(state_path: Path, pending_pushed: dict[str, str]) -> None:
+    """邮件发送成功后调用 — 把 fetch_all 返回的 pending_pushed 落盘。"""
+    _save_pushed(state_path, pending_pushed)
 
 
 def format_published_beijing(item: FigureMention) -> str:
