@@ -20,6 +20,7 @@ M3 不出"一句结论",M4 由 LLM 综合判断。
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -167,7 +168,6 @@ def _fetch_shiller_pe() -> SentimentMetric:
                               error="multpl 选择器未命中 #current")
     text = " ".join(current_node.get_text(" ", strip=True).split())
     # 形如:"Current Shiller PE Ratio: 40.53 -0.01 (-0.02%)..."
-    import re
     m = re.search(r":\s*(\d+(?:\.\d+)?)", text)
     current = float(m.group(1)) if m else None
     return SentimentMetric(name="Shiller PE", current=current, prior=None, rating=None)

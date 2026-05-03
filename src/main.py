@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -50,6 +51,8 @@ from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
 from src.utils.dates import now_beijing
+from src.utils.holidays import should_send_today
+from src.utils.idempotency import already_sent_today
 
 logger = logging.getLogger(__name__)
 
@@ -114,11 +117,10 @@ def main() -> int:
 
     logger.info("main.start  generated_at=%s", now_bj.isoformat(timespec="seconds"))
 
-    # ---------- 节假日预检(M6;cron 仍按周二-周六触发,但美股节假日要跳过) ----------
-    import os
+    force_send = os.environ.get("FORCE_SEND", "").strip().lower() in ("1", "true")
 
-    from src.utils.holidays import should_send_today
-    if os.environ.get("FORCE_SEND", "").strip().lower() not in ("1", "true"):
+    # ---------- 节假日预检(M6;cron 仍按周二-周六触发,但美股节假日要跳过) ----------
+    if not force_send:
         ok, reason = should_send_today(now_bj.date())
         logger.info("holidays.check ok=%s reason=%s", ok, reason)
         if not ok:
@@ -126,11 +128,9 @@ def main() -> int:
             return 0
 
     # ---------- 幂等性预检(双 cron 触发时,后触发的若发现今天已发过 → 跳过) ----------
-    if os.environ.get("FORCE_SEND", "").strip().lower() not in ("1", "true"):
-        from src.utils.idempotency import already_sent_today
-        if already_sent_today():
-            logger.info("main.skipped reason=今日已通过另一次 cron 成功发送,跳过双触发")
-            return 0
+    if not force_send and already_sent_today():
+        logger.info("main.skipped reason=今日已通过另一次 cron 成功发送,跳过双触发")
+        return 0
 
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
