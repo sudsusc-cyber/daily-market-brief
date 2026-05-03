@@ -7,6 +7,10 @@
         ...
 
 由 PLAN 第 8 节"工程规范"指定:max_attempts=3 / 指数退避。
+
+异常日志安全:retry 失败的异常 message 经 src.utils.secrets.redact_secrets
+过滤掉 query-string 凭据,避免 collector 在 URL 里拼了 secret 时
+通过日志泄露到 GH Actions 公开界面。
 """
 
 from __future__ import annotations
@@ -18,10 +22,16 @@ import time
 from collections.abc import Callable
 from typing import ParamSpec, TypeVar
 
+from src.utils.secrets import redact_secrets
+
 logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+# 兼容别名:test_retry.py 之前 import 了 _redact_secrets;不破坏外部测试。
+_redact_secrets = redact_secrets
 
 
 def retry(
@@ -51,8 +61,9 @@ def retry(
                     last_exc = exc
                     if attempt == max_attempts:
                         logger.warning(
-                            "retry.exhausted fn=%s attempts=%d last_exc=%r",
-                            fn.__name__, attempt, exc,
+                            "retry.exhausted fn=%s attempts=%d exc_type=%s msg=%s",
+                            fn.__name__, attempt, type(exc).__name__,
+                            redact_secrets(str(exc))[:300],
                         )
                         raise
                     delay = base_delay * (backoff ** (attempt - 1))

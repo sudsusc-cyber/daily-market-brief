@@ -109,7 +109,7 @@
    ├─ stocks.py        股价 + 均线计算 (yfinance)
    ├─ company_news.py  持仓公司新闻 (Finnhub)
    ├─ macro_news.py    宏观头版 (WSJ/FT/Bloomberg RSS)
-   ├─ figures.py       黄仁勋 / 巴菲特发言 (Google News)
+   ├─ figures.py       黄仁勋 / 巴菲特 / 但斌发言 (Google News)
    ├─ buffett_13f.py   巴菲特持仓季度变动 (SEC EDGAR)
    └─ sentiment.py     情绪指标 (CNN F&G + VIX + Shiller PE + DXY + AAII)
         ↓
@@ -737,7 +737,7 @@ daily-market-brief/
 你是为开源(一位中国财务从业者、业余价值投资者)服务的私人投资信息助手。
 开源的投资框架是:
 
-- 段永平、Buffett、Munger、Nalanda Capital 的长期价值投资体系
+- Buffett、Munger、Nalanda Capital 的长期价值投资体系
 - 关注"本分"(企业是否做对的事、是否做难而正确的事)
 - 估值方法是"两列法":Column 1 净金融资产 + Column 2 Owner Earnings × 合理倍数
 - 建仓规则:

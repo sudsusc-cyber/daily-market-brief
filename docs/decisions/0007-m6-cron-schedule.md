@@ -1,7 +1,11 @@
 # ADR-0007 — M6 cron 调度时间(北京周二到周六 08:00)
 
 - 日期:2026-04-30
-- 状态:已锁定(待 M6 实施 GH Actions workflow 时落地)
+- 状态:**已被 M6 实施修订**(2026-05) — 主触发改为外部 cron-job.org workflow_dispatch
+  (秒级精度,BJT 06:30),GH schedule 仅作兜底,且时间提前到 BJT 06:30
+  (`30 22 * * 1-5` UTC)。详见 [.github/workflows/daily.yml](../../.github/workflows/daily.yml)
+  顶部注释。本 ADR 保留作为历史决策依据,但 cron 时间和触发架构已不同,
+  新读者请以 daily.yml 为准。
 - 影响范围:M6
 - 触发:用户在 M4 验收期间追加指令"邮件理应是周二到周六早上每天 8 点北京时间(因为美盘收盘)"
 

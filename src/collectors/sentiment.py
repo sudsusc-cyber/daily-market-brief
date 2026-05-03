@@ -20,6 +20,7 @@ M3 不出"一句结论",M4 由 LLM 综合判断。
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -29,6 +30,7 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +168,6 @@ def _fetch_shiller_pe() -> SentimentMetric:
                               error="multpl 选择器未命中 #current")
     text = " ".join(current_node.get_text(" ", strip=True).split())
     # 形如:"Current Shiller PE Ratio: 40.53 -0.01 (-0.02%)..."
-    import re
     m = re.search(r":\s*(\d+(?:\.\d+)?)", text)
     current = float(m.group(1)) if m else None
     return SentimentMetric(name="Shiller PE", current=current, prior=None, rating=None)
@@ -175,11 +176,18 @@ def _fetch_shiller_pe() -> SentimentMetric:
 # ---------- FRED: 高收益债利差 BAMLH0A0HYM2 ----------
 @retry(max_attempts=3, base_delay=1.0)
 def _fetch_fred_hy_spread(api_key: str) -> SentimentMetric:
-    url = (
-        "https://api.stlouisfed.org/fred/series/observations"
-        f"?series_id=BAMLH0A0HYM2&api_key={api_key}&file_type=json&sort_order=desc&limit=10"
-    )
-    resp = requests.get(url, timeout=15)
+    # 注意:api_key 必须通过 params dict 传,**不能拼进 url 字符串**。
+    # 否则 requests 抛 HTTPError 时,异常 repr 含完整 url(含 key),
+    # @retry 装饰器记 last_exc=%r 会把 key 写到 GH Actions 公开日志。
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    params = {
+        "series_id": "BAMLH0A0HYM2",
+        "api_key": api_key,
+        "file_type": "json",
+        "sort_order": "desc",
+        "limit": 10,
+    }
+    resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     obs = data.get("observations", []) or []
@@ -218,9 +226,15 @@ def fetch_all(fred_api_key: str) -> SentimentBundle:
         try:
             metrics.append(fn())
         except Exception as exc:  # noqa: BLE001
-            logger.exception("sentiment.metric_failed label=%s", label)
+            # 关键安全:requests/urllib HTTPError 的 str 含完整 url(可能含 ?api_key=xxx),
+            # 这个 error 字段会渲染到邮件正文 + 喂给 LLM + 写 state log,必须 redact。
+            redacted_msg = redact_secrets(str(exc))[:200]
+            logger.error(
+                "sentiment.metric_failed label=%s exc_type=%s msg=%s",
+                label, type(exc).__name__, redacted_msg,
+            )
             metrics.append(SentimentMetric(
                 name=label, current=None, prior=None, rating=None,
-                error=f"{type(exc).__name__}: {exc}",
+                error=f"{type(exc).__name__}: {redacted_msg}",
             ))
     return SentimentBundle(metrics=metrics, fetched_at=datetime.now(UTC))

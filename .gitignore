@@ -222,6 +222,10 @@ __marimo__/
 
 # Claude Code worktrees(本仓库其他 session 的工作目录,不应入库)
 .claude/worktrees/
+# Claude Code 内部状态(lock / 缓存等)
+.claude/scheduled_tasks.lock
+.claude/state/
+.claude/cache/
 
 # 运行时状态(state/* 由 main.py 写入;节假日表是配置应入库)
 state/pushed_figures.json

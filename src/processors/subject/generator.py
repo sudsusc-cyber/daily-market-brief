@@ -45,12 +45,27 @@ def _load_cache() -> dict[str, str]:
         return {}
 
 
+_CACHE_KEEP_DAYS = 30  # 缓存只保留最近 N 个 BJT 日期,避免长期 cache 文件膨胀
+
+
+def _prune_cache(cache: dict[str, str], keep_days: int = _CACHE_KEEP_DAYS) -> dict[str, str]:
+    """按 ISO 日期字符串字典序排序(YYYY-MM-DD 字典序 = 时间序),只留最新 N 条。"""
+    if len(cache) <= keep_days:
+        return cache
+    keys = sorted(cache.keys())
+    return {k: cache[k] for k in keys[-keep_days:]}
+
+
 def _save_cache(cache: dict[str, str]) -> None:
+    """原子写入 + 旧日期清理:避免 cache 文件随天数无限增长。"""
     try:
+        cache = _prune_cache(cache)
         CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CACHE_PATH.write_text(
+        tmp = CACHE_PATH.with_suffix(CACHE_PATH.suffix + ".tmp")
+        tmp.write_text(
             json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        tmp.replace(CACHE_PATH)
     except Exception as exc:  # noqa: BLE001
         logger.warning("subject.cache_write_failed err=%r", exc)
 

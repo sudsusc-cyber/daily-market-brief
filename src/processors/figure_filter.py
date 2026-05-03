@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
 from src.collectors.figures import FigureBundle, FigureMention
+from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,6 @@ class FigureKeyPoint:
     source_url: str  # 原报道链接
     source_name: str  # 媒体名
     footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
-    # 回复型帖子用:原帖正文 + 作者。无回复上下文时不设置,模板自动跳过。
-    # 渲染在引语之上的小字上下文,避免读者只看回复内容断章取义。
-    parent_text: str | None = None
-    parent_author: str | None = None
 
 
 @dataclass
@@ -218,6 +215,15 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
         if is_dup:
             continue
         src_item = items[primary_idx - 1]
+        # URL scheme 白名单防御:Google News 链接理论上都是 https,
+        # 但万一上游污染或解析失败带回 javascript:/data: 协议,模板会直接渲染
+        # 到 <a href> → XSS。整条丢弃比留个坏链接更安全。
+        if not is_safe_url(src_item.url):
+            logger.warning(
+                "figure_filter.dropped_unsafe_url url=%r",
+                (src_item.url or "")[:80],
+            )
+            continue
         kept.append(FigureKeyPoint(
             text=body,
             source_url=src_item.url,

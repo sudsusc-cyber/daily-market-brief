@@ -10,6 +10,12 @@ on:
   schedule:
     - cron: "30 0 * * 2-6"   # UTC 0:30 = BJT 8:30 周二-周六
 
+# 与 daily.yml 风格对齐:防止 cron-job.org + GH schedule 几乎同秒触发时双跑监控,
+# 双发告警邮件;不取消进行中的(发告警不可中断)。
+concurrency:
+  group: monitor-daily-brief
+  cancel-in-progress: false
+
 permissions:
   contents: read
   actions: read   # 查询 daily.yml 的 workflow runs 必需

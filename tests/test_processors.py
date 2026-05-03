@@ -252,3 +252,38 @@ class TestScoreSentiment:
                            rating=None, error="x"),
         ], fetched_at=_utc(2026, 4, 30))
         assert score_sentiment(b) is None
+
+
+class TestFigureFilterUrlSafety:
+    """source_url 安全:模板会渲染 <a href="{{ kp.source_url }}">,
+    autoescape 不挡 javascript:/data: 协议,必须在 _parse_output 层就过滤。"""
+
+    def test_parse_output_drops_javascript_url(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="javascript:alert(1)", source="X"),
+            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://safe.example.com/b", source="Y"),
+        ]
+        out = fig_parse(
+            "▦ 1: yes | 不安全 URL 应被丢\n▦ 2: yes | 安全的留下",
+            items,
+        )
+        assert len(out) == 1, "javascript: 协议应被 is_safe_url 拦截"
+        assert out[0].source_url == "https://safe.example.com/b"
+
+    def test_parse_output_drops_data_url(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="data:text/html,<script>alert(1)</script>", source="X"),
+        ]
+        out = fig_parse("▦ 1: yes | unused", items)
+        assert out == []
+
+    def test_parse_output_drops_empty_url(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="", source="X"),
+        ]
+        out = fig_parse("▦ 1: yes | unused", items)
+        assert out == []

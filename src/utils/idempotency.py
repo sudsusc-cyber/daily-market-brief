@@ -4,8 +4,14 @@
 背景:外部触发器(cron-job.org)+ GH schedule 兜底,可能在同一日内多次触发
 本工作流。需要避免一天发两封邮件。
 
-实现:启动时通过 GitHub Actions REST API 查询本仓库今日(UTC)是否已有
+实现:启动时通过 GitHub Actions REST API 查询本仓库今日(**BJT**)是否已有
 "成功 OR 正在运行" 的 run(排除当前 run)。已有 → exit(0) 跳过本次。
+
+为何用 BJT 而非 UTC 比较:
+  cron 触发时 BJT 06:30 = UTC 22:30(前一日)。如果用 UTC 日期作为"今日",
+  cron-job.org 在 22:59:50 启动 + GH schedule 在 23:00:10 启动这种场景
+  会因跨过 UTC 0 点而被判为"不同日"→ 双发。改用 BJT date 与触发语义对齐
+  ("BJT Tue-Sat 06:30 发一封"),边界稳定。
 
 为何也算 in-progress / queued:
   避免 TOCTOU 竞态。例如 cron-job.org 7:00 和 GH schedule(延迟到 ~7:00)同时
@@ -32,14 +38,30 @@ import json
 import logging
 import os
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime
+
+from src.utils.dates import BEIJING  # 统一时区源,避免每个 module 重复 ZoneInfo
 
 logger = logging.getLogger(__name__)
 
 
-def _today_utc_iso() -> str:
-    """UTC 当日 ISO 日期前缀,用于匹配 created_at。"""
-    return datetime.now(UTC).date().isoformat()
+def _today_beijing_iso() -> str:
+    """BJT 当日 ISO 日期(YYYY-MM-DD),用于与 created_at 转 BJT 后比对。"""
+    return datetime.now(BEIJING).date().isoformat()
+
+
+def _bjt_date_of_iso(iso_str: str) -> str | None:
+    """把 GH API 的 UTC ISO 字符串(如 '2026-05-03T22:30:15Z')转 BJT 日期字符串。
+
+    解析失败返回 None,调用方应跳过该 run。
+    """
+    if not iso_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return dt.astimezone(BEIJING).date().isoformat()
 
 
 def already_sent_today() -> bool:
@@ -62,13 +84,15 @@ def already_sent_today() -> bool:
     except ValueError:
         cur_run_id = None
 
-    today = _today_utc_iso()
+    today = _today_beijing_iso()
     # 关键:必须按 workflow file 过滤,只查 daily.yml 的 runs。
     # 否则 monitor.yml 等其他 workflow 今天的成功 run 会被误判为"daily.yml
     # 已发过",导致 daily.yml 永远 skip 不发邮件。
+    # per_page=100:24h 内 daily.yml run 通常 1-3 个,但 force_send 手测时容易
+    # 短时密集触发;20 太窄,真实 run 可能被挤出页面而误判为"未发"导致重发。
     url = (
         f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
-        f"?per_page=20"
+        f"?per_page=100"
     )
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
@@ -89,8 +113,9 @@ def already_sent_today() -> bool:
         if cur_run_id is not None and run.get("id") == cur_run_id:
             continue  # 排除自己
         created_at = run.get("created_at", "") or ""
-        if not created_at.startswith(today):
-            continue  # 不是今日(UTC)
+        run_bjt_date = _bjt_date_of_iso(created_at)
+        if run_bjt_date != today:
+            continue  # 不是今日(BJT)
         status = run.get("status")
         conclusion = run.get("conclusion")
         # 已成功 OR 正在排队 / 正在跑 → 都视为"今天已经在处理了"

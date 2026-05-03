@@ -107,16 +107,26 @@ def _load_last_seen(state_path: Path) -> str | None:
 
 
 def _save_last_seen(state_path: Path, filing: Filing13F, first_seen_at: datetime) -> None:
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
-        json.dumps({
-            "accession_no": filing.accession_no,
-            "filed_at": filing.filed_at.isoformat(),
-            "first_seen_at": first_seen_at.isoformat(),
-            "title": filing.title,
-        }, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    """原子写入(.tmp + replace),失败仅 warning。
+
+    磁盘满 / 权限问题不应让整个 fetch() 抛 → main.py 失败 → 邮件不发。
+    state 写不下,下次 run 会以为这是"未见过的 filing"重发一次,可接受。
+    """
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+        tmp.write_text(
+            json.dumps({
+                "accession_no": filing.accession_no,
+                "filed_at": filing.filed_at.isoformat(),
+                "first_seen_at": first_seen_at.isoformat(),
+                "title": filing.title,
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp.replace(state_path)
+    except OSError as exc:
+        logger.warning("last_13f.save_failed exc=%s; 下次 run 可能重发,主流程继续", exc)
 
 
 def fetch(state_path: Path, display_window_days: int = 7) -> BuffettBundle:

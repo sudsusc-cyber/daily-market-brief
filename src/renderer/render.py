@@ -128,7 +128,6 @@ def render_email(
     figure_silence_note: str | None = None,           # 全员沉默时的占位语
     figure_footnotes: list[Any] | None = None,        # list[FigureFootnote] 章节底部脚注
     macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
-    system_alerts: list[str] | None = None,           # 系统级告警(数据源异常等)
 ) -> str:
     """
     渲染完整邮件 HTML。
@@ -155,5 +154,4 @@ def render_email(
         macro_news=macro_news,
         macro_news_summary=macro_news_summary,
         buffett_13f=buffett_13f,
-        system_alerts=system_alerts or [],
     )

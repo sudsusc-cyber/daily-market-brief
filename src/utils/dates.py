@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 BEIJING = ZoneInfo("Asia/Shanghai")
-UTC = UTC
 
 _WEEKDAYS_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 

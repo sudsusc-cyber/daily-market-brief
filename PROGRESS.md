@@ -143,7 +143,7 @@
 #### 5 个 Collector
 - [x] `src/collectors/company_news.py`:Finnhub(美股) + Google News 中文(港股降级)
 - [x] `src/collectors/macro_news.py`:WSJ + FT + Bloomberg + Reuters(备选源)RSS
-- [x] `src/collectors/figures.py`:Google News 搜黄仁勋 / 巴菲特,规则筛选 + 7 天 dedupe(`state/pushed_figures.json`)
+- [x] `src/collectors/figures.py`:Google News 搜黄仁勋 / 巴菲特 / 但斌(M4 v2 加入),规则筛选 + 7 天 dedupe(`state/pushed_figures.json`)
 - [x] `src/collectors/buffett_13f.py`:SEC EDGAR atom feed,新提交事件检测,7 天 display window(`state/last_13f.json`)
 - [x] `src/collectors/sentiment.py`:6 指标(F&G + VIX + DXY + 恒指 RSI + Shiller PE + FRED HY 利差),含一周前值
 
