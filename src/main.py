@@ -182,6 +182,8 @@ def main() -> int:
     if not figure_summaries:
         figure_silence_note = figure_filter.generate_silence_note(llm)
     else:
+        # 版面限流:质量评分后最多展示 3 位人物
+        figure_summaries = figure_filter.select_voice_summaries(figure_summaries)
         # 跨人物统一编号 [1] [2] ...,章节底部一次列出所有来源
         figure_footnotes = figure_filter.assign_footnotes(figure_summaries)
 

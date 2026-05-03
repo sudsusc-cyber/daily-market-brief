@@ -1,15 +1,15 @@
 """
-关键人物发言筛选与摘要(模块 3a/3b 加工,M5.10 质量门槛 + 跨媒体合并)。
+关键人物发言筛选与摘要(模块 3a/3b 加工,ADR-0011 双层质量门槛 + 质量评分 + 版面限流)。
 
 输入:list[FigureBundle](已经过 M3 第一道规则筛选 + 7 天 dedupe)
 处理:
   1. 规则层预筛(__pre_rule_filter):候选必须含直接引语标记,否则丢弃
-  2. LLM 层判断:每条是否真本人原话 + 同源跨媒体合并 + 提炼关键观点
-  3. 文本相似度兜底:对 LLM 漏掉的相似观点,Python 端用 SequenceMatcher
-     再去一道(阈值 0.6,合并保留信息更完整的)
+  2. LLM 层判断:是否为本人近期发声 + 质量评分(1-5) + 跨媒体合并 + 提炼关键观点
+  3. 文本相似度兜底:对 LLM 漏掉的相似观点,Python 端用 SequenceMatcher 再去一道
+  4. 版面限流(select_voice_summaries):最多 3 位人物,每人最多 1 条观点
 
 输出:list[FigureSummary](人物 → 中文摘要 list)
-- items 为空 + fallback_raw 为空 → main.py 端整人物从渲染中剔除
+- items 为空 → main.py 端整人物从渲染中剔除
 - 全人物均空 → 调 generate_silence_note() 写一句古典韵味占位语
 """
 
@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from difflib import SequenceMatcher
 
 from src.collectors.figures import FigureBundle, FigureMention
@@ -53,6 +54,8 @@ class FigureKeyPoint:
     source_url: str  # 原报道链接
     source_name: str  # 媒体名
     footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
+    score: int = 0  # LLM 质量评分 1-5;>=4 才可展示
+    published_at: datetime | None = None  # 原始报道时间,用于限流排序
 
 
 @dataclass
@@ -110,20 +113,47 @@ _TASK_INSTRUCTION = """\
    - **不是该人物的发言**(标题里出现别人的名字,主要内容是别人说的)
 2. **跨媒体合并(重要)**:不同媒体(如第一财经、搜狐、Reuters、Bloomberg、CNBC)
    报道同一场演讲/采访/正式声明,即使措辞略有差异也必须**合并为一条**。
-3. 对通过 1-2 的条目,提炼 1-2 句中文关键观点(**优先用 LLM 看到的双引号原话**,
+3. 对通过 1-2 的条目,**打分 + 提炼 1-2 句中文关键观点**(优先用 LLM 看到的双引号原话,
    忠实原文,去标题党语气)。
 
+【发言质量评分(1-5 分,必须打!)】
+- **5 分**:重大判断,直接影响产业趋势、资本配置、长期投资假设或监管/竞争格局。
+  例:明确 AI capex 方向、先进制程需求判断、并购意图、资本配置战略转向、监管立场改变。
+- **4 分**:有明确方向、新信息、具体约束或可验证判断,值得日报展示。
+  例:下季度指引、新产品路线图时间、具体产能数字、客户结构变化。
+- **3 分**:真实发言,但信息普通,只是背景信息,不默认展示。
+  例:复述财报数字但没有新判断、一般性行业评论。
+- **2 分**:真实但偏 PR、泛泛而谈、宣传意味强,不展示。
+  例:"我们很兴奋""客户需求强劲""AI 是未来"等空泛口号。
+- **1 分**:无效、旧闻、二手转述、标题党、人物花边、语录合集,不展示。
+
+【高质量 vs 低质量发言定义】
+高质量:
+- 对未来经营、需求、供给、资本开支、技术路线、监管、竞争格局、并购、资本配置有明确判断
+- 有具体对象、时间、数字、方向或约束条件
+- 来自演讲、财报电话会、股东信、正式采访、监管文件、公司大会、官方声明
+- 能让读者更新一个判断(如 AI capex、先进制程需求、云业务、广告、算力、模型商业化、
+  安全监管、Berkshire 现金/回购/收购纪律等)
+
+低质量:
+- "AI 是未来""我们很兴奋""客户需求强劲"这类空泛口号
+- 没有新信息的产品发布宣传
+- 只是复述财报数字,没有人物本人判断
+- 分析师、媒体、KOL 对人物观点的二手转述
+- 标题党:"某某重磅发声",但正文没有原话
+- 老发言被重新包装
+- 股价涨跌评论、花边、人物传记、排行榜、语录合集
+
 输出严格按以下行格式,不要解释、不要前言:
-▦ N: yes | <关键观点中文>             # 单条
-▦ N,M[,K]: yes | <关键观点中文>       # M、K 与 N 是同一件事,合并后取 N 为代表
-▦ N: no  | <一句话说明为什么淘汰>
+▦ N: yes | score=5 | <关键观点中文>             # 单条
+▦ N,M[,K]: yes | score=5 | <关键观点中文>       # 合并,M、K 与 N 是同一件事
+▦ N: no  | score=2 | <淘汰原因>                  # 不合格,score 说明原因
 
 【关键要求】
-- **绝对不要在观点开头加 "黄仁勋说" / "巴菲特表示" / "但斌认为" 等人名前缀**
-  (人物姓名已作为小标题在上方,重复人名很啰嗦)
+- **绝对不要在观点开头加人名前缀**(如"黄仁勋说""巴菲特表示"),人物姓名已作为小标题
 - 直接输出观点本身,如:"AI 推理需求增长远超预期,数据中心投资仍处早期"
 - 忠实原文,不引申、不解读
-- 若标题含直接引语(""),优先保留引语原意
+- score 必须打数字 1-5;score 1-2 必须打 no(即使本人原话,内容不够格也不展示)
 
 【跨媒体合并规则(重中之重!)】
 判定"是否同源"用以下信号(任一命中即合并):
@@ -135,17 +165,17 @@ _TASK_INSTRUCTION = """\
 具体例子:
 - 输入 1: 标题=但斌:看好 AI 前景,加仓英伟达 / 来源=第一财经
         2: 标题=但斌发声:AI 仍是未来主线 / 来源=搜狐
-   → **必合并** 输出 "1,2: yes | <提炼后观点>"
+   → **必合并** 输出 "1,2: yes | score=4 | <提炼后观点>"
 - 输入 1: 黄仁勋 GTC 演讲谈推理需求 / Reuters
         2: NVIDIA CEO at GTC: inference demand surging / Bloomberg
         3: 老黄:AI 工厂时代来临 / CNBC
-   → **必合并** 输出 "1,2,3: yes | <提炼>"
+   → **必合并** 输出 "1,2,3: yes | score=5 | <提炼>"
 - 输入 1: 巴菲特谈苹果 / 2: 巴菲特谈中国市场
    → **保持独立**(不同观点不合并)
 
 【硬约束】
 - 合并时主索引(N)取**信息最完整、来源最权威**的那条(优先 Reuters/Bloomberg/FT/
-  WSJ > 国内财经媒体 > 门户聚合)
+  WSJ > CNBC > 国内财经媒体 > 门户聚合)
 - 输出去重后每条观点必须**独立**,读者不应看到两条说同一件事
 - 每个输入索引必须出现在某行中**只一次**
 
@@ -156,7 +186,13 @@ _TASK_INSTRUCTION = """\
 
 
 # 索引可以是单个(`1`)或逗号分隔合并(`1,3,5`),取第一个为代表来源
-_LINE_RE = re.compile(r"^▦\s*([\d,\s]+?)\s*:\s*(yes|no)\s*\|\s*(.+?)\s*$", re.IGNORECASE)
+# score=N 正则可选,但业务上缺失 score 会丢弃
+_LINE_RE = re.compile(
+    r"^▦\s*([\d,\s]+?)\s*:\s*(yes|no)\s*"
+    r"(?:\|\s*score\s*=\s*(\d)\s*)?"
+    r"\|\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
 
 
 def _format_input(items: list[FigureMention]) -> str:
@@ -194,8 +230,21 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
             continue
         idx_part = m.group(1).strip()
         verdict = m.group(2).lower()
-        body = m.group(3).strip()
+        score_str = (m.group(3) or "").strip()
+        body = m.group(4).strip()
         if verdict != "yes":
+            continue
+        # score 必须显式存在且为 1-5;缺失/格式错/越界一律丢弃
+        try:
+            score = int(score_str)
+        except (ValueError, TypeError):
+            logger.info("figure_filter.missing_score text=%s", body[:60])
+            continue
+        if score < 1 or score > 5:
+            logger.info("figure_filter.invalid_score score=%d text=%s", score, body[:60])
+            continue
+        if score < 4:
+            logger.info("figure_filter.low_score score=%d text=%s", score, body[:60])
             continue
         # 解析索引(可能是 "1" 或 "1,3,5"),取第一个有效的为代表来源
         primary_idx: int | None = None
@@ -215,9 +264,7 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
         if is_dup:
             continue
         src_item = items[primary_idx - 1]
-        # URL scheme 白名单防御:Google News 链接理论上都是 https,
-        # 但万一上游污染或解析失败带回 javascript:/data: 协议,模板会直接渲染
-        # 到 <a href> → XSS。整条丢弃比留个坏链接更安全。
+        # URL scheme 白名单防御
         if not is_safe_url(src_item.url):
             logger.warning(
                 "figure_filter.dropped_unsafe_url url=%r",
@@ -228,6 +275,8 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
             text=body,
             source_url=src_item.url,
             source_name=src_item.source,
+            score=score,
+            published_at=src_item.published_at,
         ))
     return kept
 
@@ -255,7 +304,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION.replace("人物", bundle.person),
-        max_tokens=2200,
+        max_tokens=3200,
         temperature=0.2,
     )
     if not resp.text:
@@ -273,6 +322,89 @@ def filter_all(
     bundles: list[FigureBundle], *, client: LLMClient, max_items: int = 5
 ) -> list[FigureSummary]:
     return [filter_one(b, client=client, max_items=max_items) for b in bundles]
+
+
+# ── 版面限流:质量评分后选择最优 3 位人物进入日报 ──
+
+# 人物优先级(中英文双语 alias,避免 display name 变更导致命中失败):
+# P0 > P1 > P2;同 P0(阿贝尔/巴菲特/黄仁勋) > P1(苏妈等) > P2(奥特曼/但斌等)
+_FIGURE_PRIORITY: dict[str, int] = {
+    # P0
+    "巴菲特": 0, "Warren Buffett": 0,
+    "阿贝尔": 0, "Greg Abel": 0,
+    "黄仁勋": 0, "Jensen Huang": 0,
+    # P1
+    "苏妈": 1, "Lisa Su": 1,
+    "魏哲家": 1, "C.C. Wei": 1,
+    "Hock Tan": 1,
+    "Christophe Fouquet": 1,
+    "纳德拉": 1, "Satya Nadella": 1,
+    "皮叉": 1, "Sundar Pichai": 1,
+    # P2
+    "奥特曼": 2, "Sam Altman": 2,
+    "Dario Amodei": 2,
+    "哈萨比斯": 2, "Demis Hassabis": 2,
+    "但斌": 2, "Dan Bin": 2,
+}
+
+# 来源权威度:数字越小越权威,未知来源 = 5
+_SOURCE_AUTHORITY: dict[str, int] = {
+    "Reuters": 0, "Bloomberg": 1, "Financial Times": 2, "FT": 2,
+    "Wall Street Journal": 3, "WSJ": 3, "CNBC": 4,
+}
+
+
+def select_voice_summaries(
+    summaries: list[FigureSummary],
+    *,
+    max_figures: int = 3,
+    max_items_per_figure: int = 1,
+) -> list[FigureSummary]:
+    """版面限流:在 LLM 评分后选出最优 N 位人物,每人最多 1 条观点。
+
+    排序规则:
+      1. 人物优先级(P0 > P1 > P2)
+      2. 同级别按 score 高低
+      3. 同分按来源权威度(Reuters > Bloomberg > FT/WSJ > CNBC > 其他)
+      4. 同来源按发布时间新旧
+
+    返回:最多 max_figures 位人物,每人最多 max_items_per_figure 条。
+    无合格 items 的人物直接剔除。
+    """
+    # Step 1:每人保留最高分的一条(同分按来源权威度)
+    for s in summaries:
+        if len(s.items) <= 1:
+            continue
+        s.items.sort(key=lambda kp: (
+            -kp.score,
+            _SOURCE_AUTHORITY.get(kp.source_name, 5),
+        ))
+        s.items = s.items[:max_items_per_figure]
+
+    # Step 2:按优先级 > score > 来源 > 时间,对人物排序
+    def _sort_key(s: FigureSummary) -> tuple:
+        if not s.items:
+            return (999, 0, 999, -9e18)
+        kp = s.items[0]
+        ts = kp.published_at.timestamp() if kp.published_at else 0
+        return (
+            _FIGURE_PRIORITY.get(s.person, 5),
+            -kp.score,
+            _SOURCE_AUTHORITY.get(kp.source_name, 5),
+            -ts,  # 负号让 newer first
+        )
+
+    summaries.sort(key=_sort_key)
+
+    # Step 3:截取 top-N
+    result = [s for s in summaries[:max_figures] if s.items]
+    limited = len(summaries) - len(result)
+    if limited > 0:
+        logger.info(
+            "figure_filter.throttled limited=%d kept=%d",
+            limited, len(result),
+        )
+    return result
 
 
 _SILENCE_INSTRUCTION = """\

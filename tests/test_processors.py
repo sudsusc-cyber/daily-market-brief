@@ -13,8 +13,10 @@ from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
 from src.collectors.sentiment import SentimentBundle, SentimentMetric
 from src.collectors.stocks import StockSignal  # noqa: F401  确保 import 不破坏
 from src.config import HOLDINGS
+from src.processors.figure_filter import FigureKeyPoint, FigureSummary
 from src.processors.figure_filter import _format_input as fig_format
 from src.processors.figure_filter import _parse_output as fig_parse
+from src.processors.figure_filter import select_voice_summaries
 from src.processors.macro_filter import _format_input as macro_format
 from src.processors.news_summarizer import _format_input as news_format
 from src.processors.sentiment_judge import _format_input as sent_format
@@ -98,7 +100,7 @@ class TestFigureFilter:
             FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
         ]
         out = fig_parse(
-            "▦ 1: yes | 黄仁勋说算力是未来\n▦ 2: no | 是他人转述",
+            "▦ 1: yes | score=4 | 黄仁勋说算力是未来\n▦ 2: no | score=2 | 是他人转述",
             items,
         )
         assert len(out) == 1
@@ -109,7 +111,7 @@ class TestFigureFilter:
         items = [
             FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
         ]
-        out = fig_parse("▦ 1: yes | ok\n▦ 99: yes | out_of_range", items)
+        out = fig_parse("▦ 1: yes | score=4 | ok\n▦ 99: yes | score=4 | out_of_range", items)
         assert len(out) == 1
 
     def test_parse_output_merges_indices(self) -> None:
@@ -122,7 +124,7 @@ class TestFigureFilter:
             FigureMention(title="C", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://cnbc/c", source="CNBC"),
         ]
-        out = fig_parse("▦ 1,2,3: yes | AI 推理需求增长远超预期", items)
+        out = fig_parse("▦ 1,2,3: yes | score=5 | AI 推理需求增长远超预期", items)
         assert len(out) == 1
         # 主索引 1 应作为代表来源
         assert out[0].source_url == "https://reuters/a"
@@ -136,7 +138,7 @@ class TestFigureFilter:
             FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
         ]
         out = fig_parse(
-            "▦ 1: yes | 算力是未来的核心资产\n▦ 2: yes |  算力是未来的核心资产 ",
+            "▦ 1: yes | score=4 | 算力是未来的核心资产\n▦ 2: yes | score=4 |  算力是未来的核心资产 ",
             items,
         )
         assert len(out) == 1
@@ -147,7 +149,7 @@ class TestFigureFilter:
             FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
             FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
         ]
-        out = fig_parse("▦ 5,2: yes | 观点", items)
+        out = fig_parse("▦ 5,2: yes | score=4 | 观点", items)
         assert len(out) == 1
         assert out[0].source_url == "https://b"
 
@@ -266,7 +268,7 @@ class TestFigureFilterUrlSafety:
                          url="https://safe.example.com/b", source="Y"),
         ]
         out = fig_parse(
-            "▦ 1: yes | 不安全 URL 应被丢\n▦ 2: yes | 安全的留下",
+            "▦ 1: yes | score=4 | 不安全 URL 应被丢\n▦ 2: yes | score=4 | 安全的留下",
             items,
         )
         assert len(out) == 1, "javascript: 协议应被 is_safe_url 拦截"
@@ -277,7 +279,7 @@ class TestFigureFilterUrlSafety:
             FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
                          url="data:text/html,<script>alert(1)</script>", source="X"),
         ]
-        out = fig_parse("▦ 1: yes | unused", items)
+        out = fig_parse("▦ 1: yes | score=4 | unused", items)
         assert out == []
 
     def test_parse_output_drops_empty_url(self) -> None:
@@ -285,5 +287,217 @@ class TestFigureFilterUrlSafety:
             FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
                          url="", source="X"),
         ]
-        out = fig_parse("▦ 1: yes | unused", items)
+        out = fig_parse("▦ 1: yes | score=4 | unused", items)
+        assert out == []
+
+
+class TestFigureFilterScore:
+    """质量评分解析:score >= 4 保留, < 4 丢弃, 合并仍正常。"""
+
+    def test_parse_score_4_keeps(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="Reuters"),
+        ]
+        out = fig_parse("▦ 1: yes | score=4 | AI 推理需求增长远超预期", items)
+        assert len(out) == 1
+        assert out[0].score == 4
+        assert out[0].text == "AI 推理需求增长远超预期"
+
+    def test_parse_score_5_keeps(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="Bloomberg"),
+        ]
+        out = fig_parse("▦ 1: yes | score=5 | 重大资本配置转向", items)
+        assert len(out) == 1
+        assert out[0].score == 5
+
+    def test_parse_score_3_discards(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="X"),
+        ]
+        out = fig_parse("▦ 1: yes | score=3 | 一般性行业评论", items)
+        assert len(out) == 0, "score=3 应被丢弃"
+
+    def test_parse_score_2_discards(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="X"),
+        ]
+        out = fig_parse("▦ 1: yes | score=2 | 客户需求强劲", items)
+        assert len(out) == 0
+
+    def test_parse_score_missing_discards(self) -> None:
+        """score 缺失 → 丢弃,不再默认放行。"""
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="Reuters"),
+        ]
+        out = fig_parse("▦ 1: yes | 没有 score 字段应被丢弃", items)
+        assert len(out) == 0, "缺失 score 的 yes 行必须丢弃"
+
+    def test_parse_score_zero_discards(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="X"),
+        ]
+        out = fig_parse("▦ 1: yes | score=0 | score 越界", items)
+        assert len(out) == 0
+
+    def test_parse_score_six_discards(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="X"),
+        ]
+        out = fig_parse("▦ 1: yes | score=6 | score 越界", items)
+        assert len(out) == 0
+
+    def test_merge_with_scores(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="Reuters"),
+            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://b", source="Bloomberg"),
+        ]
+        out = fig_parse("▦ 1,2: yes | score=5 | 合并后的重大判断", items)
+        assert len(out) == 1
+        assert out[0].score == 5
+        assert out[0].source_url == "https://a"
+
+    def test_mixed_scores_only_keeps_high(self) -> None:
+        items = [
+            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://a", source="Reuters"),
+            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://b", source="CNBC"),
+            FigureMention(title="C", snippet="", published_at=_utc(2026, 4, 30),
+                         url="https://c", source="WSJ"),
+        ]
+        out = fig_parse(
+            "▦ 1: yes | score=5 | 重要判断\n"
+            "▦ 2: yes | score=2 | 空洞口号\n"
+            "▦ 3: yes | score=4 | 有用信息",
+            items,
+        )
+        assert len(out) == 2
+        scores = {kp.score for kp in out}
+        assert scores == {4, 5}
+
+    def test_published_at_stored(self) -> None:
+        dt = _utc(2026, 4, 30)
+        items = [
+            FigureMention(title="A", snippet="", published_at=dt,
+                         url="https://a", source="Reuters"),
+        ]
+        out = fig_parse("▦ 1: yes | score=4 | 观点", items)
+        assert len(out) == 1
+        assert out[0].published_at == dt
+
+
+class TestVoiceThrottling:
+    """版面限流:最多 3 位人物,每人最多 1 条,优先级排序。"""
+
+    def _summary(self, person: str, texts_and_scores: list[tuple[str, int]],
+                 source: str = "Reuters") -> FigureSummary:
+        pub = _utc(2026, 5, 4)
+        items = [
+            FigureKeyPoint(
+                text=t, source_url="https://x", source_name=source,
+                score=s, published_at=pub,
+            )
+            for t, s in texts_and_scores
+        ]
+        return FigureSummary(person=person, person_en=person, items=items)
+
+    def test_limits_to_three_figures(self) -> None:
+        summaries = [
+            self._summary("巴菲特", [("巴菲特观点", 4)]),
+            self._summary("苏妈", [("苏妈观点", 4)]),
+            self._summary("纳德拉", [("纳德拉观点", 4)]),
+            self._summary("奥特曼", [("奥特曼观点", 4)]),
+            self._summary("但斌", [("但斌观点", 4)]),
+        ]
+        out = select_voice_summaries(summaries)
+        assert len(out) == 3
+        assert out[0].person == "巴菲特"
+
+    def test_limits_one_item_per_figure(self) -> None:
+        summaries = [
+            self._summary("黄仁勋", [("观点A", 5), ("观点B", 4)]),
+        ]
+        out = select_voice_summaries(summaries)
+        assert len(out) == 1
+        assert len(out[0].items) == 1
+        assert out[0].items[0].score == 5
+
+    def test_p0_before_p1(self) -> None:
+        summaries = [
+            self._summary("但斌", [("但斌观点", 5)]),
+            self._summary("黄仁勋", [("老黄观点", 4)]),
+        ]
+        out = select_voice_summaries(summaries)
+        assert out[0].person == "黄仁勋", "P0 应排在 P2 前面"
+
+    def test_same_priority_higher_score_first(self) -> None:
+        summaries = [
+            self._summary("苏妈", [("苏妈观点", 4)]),
+            self._summary("Hock Tan", [("陈福阳观点", 5)]),
+        ]
+        out = select_voice_summaries(summaries)
+        assert out[0].person == "Hock Tan", "同优先级,score 高的在前"
+
+    def test_source_authority_tiebreaker(self) -> None:
+        dt = _utc(2026, 5, 4)
+        s1 = FigureSummary(person="苏妈", person_en="Lisa Su", items=[
+            FigureKeyPoint(text="观点", source_url="https://x", source_name="CNBC",
+                          score=5, published_at=dt),
+        ])
+        s2 = FigureSummary(person="Hock Tan", person_en="Hock Tan", items=[
+            FigureKeyPoint(text="观点", source_url="https://x", source_name="Reuters",
+                          score=5, published_at=dt),
+        ])
+        out = select_voice_summaries([s1, s2])
+        assert out[0].person == "Hock Tan"
+
+    def test_newer_first_tiebreaker(self) -> None:
+        s1 = FigureSummary(person="苏妈", person_en="Lisa Su", items=[
+            FigureKeyPoint(text="观点", source_url="https://x", source_name="Reuters",
+                          score=5, published_at=_utc(2026, 5, 4)),
+        ])
+        s2 = FigureSummary(person="Hock Tan", person_en="Hock Tan", items=[
+            FigureKeyPoint(text="观点", source_url="https://x", source_name="Reuters",
+                          score=5, published_at=_utc(2026, 5, 3)),
+        ])
+        out = select_voice_summaries([s2, s1])
+        assert out[0].person == "苏妈"
+
+    def test_removes_empty_summaries(self) -> None:
+        summaries = [
+            self._summary("黄仁勋", [("观点", 4)]),
+            FigureSummary(person="苏妈", person_en="Lisa Su", items=[]),
+            self._summary("巴菲特", [("观点", 5)]),
+        ]
+        out = select_voice_summaries(summaries)
+        assert len(out) == 2
+        persons = {s.person for s in out}
+        assert "苏妈" not in persons
+
+    def test_chinese_display_name_priority(self) -> None:
+        """中文 display name 也能命中 _FIGURE_PRIORITY。"""
+        summaries = [
+            self._summary("奥特曼", [("观点", 5)]),  # P2
+            self._summary("黄仁勋", [("观点", 3)]),  # P0,低分
+        ]
+        out = select_voice_summaries(summaries)
+        # P0 优先于 P2,即使 score 更低
+        assert out[0].person == "黄仁勋"
+
+    def test_all_empty_still_empty(self) -> None:
+        summaries = [
+            FigureSummary(person="黄仁勋", person_en="Jensen Huang", items=[]),
+            FigureSummary(person="但斌", person_en="Dan Bin", items=[]),
+        ]
+        out = select_voice_summaries(summaries)
         assert out == []

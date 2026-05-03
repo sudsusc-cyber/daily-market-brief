@@ -52,12 +52,28 @@ class FigureBundle:
     error: str | None = None
 
 
-# 监控人物清单。第 3 列 lang:"en" 走英文搜索,"zh" 走中文。第 4 列是 byline 用英文名。
+# 监控人物清单。第 1 列是 display name(中文优先,控制邮件署名与 7 天去重 hash),
+# 第 3 列 lang:"en" 走英文搜索,"zh" 走中文。第 4 列是 byline 用英文名。
 # 李录每日候选过少(24h 通常 0-2 条),已弃用——若以后频率上升可加回。
+# 优先级说明：P0(巴菲特/阿贝尔/黄仁勋) > P1(苏妈等) > P2(奥特曼/但斌等)
 FIGURES: list[tuple[str, str, str, str]] = [
-    ("黄仁勋", '"Jensen Huang"',  "en", "Jensen Huang"),
-    ("巴菲特", '"Warren Buffett"', "en", "Warren Buffett"),
-    ("但斌",   '"但斌"',           "zh", "Dan Bin"),    # 东方港湾董事长
+    # P0
+    ("黄仁勋",   '"Jensen Huang"',                       "en", "Jensen Huang"),
+    ("巴菲特",   '"Warren Buffett"',                     "en", "Warren Buffett"),
+    # P1
+    ("苏妈",     '"Lisa Su" AMD',                        "en", "Lisa Su"),
+    ("魏哲家",   '"C.C. Wei" OR "C. C. Wei" TSMC',      "en", "C.C. Wei"),
+    ("Hock Tan", '"Hock Tan" Broadcom',                  "en", "Hock Tan"),
+    ("Christophe Fouquet", '"Christophe Fouquet" ASML',  "en", "Christophe Fouquet"),
+    ("纳德拉",   '"Satya Nadella" Microsoft',            "en", "Satya Nadella"),
+    ("皮叉",     '"Sundar Pichai" Google OR Alphabet',   "en", "Sundar Pichai"),
+    # P0(续)
+    ("阿贝尔",   '"Greg Abel" Berkshire',                "en", "Greg Abel"),
+    # P2
+    ("奥特曼",   '"Sam Altman" OpenAI',                  "en", "Sam Altman"),
+    ("Dario Amodei", '"Dario Amodei" Anthropic',         "en", "Dario Amodei"),
+    ("哈萨比斯", '"Demis Hassabis" DeepMind',            "en", "Demis Hassabis"),
+    ("但斌",     '"但斌"',                                 "zh", "Dan Bin"),   # 东方港湾董事长
 ]
 
 # 规则筛选动词:英文 + 中文双语,任一命中即视为候选
