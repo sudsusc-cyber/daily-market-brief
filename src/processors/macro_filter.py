@@ -13,7 +13,10 @@ from dataclasses import dataclass, field
 
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
 from src.processors.html_safe import (
+    FOOTNOTE_ANCHOR_STYLE,
+    FOOTNOTE_RE,
     escape_text,
+    footnote_idx,
     is_safe_url,
     render_text_with_footnotes,
     safe_anchor,
@@ -79,16 +82,8 @@ _TASK_INSTRUCTION = """\
 #   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
 #   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号
 #   ^N^                                                ← markdown
-# 中英括号都接;括号内可有空格(\s*);避免 URL / 公式中误匹配。
-_FOOTNOTE_RE = re.compile(
-    r"<sup>\s*[\[【(\(]\s*(\d+)\s*[\]】)\)]\s*</sup>"
-    r"|[\[【(\(]\s*(\d+)\s*[\]】)\)](?![a-zA-Z\d])"
-    r"|\^(\d+)\^"
-)
-
-
-def _re_idx(match: re.Match[str]) -> int:
-    return int(match.group(1) or match.group(2) or match.group(3))
+# FOOTNOTE_RE / footnote_idx / FOOTNOTE_ANCHOR_STYLE 共用 html_safe.py
+# (此前与 news_summarizer 各自重复定义,容易漂移)。
 
 
 def _format_input(bundles: list[MacroFeedBundle]) -> tuple[str, list[MacroNewsItem]]:
@@ -104,11 +99,6 @@ def _format_input(bundles: list[MacroFeedBundle]) -> tuple[str, list[MacroNewsIt
             lines.append(f"  #{n}. {it.title}")
     return "\n".join(lines), flat_items
 
-
-_FOOTNOTE_ANCHOR_STYLE = (
-    "color:#0563C1;text-decoration:none;font-size:11px;"
-    "font-family:Charter,Georgia,serif;margin-left:1px;"
-)
 
 # Python 端写死的段落样式(不接受外部输入,杜绝 style 注入)
 _PARAGRAPH_STYLE = (
@@ -154,8 +144,8 @@ def _rebuild_safe_html(
     # 全文扫一遍 [N],按出现顺序确定 rewrite + footnotes(URL 走白名单)
     combined = "\n".join(paragraphs_raw)
     used_indexes: list[int] = []
-    for m in _FOOTNOTE_RE.finditer(combined):
-        idx = _re_idx(m)
+    for m in FOOTNOTE_RE.finditer(combined):
+        idx = footnote_idx(m)
         if idx not in used_indexes:
             used_indexes.append(idx)
 
@@ -188,7 +178,7 @@ def _rebuild_safe_html(
         if new_i is None:
             return ""
         url = url_by_new_idx.get(new_i, "")
-        anchor = safe_anchor(url, f"[{new_i}]", style=_FOOTNOTE_ANCHOR_STYLE)
+        anchor = safe_anchor(url, f"[{new_i}]", style=FOOTNOTE_ANCHOR_STYLE)
         return f"<sup>{anchor}</sup>"
 
     # 重建 HTML:每段一个 <p>,主题词加粗 oxblood
@@ -200,7 +190,7 @@ def _rebuild_safe_html(
             body_text = m.group(2).strip()
             safe_theme = escape_text(theme_text)
             safe_body = render_text_with_footnotes(
-                body_text, _FOOTNOTE_RE, _re_idx, _build_anchor,
+                body_text, FOOTNOTE_RE, footnote_idx, _build_anchor,
             )
             parts.append(
                 f'<p style="{_PARAGRAPH_STYLE}">'
@@ -211,7 +201,7 @@ def _rebuild_safe_html(
         else:
             # 无主题词分隔 → 整段当正文
             safe_body = render_text_with_footnotes(
-                para, _FOOTNOTE_RE, _re_idx, _build_anchor,
+                para, FOOTNOTE_RE, footnote_idx, _build_anchor,
             )
             parts.append(f'<p style="{_PARAGRAPH_STYLE}">{safe_body}</p>')
 
