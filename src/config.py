@@ -49,7 +49,7 @@ HOLDINGS: list[Holding] = [
     # 用 google.com favicon 视觉更清晰,且对用户更易识别
     Holding("GOOG", "Alphabet C", "google.com"),
     Holding("BRK.B", "Berkshire Hathaway B", "berkshirehathaway.com"),
-    Holding("KO", "The Coca-Cola Company", "coca-cola.com"),
+    Holding("KO", "Coca-Cola", "coca-cola.com"),
     Holding("AXP", "American Express", "americanexpress.com"),
     Holding("0700.HK", "腾讯控股", "tencent.com"),
     Holding("9992.HK", "泡泡玛特", "popmart.com"),
