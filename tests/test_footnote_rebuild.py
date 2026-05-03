@@ -46,6 +46,16 @@ class TestRegexVariants:
     def test_caret_markdown(self) -> None:
         assert _re("一段话。^8^") == [8]
 
+    def test_hash_prefix_bare(self) -> None:
+        """LLM 偶尔把 prompt 里 '#' 编号当成标记的一部分,输出 [#N]。"""
+        assert _re("中东冲突。[#9][#18]") == [9, 18]
+
+    def test_hash_prefix_in_sup(self) -> None:
+        assert _re("foo<sup>[#11]</sup>bar") == [11]
+
+    def test_hash_prefix_full_width_brackets(self) -> None:
+        assert _re("结尾【#12】。") == [12]
+
     def test_internal_whitespace_tolerated(self) -> None:
         """[ 9 ] / 【 10 】 这种带空格变体也接(真实场景后跟标点)。"""
         assert _re("结尾[ 9 ]。") == [9]
