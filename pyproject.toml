@@ -23,13 +23,6 @@ dependencies = [
     "ephem>=4.2.1",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.6.0",
-    "black>=24.0.0",
-    "pytest>=8.0.0",
-]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
@@ -38,10 +31,15 @@ pythonpath = ["."]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# 单一开发依赖来源(PEP 735)。之前同时存在 [project.optional-dependencies] dev
+# 与 [dependency-groups] dev,两组内容/版本不同(pytest 8 vs 9),CI 用 --extra dev
+# 走前者,本地 uv sync 走后者,容易踩坑。统一到 [dependency-groups]。
 [dependency-groups]
 dev = [
-    "pillow>=12.2.0",
+    "ruff>=0.6.0",
+    "black>=24.0.0",
     "pytest>=9.0.3",
+    "pillow>=12.2.0",  # tests/test_header_image.py 验证图像写入需要
 ]
 
 [tool.hatch.build.targets.wheel]
