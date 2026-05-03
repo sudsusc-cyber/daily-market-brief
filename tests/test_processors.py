@@ -432,13 +432,14 @@ class TestVoiceThrottling:
         assert len(out[0].items) == 1
         assert out[0].items[0].score == 5
 
-    def test_p0_before_p1(self) -> None:
+    def test_score_5_beats_score_4(self) -> None:
+        """score=5 优先于 score=4,不管人物优先级。"""
         summaries = [
-            self._summary("但斌", [("但斌观点", 5)]),
-            self._summary("黄仁勋", [("老黄观点", 4)]),
+            self._summary("黄仁勋", [("老黄观点", 4)]),  # P0
+            self._summary("但斌", [("但斌观点", 5)]),    # P2,但 score 更高
         ]
         out = select_voice_summaries(summaries)
-        assert out[0].person == "黄仁勋", "P0 应排在 P2 前面"
+        assert out[0].person == "但斌", "score=5 应排在 score=4 前面"
 
     def test_same_priority_higher_score_first(self) -> None:
         summaries = [
@@ -485,13 +486,13 @@ class TestVoiceThrottling:
         assert "苏妈" not in persons
 
     def test_chinese_display_name_priority(self) -> None:
-        """中文 display name 也能命中 _FIGURE_PRIORITY。"""
+        """同 score 时,中文 display name 也能命中 _FIGURE_PRIORITY。"""
         summaries = [
-            self._summary("奥特曼", [("观点", 5)]),  # P2
-            self._summary("黄仁勋", [("观点", 3)]),  # P0,低分
+            self._summary("奥特曼", [("观点", 4)]),  # P2
+            self._summary("黄仁勋", [("观点", 4)]),  # P0
         ]
         out = select_voice_summaries(summaries)
-        # P0 优先于 P2,即使 score 更低
+        # 同 score=4, P0 优先于 P2
         assert out[0].person == "黄仁勋"
 
     def test_all_empty_still_empty(self) -> None:

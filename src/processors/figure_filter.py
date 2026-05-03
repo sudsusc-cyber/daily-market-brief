@@ -363,9 +363,9 @@ def select_voice_summaries(
     """版面限流:在 LLM 评分后选出最优 N 位人物,每人最多 1 条观点。
 
     排序规则:
-      1. 人物优先级(P0 > P1 > P2)
-      2. 同级别按 score 高低
-      3. 同分按来源权威度(Reuters > Bloomberg > FT/WSJ > CNBC > 其他)
+      1. score 高低(5 分优先于 4 分)
+      2. 同分按人物优先级(P0 > P1 > P2)
+      3. 同优先按来源权威度(Reuters > Bloomberg > FT/WSJ > CNBC > 其他)
       4. 同来源按发布时间新旧
 
     返回:最多 max_figures 位人物,每人最多 max_items_per_figure 条。
@@ -381,15 +381,15 @@ def select_voice_summaries(
         ))
         s.items = s.items[:max_items_per_figure]
 
-    # Step 2:按优先级 > score > 来源 > 时间,对人物排序
+    # Step 2:按 score > 人物优先级 > 来源 > 时间排序
     def _sort_key(s: FigureSummary) -> tuple:
         if not s.items:
-            return (999, 0, 999, -9e18)
+            return (-999, 999, 999, -9e18)
         kp = s.items[0]
         ts = kp.published_at.timestamp() if kp.published_at else 0
         return (
-            _FIGURE_PRIORITY.get(s.person, 5),
             -kp.score,
+            _FIGURE_PRIORITY.get(s.person, 5),
             _SOURCE_AUTHORITY.get(kp.source_name, 5),
             -ts,  # 负号让 newer first
         )
