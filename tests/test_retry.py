@@ -103,9 +103,9 @@ class TestRetryLogRedaction:
                 "404 Client Error for url: https://api.example.com/?api_key=SECRET_TOKEN_42"
             )
 
-        with caplog.at_level(logging.WARNING, logger="src.utils.retry"):
-            with pytest.raises(ConnectionError):
-                fn()
+        with caplog.at_level(logging.WARNING, logger="src.utils.retry"), \
+             pytest.raises(ConnectionError):
+            fn()
         # 关键断言:警告日志里不能含原始 secret
         log_text = "\n".join(r.getMessage() for r in caplog.records)
         assert "SECRET_TOKEN_42" not in log_text, (

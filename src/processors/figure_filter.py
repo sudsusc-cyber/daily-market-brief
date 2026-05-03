@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
 from src.collectors.figures import FigureBundle, FigureMention
+from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -214,6 +215,15 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
         if is_dup:
             continue
         src_item = items[primary_idx - 1]
+        # URL scheme 白名单防御:Google News 链接理论上都是 https,
+        # 但万一上游污染或解析失败带回 javascript:/data: 协议,模板会直接渲染
+        # 到 <a href> → XSS。整条丢弃比留个坏链接更安全。
+        if not is_safe_url(src_item.url):
+            logger.warning(
+                "figure_filter.dropped_unsafe_url url=%r",
+                (src_item.url or "")[:80],
+            )
+            continue
         kept.append(FigureKeyPoint(
             text=body,
             source_url=src_item.url,
