@@ -31,21 +31,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.sender.smtp_sender import send_html_email
 from src.settings import load_settings
+from src.utils.dates import BEIJING
 
 logger = logging.getLogger(__name__)
+
+
+def _today_beijing_iso() -> str:
+    return datetime.now(BEIJING).date().isoformat()
+
+
+def _bjt_date_of_iso(iso_str: str) -> str | None:
+    """把 GH API 的 UTC ISO 字符串(如 '2026-05-03T22:30:15Z')转 BJT 日期字符串。"""
+    if not iso_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return dt.astimezone(BEIJING).date().isoformat()
 
 
 def check_today_status() -> tuple[bool, str]:
     """
     返回 (今日 OK?, 描述)。
-    OK = 今天 UTC 有 daily.yml run 处于 success / in_progress / queued 之一。
+    OK = 今天(BJT)有 daily.yml run 处于 success / in_progress / queued 之一。
+
+    必须用 BJT date 比对(与 idempotency.already_sent_today 同口径):
+      cron 在 BJT 06:30 触发 = UTC 22:30(前一日)。monitor 在 BJT 08:30
+      = UTC 00:30 检查时,daily 的 created_at 是前一日 UTC string。用 UTC
+      比对会判"今日无 run"误报告警。
     """
     token = os.environ.get("GH_TOKEN", "")
     repo = os.environ.get("GH_REPO", "")
     if not token or not repo:
         return False, "缺少 GH_TOKEN / GH_REPO 环境变量"
 
-    today = datetime.now(UTC).date().isoformat()
+    today = _today_beijing_iso()
     url = (
         f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
         f"?per_page=30"
@@ -62,10 +83,10 @@ def check_today_status() -> tuple[bool, str]:
         return False, f"GH API 调用失败: {exc!r}"
 
     runs = data.get("workflow_runs", []) or []
-    today_runs = [r for r in runs if (r.get("created_at") or "").startswith(today)]
+    today_runs = [r for r in runs if _bjt_date_of_iso(r.get("created_at") or "") == today]
 
     if not today_runs:
-        return False, f"今日({today} UTC)无 daily.yml run 记录"
+        return False, f"今日({today} BJT)无 daily.yml run 记录"
 
     for r in today_runs:
         if r.get("conclusion") == "success":
