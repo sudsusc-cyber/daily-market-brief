@@ -175,11 +175,18 @@ def _fetch_shiller_pe() -> SentimentMetric:
 # ---------- FRED: 高收益债利差 BAMLH0A0HYM2 ----------
 @retry(max_attempts=3, base_delay=1.0)
 def _fetch_fred_hy_spread(api_key: str) -> SentimentMetric:
-    url = (
-        "https://api.stlouisfed.org/fred/series/observations"
-        f"?series_id=BAMLH0A0HYM2&api_key={api_key}&file_type=json&sort_order=desc&limit=10"
-    )
-    resp = requests.get(url, timeout=15)
+    # 注意:api_key 必须通过 params dict 传,**不能拼进 url 字符串**。
+    # 否则 requests 抛 HTTPError 时,异常 repr 含完整 url(含 key),
+    # @retry 装饰器记 last_exc=%r 会把 key 写到 GH Actions 公开日志。
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    params = {
+        "series_id": "BAMLH0A0HYM2",
+        "api_key": api_key,
+        "file_type": "json",
+        "sort_order": "desc",
+        "limit": 10,
+    }
+    resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     obs = data.get("observations", []) or []
