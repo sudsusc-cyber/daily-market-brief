@@ -79,6 +79,45 @@ _TASK_INSTRUCTION = """\
 """
 
 
+_SILENCE_INSTRUCTION = """\
+任务:今日各财经媒体均无真正的头版级宏观新闻(无央行决议、无地缘冲突升级、
+无系统性风险事件、无重大宏观数据)。请写**一句**短小有古典韵味的中文(12-25 字),
+用作晨报「宏观视野」章节的占位语,传达出天地间暂时的平静与从容。
+
+【风格基调】
+- 聚焦时间流逝与世界的静默,用天文、气象、山水等自然意象
+- 开阔、从容,有大历史感但不装腔
+- 例如(只是范围参考,绝不要照抄):"四海无波,日升月落而已""风未起,江湖自平"
+  "穹顶之下,万物有序,今日无惊雷""星图如昨,寰宇安然"
+- **不要**写"今日无宏观新闻"这种平白叙述
+
+【硬约束】
+- 只输出**那句话本身**,不带前言、不带解释、不带 markdown、不带引号
+- 字数 12-25 字,绝不超过 25 字
+- 不要用"今天/今日"等明显时间副词
+"""
+
+
+def generate_silence_note(client: LLMClient) -> str | None:
+    """无宏观头条时生成的占位语。失败返回 None,模板用兜底文案。"""
+    resp = client.chat(
+        "请写一句替代'宏观视野'章节的占位语",
+        task_extra=_SILENCE_INSTRUCTION,
+        max_tokens=1500,
+        temperature=0.85,
+    )
+    text = (resp.text or "").strip().strip("\"'“”「」 ")
+    if not text:
+        logger.warning("macro_filter.silence_failed reason=%s", resp.error)
+        return None
+    if text.startswith("```"):
+        text = text.strip("` \n")
+    if len(text) > 50:
+        text = text[:50].rstrip("。!?,;:") + "。"
+    logger.info("macro_filter.silence_ok chars=%d", len(text))
+    return text
+
+
 # 兼容 LLM 输出的多种引用变体:
 #   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
 #   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号

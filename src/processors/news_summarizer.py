@@ -104,6 +104,45 @@ _TASK_INSTRUCTION = """\
 """
 
 
+_SILENCE_INSTRUCTION = """\
+任务:今日所有持仓公司都没有重要新闻(无业绩、无重大合作、无监管动作、无产品发布)。
+请写**一句**短小有古典韵味的中文(12-25 字),用作晨报「昨日动态」章节的占位语,
+让读者感受到一份从容的留白,而不是干巴巴的"今日无重要新闻"。
+
+【风格基调】
+- 聚焦市场与企业的静默感,用古典意象传达"市井无大事,岁月自流转"的意境
+- 节制、含蓄,有生意气息但不市侩
+- 例如(只是范围参考,绝不要照抄):"商海无波,舟自徐行""旌旗未动,营垒安然"
+  "市声远去,只有时间在走""今日无战事,账簿安静如睡莲"
+- **不要**写"今日无重要动态"这种平白叙述
+
+【硬约束】
+- 只输出**那句话本身**,不带前言、不带解释、不带 markdown、不带引号
+- 字数 12-25 字,绝不超过 25 字
+- 不要用"今天/今日"等明显时间副词
+"""
+
+
+def generate_silence_note(client: LLMClient) -> str | None:
+    """所有持仓公司均无重要新闻时生成的占位语。失败返回 None,模板用兜底文案。"""
+    resp = client.chat(
+        "请写一句替代'昨日动态'章节的占位语",
+        task_extra=_SILENCE_INSTRUCTION,
+        max_tokens=1500,
+        temperature=0.85,
+    )
+    text = (resp.text or "").strip().strip("\"'“”「」 ")
+    if not text:
+        logger.warning("news_summarizer.silence_failed reason=%s", resp.error)
+        return None
+    if text.startswith("```"):
+        text = text.strip("` \n")
+    if len(text) > 50:
+        text = text[:50].rstrip("。!?,;:") + "。"
+    logger.info("news_summarizer.silence_ok chars=%d", len(text))
+    return text
+
+
 # 兼容 LLM 输出的多种引用变体:
 #   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
 #   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号

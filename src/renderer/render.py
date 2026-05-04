@@ -91,6 +91,17 @@ def _filter_bj_time(dt: datetime | None) -> str:
         return ""
 
 
+def _filter_bj_date_cn(dt: datetime | None) -> str:
+    """datetime → 北京日期 'M 月 D 日'(无时分,无前导零)。"""
+    if dt is None:
+        return ""
+    try:
+        bj = to_beijing(dt)
+        return f"{bj.month} 月 {bj.day} 日"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _filter_safe_url(url: str | None) -> str:
     """URL 白名单过滤 — 给模板里所有 <a href="{{ x | safe_url }}"> 用。
 
@@ -113,6 +124,7 @@ def _build_env() -> Environment:
     env.filters["metric_num"] = _filter_metric_num
     env.filters["metric_delta"] = _filter_metric_delta
     env.filters["bj_time"] = _filter_bj_time
+    env.filters["bj_date_cn"] = _filter_bj_date_cn
     env.filters["safe_url"] = _filter_safe_url
     env.filters["cjk_spaced"] = add_cjk_spacing
     return env
@@ -140,6 +152,8 @@ def render_email(
     figure_silence_note: str | None = None,           # 全员沉默时的占位语
     figure_footnotes: list[Any] | None = None,        # list[FigureFootnote] 章节底部脚注
     macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
+    company_news_silence_note: str | None = None,     # 持仓无新闻时的占位语
+    macro_news_silence_note: str | None = None,       # 无宏观新闻时的占位语
     frontier_labs_items: list[Any] | None = None,     # list[FrontierKeyPoint]
     judgment_section: dict | None = None,             # Judgment Ledger payload
 ) -> str:
@@ -167,6 +181,8 @@ def render_email(
         figure_footnotes=figure_footnotes or [],
         macro_news=macro_news,
         macro_news_summary=macro_news_summary,
+        company_news_silence_note=company_news_silence_note,
+        macro_news_silence_note=macro_news_silence_note,
         buffett_13f=buffett_13f,
         frontier_labs_items=frontier_labs_items or [],
         judgment_section=judgment_section,

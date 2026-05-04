@@ -341,7 +341,7 @@
         {% endif %}
 
         {# ─────────────────────────  昨日动态  ───────────────────────── #}
-        {% if company_news %}
+        {% if company_news or company_news_silence_note %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">昨日动态</div>
@@ -349,7 +349,16 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
-        {% if company_news_summary and company_news_summary.summary_html %}
+        {% if company_news_silence_note %}
+        {# 所有持仓均无新闻:LLM 写一句古典韵味占位语,失败时退回固定兜底 #}
+        <tr>
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_body }}; font-size:15px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.04em; font-style:italic; text-align:center;">
+              {{ company_news_silence_note or "商海无波,舟自徐行。" }}
+            </div>
+          </td>
+        </tr>
+        {% elif company_news_summary and company_news_summary.summary_html %}
         {# M4 LLM 公司分行简报 + 区块下方脚注列表。
            summary_html 由 src/processors/news_summarizer.py 经
            src/processors/html_safe.py 净化(LLM/外部文本一律 escape,
@@ -371,7 +380,7 @@
           </td>
         </tr>
         {% endif %}
-        {% else %}
+        {% elif company_news %}
         {% for bundle in company_news %}
         {%- set has_logo = logo_cids and (bundle.holding.ticker in logo_cids) -%}
         <tr>
@@ -413,11 +422,33 @@
           </td>
         </tr>
         {% endfor %}
-        {% endif %}{# end company_news_paragraph else #}
-        {% endif %}{# end company_news outer #}
+        {% endif %}{# end silence / summary / raw list #}
+        {% endif %}{# end yesterday outer #}
+        {% if frontier_labs_items %}
+        <tr>
+          <td style="padding:48px 24px 0 24px;">
+            {% for item in frontier_labs_items[:2] %}
+            <p style="margin:{% if loop.first %}0{% else %}6px{% endif %} 0 0 0; font-family:{{ serif_body }}; font-size:12.5px; line-height:1.6; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
+              <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_lab_pinned if item.lab in ('OpenAI', 'Anthropic') else color_ink }}; letter-spacing:0.04em;">{{ item.lab }}</span>
+              <span style="color:{{ color_muted }}; margin:0 0.7em;">｜</span>
+              {{ item.text | cjk_spaced }}<sup><a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11px; font-style:normal;">[{{ loop.index }}]</a></sup>
+            </p>
+            {% endfor %}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 24px 0 24px;">
+            <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
+              {% for item in frontier_labs_items[:2] %}
+              <a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ loop.index }}] {{ item.source_name }}</a>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
 
         {# ─────────────────────────  关键发言  ───────────────────────── #}
-        {% if figures or (buffett_13f and buffett_13f.is_new) %}
+        {% if figures %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">关键发言</div>
@@ -474,22 +505,10 @@
         </tr>
         {% endif %}
         {% endif %}{# end figure_summaries — M3 fallback 已删除,质量门槛优先 #}
-        {% if buffett_13f and buffett_13f.is_new %}
-        <tr>
-          <td style="padding:24px 24px 0 24px;">
-            <div style="font-family:{{ serif_display }}; font-size:15px; color:{{ color_accent }}; letter-spacing:0.06em; font-weight:500;">Berkshire 13F</div>
-            <div style="margin-top:8px; font-family:{{ serif_body }}; font-size:13px; color:{{ color_ink_soft }}; line-height:1.6;">
-              SEC EDGAR 检测到新 13F 提交(accession <span style="font-family:Charter,Cambria,serif; color:{{ color_muted }};">{{ buffett_13f.latest.accession_no }}</span>),
-              提交于北京时间 {{ buffett_13f.latest.filed_at | bj_time }}{% if buffett_13f.days_since_filed is not none %},距今 {{ buffett_13f.days_since_filed }} 天{% endif %}。
-              具体持仓变动(新增 / 加仓 / 减仓 / 清仓)将在 13F-HR XML 解析接入后呈现(M4+)。
-            </div>
-          </td>
-        </tr>
-        {% endif %}
         {% endif %}
 
         {# ─────────────────────────  宏观视野  ───────────────────────── #}
-        {% if macro_news %}
+        {% if macro_news or macro_news_silence_note %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">宏观视野</div>
@@ -497,7 +516,16 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
-        {% if macro_news_summary and macro_news_summary.summary_html %}
+        {% if macro_news_silence_note %}
+        {# 无宏观新闻:LLM 写一句古典韵味占位语,失败时退回固定兜底 #}
+        <tr>
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_body }}; font-size:15px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.04em; font-style:italic; text-align:center;">
+              {{ macro_news_silence_note or "四海无波,日升月落而已。" }}
+            </div>
+          </td>
+        </tr>
+        {% elif macro_news_summary and macro_news_summary.summary_html %}
         {# M4 LLM 主题分段叙述 + 区块下方脚注。
            summary_html 由 src/processors/macro_filter.py 经
            src/processors/html_safe.py 净化(LLM/外部文本一律 escape,
@@ -519,7 +547,7 @@
           </td>
         </tr>
         {% endif %}
-        {% else %}
+        {% elif macro_news %}
         {% for bundle in macro_news %}
         <tr>
           <td style="padding:18px 24px 0 24px;">
@@ -543,17 +571,19 @@
           </td>
         </tr>
         {% endfor %}
-        {% endif %}{# end macro_news_paragraph else #}
+        {% endif %}{# end silence / summary / raw list #}
         {% endif %}{# end macro_news outer #}
 
-        {% if judgment_section %}
+        {% if judgment_section or (buffett_13f and buffett_13f.is_new) %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
+            {# ❀ 横线 ornament #}
             <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:36px;">
               <div style="flex:1; border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</div>
               <span style="font-family:'Apple Color Emoji','Segoe UI Symbol','Noto Sans Symbols','Songti SC','STSong',serif; font-size:14px; line-height:1; color:#a89c83;">❀</span>
               <div style="flex:1; border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</div>
             </div>
+            {% if judgment_section %}
             <div style="font-size:15px; line-height:2; color:{{ color_ink }}; text-align:center;">
               {% for item in judgment_section.items %}
               <div style="{% if not loop.last %}margin-bottom:14px;{% endif %}">
@@ -561,6 +591,14 @@
               </div>
               {% endfor %}
             </div>
+            {% endif %}
+            {% if buffett_13f and buffett_13f.is_new %}
+            <div style="margin-top:{% if judgment_section %}36px{% else %}0{% endif %}; text-align:center; font-family:Charter,Georgia,serif; font-size:13.5px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.02em;">
+              伯克希尔本季度 13F 已于 {{ buffett_13f.latest.filed_at | bj_date_cn }}披露
+              <br/>
+              <a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=0001067983&amp;type=13F-HR&amp;dateb=&amp;owner=include&amp;count=40" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-size:12px; letter-spacing:0.06em; border-bottom:0.5px solid #B5D0EC; padding-bottom:1px;">前往 SEC EDGAR 查阅持仓</a>
+            </div>
+            {% endif %}
           </td>
         </tr>
         {% endif %}
