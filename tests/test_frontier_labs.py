@@ -277,7 +277,8 @@ def test_select_frontier_items_limits_total_and_one_per_lab() -> None:
     assert out[0].text == "高分同实验室"
 
 
-def test_render_frontier_labs_under_yesterday_without_empty_state() -> None:
+def test_render_frontier_labs_standalone_without_empty_state() -> None:
+    """FL 条目不再挂在「昨日动态」下，为独立区块；无 section header。"""
     point = FrontierKeyPoint(
         lab="OpenAI",
         text="新增数据中心合作,若落地将继续支撑云与 GPU 需求",
@@ -294,12 +295,12 @@ def test_render_frontier_labs_under_yesterday_without_empty_state() -> None:
         frontier_labs_items=[point],
     )
 
-    assert "昨日动态" in html
-    assert "前沿模型" in html
-    assert "Frontier Labs" in html
     assert "OpenAI" in html
     assert "新增数据中心合作" in html
     assert 'href="https://openai.com/news/x"' in html
+    assert "昨日动态" not in html  # 无 company_news 时不渲染
+    assert "前沿模型" not in html   # section header 已移除
+    assert "Frontier Labs" not in html
 
     empty_html = render_email(
         signals=[_one_signal()],
@@ -307,7 +308,7 @@ def test_render_frontier_labs_under_yesterday_without_empty_state() -> None:
         company_news=[],
         frontier_labs_items=[],
     )
-    assert "前沿模型" not in empty_html
+    assert "OpenAI" not in empty_html  # 空状态完全无痕
 
 
 def test_openai_and_anthropic_are_not_holdings() -> None:

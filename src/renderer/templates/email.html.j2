@@ -341,7 +341,7 @@
         {% endif %}
 
         {# ─────────────────────────  昨日动态  ───────────────────────── #}
-        {% if company_news or frontier_labs_items %}
+        {% if company_news %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">昨日动态</div>
@@ -416,20 +416,20 @@
         {% endfor %}
         {% endif %}{# end company_news_paragraph else #}
         {% endif %}{# end company_news inner #}
+        {% endif %}{# end yesterday outer #}
         {% if frontier_labs_items %}
         <tr>
-          <td style="padding:18px 24px 0 24px;">
-            <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }};">
-              {% for item in frontier_labs_items[:2] %}
-              <div style="margin:{% if loop.first %}0{% else %}6px{% endif %} 0 0 0; font-family:{{ serif_body }}; font-size:12.5px; line-height:1.6; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
-                {% if loop.first %}<span style="font-size:12px; color:{{ color_muted }}; letter-spacing:0.08em;">前沿模型 <span style="font-family:Charter,Georgia,serif; letter-spacing:0.08em;">Frontier Labs</span></span><span style="color:{{ color_hairline }}; margin:0 7px;">/</span>{% endif %}<span style="font-family:Charter,Georgia,serif; color:{{ color_muted }}; letter-spacing:0.02em;">{{ item.lab }}</span><span style="color:{{ color_muted }}; margin:0 4px;">｜</span>{{ item.text | cjk_spaced }} <a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; white-space:nowrap;">[{{ item.source_name }}]</a>
-              </div>
-              {% endfor %}
-            </div>
+          <td style="padding:48px 24px 0 24px;">
+            {% for item in frontier_labs_items[:2] %}
+            <p style="margin:{% if loop.first %}0{% else %}6px{% endif %} 0 0 0; font-family:{{ serif_body }}; font-size:12.5px; line-height:1.6; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
+              <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em;">{{ item.lab }}</span>
+              <span style="color:{{ color_muted }}; margin:0 0.7em;">｜</span>
+              {{ item.text | cjk_spaced }} <a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; white-space:nowrap;">[{{ item.source_name }}]</a>
+            </p>
+            {% endfor %}
           </td>
         </tr>
         {% endif %}
-        {% endif %}{# end yesterday outer #}
 
         {# ─────────────────────────  关键发言  ───────────────────────── #}
         {% if figures or (buffett_13f and buffett_13f.is_new) %}
