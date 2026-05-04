@@ -106,7 +106,7 @@ def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> Senti
     try:
         closes = _fetch_yfinance_close(ticker)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("sentiment.yf_failed ticker=%s", ticker)
+        logger.error("sentiment.yf_failed ticker=%s exc_type=%s msg=%s", ticker, type(exc).__name__, redact_secrets(str(exc))[:200])
         return SentimentMetric(name=display_name, current=None, prior=None, rating=None,
                               unit=unit, error=f"{type(exc).__name__}: {exc}")
     if not closes:

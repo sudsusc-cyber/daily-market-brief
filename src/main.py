@@ -337,7 +337,7 @@ def main() -> int:
         macro_news_summary=macro_news_summary,
         email_html=html,
     )
-    subject = generate_subject(subject_data, llm=llm, today_bj=now_bj.date())
+    subject = generate_subject(subject_data, llm=llm, today_bj=now_bj.date(), use_cache=not force_send)
 
     # ---------- 发送 ----------
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]

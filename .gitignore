@@ -233,6 +233,9 @@ state/last_13f.json
 state/subject_cache.json
 state/header_cache/
 state/*.log
+state/pushed_frontier_labs.json
+state/thesis_evidence_*.jsonl
+state/thesis_state.json
 
 # 运行时构建产物
 build/

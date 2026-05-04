@@ -25,6 +25,7 @@ from src.config import Holding
 from src.utils.dates import to_beijing, yesterday_beijing_window
 from src.utils.fetch_rss import fetch_rss
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNew
     try:
         raw = _fetch_finnhub(client, holding.ticker, date_from, date_to)
     except Exception as exc:  # noqa: BLE001 — 故障降级,不向上抛
-        logger.exception("finnhub.fetch_failed ticker=%s", holding.ticker)
+        logger.error("finnhub.fetch_failed ticker=%s exc_type=%s msg=%s", holding.ticker, type(exc).__name__, redact_secrets(str(exc))[:200])
         return CompanyNewsBundle(
             holding=holding, error=f"Finnhub 异常: {type(exc).__name__}: {exc}",
             data_source="finnhub",
@@ -153,7 +154,7 @@ def _collect_via_google_news(holding: Holding) -> CompanyNewsBundle:
     try:
         all_items = _fetch_google_news_zh(query)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("google_news.fetch_failed ticker=%s query=%s", holding.ticker, query)
+        logger.error("google_news.fetch_failed ticker=%s query=%s exc_type=%s msg=%s", holding.ticker, query, type(exc).__name__, redact_secrets(str(exc))[:200])
         return CompanyNewsBundle(
             holding=holding, error=f"Google News 异常: {type(exc).__name__}: {exc}",
             data_source="google_news_cn",

@@ -6,16 +6,16 @@
 from __future__ import annotations
 
 import sys
-from datetime import date, timedelta, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.processors.thesis.models import ThesisEvidence, ThesisState
-from src.processors.thesis.rules import run_state_transitions
-from src.processors.thesis.renderer import build_judgment_section
+from src.processors.thesis.models import ThesisEvidence, ThesisState  # noqa: E402
+from src.processors.thesis.renderer import build_judgment_section  # noqa: E402
+from src.processors.thesis.rules import run_state_transitions  # noqa: E402
 
 
 def _d(days_ago: int) -> str:
