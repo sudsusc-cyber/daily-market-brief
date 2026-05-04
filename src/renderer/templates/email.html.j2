@@ -570,28 +570,23 @@
         {% endif %}{# end macro_news_paragraph else #}
         {% endif %}{# end macro_news outer #}
 
-        {# ─────────────────────────  长期判断  ───────────────────────── #}
         {% if judgment_section %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
-            <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">长期判断</div>
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Judgment Ledger</div>
-            <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:36px;">
+              <div style="flex:1; border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</div>
+              <span style="font-family:'Apple Color Emoji','Segoe UI Symbol','Noto Sans Symbols','Songti SC','STSong',serif; font-size:14px; line-height:1; color:#a89c83;">❀</span>
+              <div style="flex:1; border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</div>
+            </div>
+            <div style="font-size:15px; line-height:2; color:{{ color_ink }}; text-align:center;">
+              {% for item in judgment_section.items %}
+              <div style="{% if not loop.last %}margin-bottom:14px;{% endif %}">
+                <span style="color:{{ color_accent }};">「{{ item.thesis }}」</span>{{ item.tail }}
+              </div>
+              {% endfor %}
+            </div>
           </td>
         </tr>
-        {% for item in judgment_section.items %}
-        <tr>
-          <td style="padding:18px 24px 0 24px;">
-            <p style="margin:0; font-family:{{ serif_body }}; font-size:15px; line-height:1.8; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
-              {%- if item.url %}
-              <a href="{{ item.url | safe_url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.text }}</a>
-              {%- else %}
-              {{ item.text }}
-              {%- endif %}
-            </p>
-          </td>
-        </tr>
-        {% endfor %}
         {% endif %}
 
         {# 装饰性结尾 #}

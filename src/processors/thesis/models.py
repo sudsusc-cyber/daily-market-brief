@@ -70,6 +70,8 @@ class ThesisEvent:
     kind: EventKind
     theme: str
     related_tickers: list[str]
-    headline: str  # 24-42 字中文
-    source_url: str | None
-    source_section: str
+    headline: str  # 完整展示句（= f"「{thesis}」{tail}"），用于日志/兼容
+    thesis: str = ""  # 断言文本（不含括号）；渲染时模板硬写「」
+    tail: str = ""    # 尾句，固定 "获得新证据支持。"
+    source_url: str | None = None
+    source_section: str = ""
