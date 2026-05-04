@@ -49,6 +49,10 @@ from src.processors import (
     translator,
 )
 from src.processors.llm_client import LLMClient
+from src.processors.thesis import extractor as thesis_extractor
+from src.processors.thesis import renderer as thesis_renderer
+from src.processors.thesis import rules as thesis_rules
+from src.processors.thesis import state as thesis_state
 from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
@@ -201,6 +205,54 @@ def main() -> int:
     logger.info("processors.frontier_labs_filter")
     frontier_labs_items = frontier_labs_filter.filter_all(frontier_labs_bundles, client=llm)
 
+    logger.info("processors.thesis")
+    try:
+        # 第一次读 state：获取 active themes 用于注入 prompt（防 theme 漂移）
+        state_dict = thesis_state.load_state(_STATE_DIR)
+        active_themes = [
+            t for t, st in state_dict.items()
+            if st.status in {"emerging", "core", "stable", "dormant"}
+        ]
+
+        evidence_today = thesis_extractor.extract(
+            client=llm,
+            company_news=company_news_summary,
+            macro_news=macro_news_summary,
+            figure_summaries=figure_summaries,
+            berkshire_events=buffett_bundle,
+            frontier_labs_events=frontier_labs_items,
+            active_themes=active_themes,
+            today=now_bj.date(),
+        )
+        # extractor 只 return；写入由 state.py 统一负责（内部按 evidence_id 去重）
+        thesis_state.append_evidence(evidence_today, _STATE_DIR)
+
+        recent_evidence = thesis_state.load_recent_evidence(
+            _STATE_DIR, days=90, today=now_bj.date(),
+        )
+        holdings_tickers = [h.ticker for h in HOLDINGS]
+        state_dict, thesis_events = thesis_rules.run_state_transitions(
+            today=now_bj.date(),
+            state=state_dict,
+            recent_evidence=recent_evidence,
+            holdings_tickers=holdings_tickers,
+        )
+
+        # 更新 rolling_evidence
+        by_theme_today: dict[str, list] = {}
+        for e in evidence_today:
+            by_theme_today.setdefault(e.theme, []).append(e)
+        for theme, st in state_dict.items():
+            if theme in by_theme_today:
+                thesis_state.update_rolling_evidence(st, by_theme_today[theme])
+
+        thesis_state.save_state(state_dict, _STATE_DIR)
+
+        judgment_section = thesis_renderer.build_judgment_section(thesis_events)
+    except Exception as exc:
+        logger.warning("thesis.pipeline_failed: %s", exc, exc_info=True)
+        judgment_section = None
+
     logger.info("processors.holdings_intro")
     holdings_intro_text = holdings_intro.write_intro(signals, client=llm)
 
@@ -246,6 +298,7 @@ def main() -> int:
         macro_news_summary=macro_news_summary,
         buffett_13f=buffett_bundle,
         frontier_labs_items=frontier_labs_items,
+        judgment_section=judgment_section,
     )
 
     # ---------- 主题生成(M5.11:DeepSeek 8 字两段四言古典对仗) ----------
