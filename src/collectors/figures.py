@@ -235,6 +235,59 @@ def fetch_all(state_path: Path) -> tuple[list[FigureBundle], dict[str, str]]:
         bundles.append(FigureBundle(person=person, query=query, person_en=name_en, items=kept))
         logger.info("figures person=%s total=%d kept=%d", person, len(raw), len(kept))
 
+    # ── 官方源补充层:拉取 → 同管线过滤 → 合并进对应人物 bundle ──
+    # 官方源候选必须和 Google News 一样通过:时间窗口 + _passes_first_filter + pushed 去重。
+    # 同一事件 Google News 与官方源重复时，优先官方源作为代表来源（替换 URL/source）。
+    try:
+        from src.collectors import figure_official_sources  # noqa: F811 - lazy import 防循环引用
+        official_mentions = figure_official_sources.fetch_all(start_utc, end_utc)
+    except Exception as exc:
+        logger.warning("figures.official_sources_failed exc=%s; proceeding with Google News only", exc)
+        official_mentions = {}
+
+    if official_mentions:
+        for b in bundles:
+            extras = official_mentions.get(b.person)
+            if not extras:
+                continue
+            # 对官方源候选再做 _passes_first_filter + pushed 去重
+            filtered: list[FigureMention] = []
+            for m in extras:
+                if not _passes_first_filter(m):
+                    continue
+                h = _content_hash(b.person, m)
+                if h in pushed:
+                    continue
+                filtered.append(m)
+                new_pushed[h] = end_utc.isoformat()
+
+            if not filtered:
+                continue
+
+            # 合并到 bundle:优先官方源作为代表来源
+            # Google News items 索引:content_hash → list index
+            gn_hashes: dict[str, int] = {}
+            for i, it in enumerate(b.items):
+                gn_hashes[_content_hash(b.person, it)] = i
+
+            added = 0
+            replaced = 0
+            for m in filtered:
+                h = _content_hash(b.person, m)
+                if h in gn_hashes:
+                    # 同一事件，用官方源替换 Google News 条目
+                    b.items[gn_hashes[h]] = m
+                    replaced += 1
+                else:
+                    b.items.append(m)
+                    added += 1
+
+            b.items.sort(key=lambda x: x.published_at, reverse=True)
+            logger.info(
+                "figures.official_merge person=%s added=%d replaced=%d total=%d",
+                b.person, added, replaced, len(b.items),
+            )
+
     return bundles, new_pushed
 
 

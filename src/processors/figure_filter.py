@@ -174,10 +174,11 @@ _TASK_INSTRUCTION = """\
    → **保持独立**(不同观点不合并)
 
 【硬约束】
-- 合并时主索引(N)取**信息最完整、来源最权威**的那条(优先 Reuters/Bloomberg/FT/
-  WSJ > CNBC > 国内财经媒体 > 门户聚合)
-- 输出去重后每条观点必须**独立**,读者不应看到两条说同一件事
-- 每个输入索引必须出现在某行中**只一次**
+    - 合并时主索引(N)取**信息最完整、来源最权威**的那条。来源优先级:
+      官方一手源(OpenAI / Microsoft Blog / AMD IR / Berkshire Hathaway / 公司 IR 博客)
+      > Reuters > Bloomberg > Financial Times / WSJ > CNBC > 其他财经媒体 > 门户聚合
+    - 输出去重后每条观点必须**独立**,读者不应看到两条说同一件事
+    - 每个输入索引必须出现在某行中**只一次**
 
 【no 行要求】
 - 一句话说明淘汰原因(他人转述 / 市场评论 / 二次解读 / 广告软文 / 空洞口号 / 列表帖)
@@ -347,10 +348,13 @@ _FIGURE_PRIORITY: dict[str, int] = {
     "但斌": 2, "Dan Bin": 2,
 }
 
-# 来源权威度:数字越小越权威,未知来源 = 5
+# 来源权威度:数字越小越权威,官方源 = 0,未知来源 = 5
 _SOURCE_AUTHORITY: dict[str, int] = {
-    "Reuters": 0, "Bloomberg": 1, "Financial Times": 2, "FT": 2,
-    "Wall Street Journal": 3, "WSJ": 3, "CNBC": 4,
+    # 官方一手源(最高权威)
+    "OpenAI": 0, "Microsoft Blog": 0, "AMD IR": 0, "Berkshire Hathaway": 0,
+    # 顶级通讯社/财经媒体
+    "Reuters": 1, "Bloomberg": 2, "Financial Times": 3, "FT": 3,
+    "Wall Street Journal": 4, "WSJ": 4, "CNBC": 5,
 }
 
 

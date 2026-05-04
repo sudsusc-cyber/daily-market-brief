@@ -502,3 +502,436 @@ class TestVoiceThrottling:
         ]
         out = select_voice_summaries(summaries)
         assert out == []
+
+
+# ── 官方源补充层测试 ──
+
+import xml.etree.ElementTree as ET
+from unittest import mock
+
+from src.collectors.figure_official_sources import (
+    OFFICIAL_SOURCES,
+    OfficialSource,
+    _entry_to_mention,
+    _fetch_rss_entries,
+    _fetch_berkshire_entries,
+    _parse_entry_date,
+    _person_matches,
+    fetch_all,
+)
+
+
+def _make_rss_xml(entries: list[dict]) -> bytes:
+    """构建最小 RSS 2.0 XML 用于测试。"""
+    rss = ET.Element("rss", version="2.0")
+    channel = ET.SubElement(rss, "channel")
+    for e in entries:
+        item = ET.SubElement(channel, "item")
+        for tag, val in e.items():
+            el = ET.SubElement(item, tag)
+            el.text = str(val)
+    return ET.tostring(rss, encoding="utf-8")
+
+
+def _utc_dt(*args: int) -> datetime:
+    """快捷构造 UTC datetime。"""
+    from datetime import UTC
+    return datetime(*args, tzinfo=UTC)
+
+
+class TestOfficialSourceParsing:
+    """RSS/HTML 原始抓取测试。"""
+
+    def test_rss_entries_parsed(self) -> None:
+        xml = _make_rss_xml([
+            {"title": "OpenAI announces GPT-6", "link": "https://openai.com/gpt6",
+             "description": "Sam Altman introduced GPT-6 at the developer conference."},
+        ])
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = xml
+            m_get.return_value.raise_for_status = lambda: None
+            entries = _fetch_rss_entries("https://openai.com/news/rss.xml")
+        assert len(entries) == 1
+        assert entries[0]["title"] == "OpenAI announces GPT-6"
+        assert "GPT-6" in entries[0]["summary"]
+
+    def test_rss_entries_multiple(self) -> None:
+        xml = _make_rss_xml([
+            {"title": "OpenAI announces GPT-6", "link": "https://openai.com/gpt6", "description": "..."},
+            {"title": "OpenAI partners with Microsoft", "link": "https://openai.com/msft", "description": "..."},
+        ])
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = xml
+            m_get.return_value.raise_for_status = lambda: None
+            entries = _fetch_rss_entries("https://openai.com/news/rss.xml")
+        assert len(entries) == 2
+
+    def test_berkshire_html_parsed(self) -> None:
+        html = """<html><body>
+        <a href="news0426.html">Warren Buffett's 2026 Shareholder Letter</a>
+        <a href="news0322.html">Greg Abel on Insurance Operations</a>
+        <a href="#top">Back to top</a>
+        </body></html>"""
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = html.encode()
+            m_get.return_value.raise_for_status = lambda: None
+            entries = _fetch_berkshire_entries("https://www.berkshirehathaway.com/news/2026news.html")
+        assert len(entries) == 2
+        assert any("Warren Buffett" in e["title"] for e in entries)
+        assert any("Greg Abel" in e["title"] for e in entries)
+
+    def test_berkshire_skips_anchor_links(self) -> None:
+        html = """<html><body>
+        <a href="#top">Back to top</a>
+        <a href="#footer">Footer</a>
+        </body></html>"""
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = html.encode()
+            m_get.return_value.raise_for_status = lambda: None
+            entries = _fetch_berkshire_entries("https://www.berkshirehathaway.com/news/2026news.html")
+        assert len(entries) == 0
+
+    def test_entry_to_mention_converts_published(self) -> None:
+        entry = {
+            "title": "Test",
+            "link": "https://example.com",
+            "summary": "Summary text",
+            "published_parsed": (2026, 5, 4, 9, 0, 0, 0, 0, 0),
+        }
+        mention = _entry_to_mention(entry, "OpenAI")
+        assert mention.title == "Test"
+        assert mention.url == "https://example.com"
+        assert mention.snippet == "Summary text"
+        assert mention.source == "OpenAI"
+        assert mention.published_at.year == 2026
+
+
+class TestPersonMatching:
+    """逐条目人物匹配：text 必须命中 aliases 才归入对应人物。"""
+
+    def test_aliases_hit(self) -> None:
+        assert _person_matches("Sam Altman announced GPT-6", ["Sam Altman", "Altman", "奥特曼"])
+
+    def test_aliases_chinese_hit(self) -> None:
+        assert _person_matches("奥特曼发布新模型", ["Sam Altman", "Altman", "奥特曼"])
+
+    def test_aliases_case_insensitive(self) -> None:
+        assert _person_matches("sam altman speaks at conference", ["Sam Altman", "Altman"])
+
+    def test_aliases_partial_hit_in_text(self) -> None:
+        assert _person_matches("CEO Satya Nadella discussed Azure growth", ["Satya Nadella", "Nadella", "纳德拉"])
+
+    def test_aliases_miss(self) -> None:
+        assert not _person_matches("OpenAI releases new API endpoint", ["Sam Altman", "Altman", "奥特曼"])
+
+    def test_aliases_miss_unrelated_person(self) -> None:
+        assert not _person_matches("Jensen Huang keynote at GTC", ["Sam Altman", "Altman"])
+
+    def test_100_unrelated_entries_none_attributed(self) -> None:
+        """模拟 OpenAI RSS 100 条无关 entry，不应全部归入奥特曼。"""
+        entries = [
+            {"title": f"OpenAI product update #{i}", "link": "https://openai.com/p{i}",
+             "summary": "New API features",
+             "published_parsed": (2026, 5, 4, 10, 0, 0, 0, 0, 0)}
+            for i in range(100)
+        ]
+        # 只有 1 条提到 Sam Altman
+        entries.append({
+            "title": "Sam Altman speaks at AI Summit",
+            "link": "https://openai.com/altman-summit",
+            "summary": "Altman discussed AGI timeline",
+            "published_parsed": (2026, 5, 4, 11, 0, 0, 0, 0, 0),
+        })
+        src = OfficialSource("OpenAI", "https://openai.com/rss",
+                             aliases={"奥特曼": ["Sam Altman", "Altman", "奥特曼"]},
+                             parser_type="rss")
+        with mock.patch("src.collectors.figure_official_sources._fetch_rss_entries", return_value=entries):
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "奥特曼" in result
+        assert len(result["奥特曼"]) == 1  # 只有提到 Sam Altman 的那条
+
+
+class TestDateFiltering:
+    """官方源日期过滤：老日期/缺日期丢弃，不回退 datetime.now()。"""
+
+    def test_old_rss_date_discarded(self) -> None:
+        xml = _make_rss_xml([
+            {"title": "Satya Nadella said Azure is growing", "link": "https://blogs.microsoft.com/1",
+             "description": "Nadella noted cloud demand",
+             "pubDate": "Mon, 28 Apr 2026 10:00:00 GMT"},  # 6 天前,不在 24h 窗口
+        ])
+        src = OfficialSource("Microsoft Blog", "https://blogs.microsoft.com/feed/",
+                             aliases={"纳德拉": ["Satya Nadella", "Nadella", "纳德拉"]},
+                             parser_type="rss")
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = xml
+            m_get.return_value.raise_for_status = lambda: None
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),  # 窗口从 5/4 开始
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "纳德拉" not in result or len(result.get("纳德拉", [])) == 0
+
+    def test_in_window_rss_date_kept(self) -> None:
+        xml = _make_rss_xml([
+            {"title": "Satya Nadella said Azure is growing", "link": "https://blogs.microsoft.com/1",
+             "description": "Nadella noted cloud demand",
+             "pubDate": "Sun, 04 May 2026 10:00:00 GMT"},  # 在 24h 窗口内
+        ])
+        src = OfficialSource("Microsoft Blog", "https://blogs.microsoft.com/feed/",
+                             aliases={"纳德拉": ["Satya Nadella", "Nadella", "纳德拉"]},
+                             parser_type="rss")
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = xml
+            m_get.return_value.raise_for_status = lambda: None
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "纳德拉" in result
+        assert len(result["纳德拉"]) == 1
+
+    def test_missing_date_entry_discarded(self) -> None:
+        """RSS 条目没有 published_parsed 且 URL 无法解析日期 → 丢弃。"""
+        xml = _make_rss_xml([
+            {"title": "Lisa Su talks Zen 6", "link": "https://ir.amd.com/generic",
+             "description": "Dr. Su discussed roadmap",
+             # 无 published_parsed,URL 无日期
+             },
+        ])
+        src = OfficialSource("AMD IR", "https://ir.amd.com/rss",
+                             aliases={"苏妈": ["Lisa Su", "Dr. Su", "苏妈"]},
+                             parser_type="rss")
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = xml
+            m_get.return_value.raise_for_status = lambda: None
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "苏妈" not in result or len(result.get("苏妈", [])) == 0
+
+    def test_url_date_parsed_as_fallback(self) -> None:
+        """published_parsed 缺失但 URL 含日期 → 解析成功。"""
+        entry = {
+            "title": "AMD Reports First Quarter Results",
+            "link": "https://ir.amd.com/2026/05/04/amd-q1-results",
+            "summary": "Lisa Su commented on Q1 performance",
+            "published_parsed": None,
+        }
+        dt = _parse_entry_date(entry)
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 5
+        assert dt.day == 4
+
+    def test_parse_entry_date_returns_none_for_unparseable(self) -> None:
+        entry = {"title": "No date", "link": "https://example.com/about", "summary": "", "published_parsed": None}
+        assert _parse_entry_date(entry) is None
+
+    def test_berkshire_url_date_parsed(self) -> None:
+        entry = {"title": "Buffett letter", "link": "https://www.berkshirehathaway.com/news/news0426.html",
+                 "summary": "", "published_parsed": None}
+        dt = _parse_entry_date(entry, default_year=2026)
+        assert dt is not None
+        assert dt.month == 4
+        assert dt.day == 26
+        assert dt.year == 2026
+
+    def test_berkshire_url_date_without_default_year_returns_none(self) -> None:
+        """无 default_year 时 Berkshire 短链接无法确定年份,应返回 None。"""
+        entry = {"title": "Buffett letter", "link": "https://www.berkshirehathaway.com/news/news0426.html",
+                 "summary": "", "published_parsed": None}
+        dt = _parse_entry_date(entry)  # 未传 default_year
+        assert dt is None
+
+
+class TestFetchAllWithAliases:
+    """fetch_all 端到端：人物匹配 + 日期过滤 + 时间窗口。"""
+
+    def test_entry_without_person_name_discarded(self) -> None:
+        xml = _make_rss_xml([
+            {"title": "OpenAI launches new enterprise tier", "link": "https://openai.com/enterprise",
+             "description": "New features for business customers",
+             "pubDate": "Sun, 04 May 2026 10:00:00 GMT"},
+        ])
+        src = OfficialSource("OpenAI", "https://openai.com/rss",
+                             aliases={"奥特曼": ["Sam Altman", "Altman", "奥特曼"]},
+                             parser_type="rss")
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = xml
+            m_get.return_value.raise_for_status = lambda: None
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "奥特曼" not in result or len(result.get("奥特曼", [])) == 0
+
+    def test_entry_with_person_and_date_in_window_kept(self) -> None:
+        xml = _make_rss_xml([
+            {"title": "Sam Altman speaks at AI conference",
+             "link": "https://openai.com/altman-ai-summit",
+             "description": "Altman said AGI is closer than expected",
+             "pubDate": "Sun, 04 May 2026 14:00:00 GMT"},
+        ])
+        src = OfficialSource("OpenAI", "https://openai.com/rss",
+                             aliases={"奥特曼": ["Sam Altman", "Altman", "奥特曼"]},
+                             parser_type="rss")
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = xml
+            m_get.return_value.raise_for_status = lambda: None
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "奥特曼" in result
+        assert len(result["奥特曼"]) == 1
+        assert "speaks" in result["奥特曼"][0].title
+
+    def test_multi_person_source_splits_correctly(self) -> None:
+        """Berkshire 源同一条目可同时归入巴菲特和阿贝尔。"""
+        html = """<html><body>
+        <a href="https://www.berkshirehathaway.com/news/2026/05/04/letter.html">
+        Warren Buffett and Greg Abel discuss succession plan</a>
+        </body></html>"""
+        src = OfficialSource("Berkshire Hathaway", "https://www.berkshirehathaway.com/news/2026news.html",
+                             aliases={
+                                 "巴菲特": ["Warren Buffett", "Buffett", "巴菲特"],
+                                 "阿贝尔": ["Greg Abel", "Abel", "阿贝尔"],
+                             },
+                             parser_type="html")
+        with mock.patch("requests.get") as m_get:
+            m_get.return_value.status_code = 200
+            m_get.return_value.content = html.encode()
+            m_get.return_value.raise_for_status = lambda: None
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "巴菲特" in result
+        assert "阿贝尔" in result
+        assert len(result["巴菲特"]) == 1
+        assert len(result["阿贝尔"]) == 1
+
+
+class TestOfficialSourceIsolation:
+    def test_fetch_all_handles_single_failure(self) -> None:
+        """一个源挂掉不阻断其他源。"""
+        sources = [
+            OfficialSource("Good", "https://good.com/rss",
+                           aliases={"人物A": ["Person A", "A"]},
+                           parser_type="rss"),
+            OfficialSource("Bad", "https://bad.com/rss",
+                           aliases={"人物B": ["Person B", "B"]},
+                           parser_type="rss"),
+        ]
+        xml = _make_rss_xml([
+            {"title": "Person A said something", "link": "https://good.com/1",
+             "description": "test", "pubDate": "Sun, 04 May 2026 10:00:00 GMT"},
+        ])
+
+        def fake_get(url, **kwargs):
+            m = mock.MagicMock()
+            if "bad" in url:
+                m.raise_for_status.side_effect = Exception("Connection refused")
+                return m
+            m.status_code = 200
+            m.content = xml
+            m.raise_for_status = lambda: None
+            return m
+
+        with mock.patch("requests.get", side_effect=fake_get):
+            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", sources):
+                result = fetch_all(
+                    _utc_dt(2026, 5, 4, 0, 0),
+                    _utc_dt(2026, 5, 5, 0, 0),
+                )
+        assert "人物A" in result
+        assert len(result["人物A"]) == 1
+        assert "人物B" not in result
+
+
+class TestOfficialSourceAuthority:
+    """官方源权威排名测试。"""
+
+    def test_official_source_ranks_before_reuters(self) -> None:
+        from src.processors.figure_filter import _SOURCE_AUTHORITY
+        assert _SOURCE_AUTHORITY["OpenAI"] == 0
+        assert _SOURCE_AUTHORITY["Microsoft Blog"] == 0
+        assert _SOURCE_AUTHORITY["AMD IR"] == 0
+        assert _SOURCE_AUTHORITY["Berkshire Hathaway"] == 0
+        assert _SOURCE_AUTHORITY["OpenAI"] < _SOURCE_AUTHORITY["Reuters"]
+        assert _SOURCE_AUTHORITY["Berkshire Hathaway"] < _SOURCE_AUTHORITY["Bloomberg"]
+
+    def test_reuters_still_before_bloomberg(self) -> None:
+        from src.processors.figure_filter import _SOURCE_AUTHORITY
+        assert _SOURCE_AUTHORITY["Reuters"] < _SOURCE_AUTHORITY["Bloomberg"]
+
+    def test_unknown_source_defaults_to_five(self) -> None:
+        from src.processors.figure_filter import _SOURCE_AUTHORITY
+        assert _SOURCE_AUTHORITY.get("Unknown Blog", 5) == 5
+
+
+class TestOfficialSourceMerge:
+    """官方源合并进 figures.py: pushed 去重 + 优先官方源作为代表来源。"""
+
+    def test_dedup_same_title_hash_uses_official_source(self) -> None:
+        from src.collectors.figures import _content_hash
+        person = "奥特曼"
+        google_item = FigureMention(
+            title="Sam Altman on AI safety",
+            snippet="...",
+            published_at=_utc(2026, 5, 4),
+            url="https://reuters.com/altman-ai",
+            source="Reuters",
+        )
+        official_item = FigureMention(
+            title="Sam Altman on AI safety",
+            snippet="...",
+            published_at=_utc(2026, 5, 4),
+            url="https://openai.com/blog/ai-safety",
+            source="OpenAI",
+        )
+        gh = _content_hash(person, google_item)
+        oh = _content_hash(person, official_item)
+        assert gh == oh  # 归一化后标题一致,hash 也应一致
+
+    def test_unique_official_items_get_new_hash(self) -> None:
+        from src.collectors.figures import _content_hash
+        person = "苏妈"
+        google_item = FigureMention(
+            title="AMD beats Q1 estimates",
+            snippet="...",
+            published_at=_utc(2026, 5, 3),
+            url="https://reuters.com/amd-q1",
+            source="Reuters",
+        )
+        official_item = FigureMention(
+            title="AMD Reports First Quarter 2026 Financial Results",
+            snippet="...",
+            published_at=_utc(2026, 5, 3),
+            url="https://ir.amd.com/press-release",
+            source="AMD IR",
+        )
+        gh = _content_hash(person, google_item)
+        oh = _content_hash(person, official_item)
+        assert gh != oh
