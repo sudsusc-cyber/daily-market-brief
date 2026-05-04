@@ -175,7 +175,10 @@ def main() -> int:
     signals = stocks.fetch_all(HOLDINGS)
 
     logger.info("collect.company_news")
-    cn_bundles = company_news.fetch_all(HOLDINGS, settings.finnhub_api_key)
+    company_news_state_path = _STATE_DIR / "pushed_company_news.json"
+    cn_bundles, company_news_pending_pushed = company_news.fetch_all(
+        HOLDINGS, settings.finnhub_api_key, state_path=company_news_state_path,
+    )
 
     logger.info("collect.macro_news")
     macro_bundles = macro_news.fetch_all()
@@ -368,6 +371,11 @@ def main() -> int:
         frontier_labs.commit_pushed(frontier_labs_state_path, frontier_labs_pending_pushed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("frontier_labs.commit_pushed_failed exc=%r", exc)
+
+    try:
+        company_news.commit_pushed(company_news_state_path, company_news_pending_pushed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("company_news.commit_pushed_failed exc=%r", exc)
 
     logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0
