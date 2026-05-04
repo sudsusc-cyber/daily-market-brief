@@ -93,12 +93,12 @@ def test_render_email_no_logo_falls_back_to_text_box() -> None:
 
 # ─── 13F 区块重定位测试 ──────────────────────────────────────────────
 
-_MOCK_JUDGMENT = {
-    "items": [
+_MOCK_JUDGMENT = JudgmentSection(
+    items=[
         {"thesis": "AI基础设施资本开支将持续十年以上", "tail": "获得新证据支持。"},
         {"thesis": "保险定价权在经济周期中持续增强", "tail": "获得新证据支持。"},
     ],
-}
+)
 
 
 def _mock_13f_new() -> BuffettBundle:
