@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ def fetch_all() -> list[MacroFeedBundle]:
         try:
             raw = _fetch_feed(url)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("macro_news.fetch_failed source=%s", name)
+            logger.error("macro_news.fetch_failed source=%s exc_type=%s msg=%s", name, type(exc).__name__, redact_secrets(str(exc))[:200])
             bundles.append(MacroFeedBundle(
                 source=name, error=f"{type(exc).__name__}: {exc}",
             ))

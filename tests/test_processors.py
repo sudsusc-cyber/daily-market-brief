@@ -13,10 +13,9 @@ from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
 from src.collectors.sentiment import SentimentBundle, SentimentMetric
 from src.collectors.stocks import StockSignal  # noqa: F401  确保 import 不破坏
 from src.config import HOLDINGS
-from src.processors.figure_filter import FigureKeyPoint, FigureSummary
+from src.processors.figure_filter import FigureKeyPoint, FigureSummary, select_voice_summaries
 from src.processors.figure_filter import _format_input as fig_format
 from src.processors.figure_filter import _parse_output as fig_parse
-from src.processors.figure_filter import select_voice_summaries
 from src.processors.macro_filter import _format_input as macro_format
 from src.processors.news_summarizer import _format_input as news_format
 from src.processors.sentiment_judge import _format_input as sent_format
@@ -506,15 +505,14 @@ class TestVoiceThrottling:
 
 # ── 官方源补充层测试 ──
 
-import xml.etree.ElementTree as ET
-from unittest import mock
+import xml.etree.ElementTree as ET  # noqa: E402
+from unittest import mock  # noqa: E402
 
-from src.collectors.figure_official_sources import (
-    OFFICIAL_SOURCES,
+from src.collectors.figure_official_sources import (  # noqa: E402
     OfficialSource,
     _entry_to_mention,
-    _fetch_rss_entries,
     _fetch_berkshire_entries,
+    _fetch_rss_entries,
     _parse_entry_date,
     _person_matches,
     fetch_all,
@@ -649,8 +647,8 @@ class TestPersonMatching:
         src = OfficialSource("OpenAI", "https://openai.com/rss",
                              aliases={"奥特曼": ["Sam Altman", "Altman", "奥特曼"]},
                              parser_type="rss")
-        with mock.patch("src.collectors.figure_official_sources._fetch_rss_entries", return_value=entries):
-            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
+        with mock.patch("src.collectors.figure_official_sources._fetch_rss_entries", return_value=entries), \
+             mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
                 result = fetch_all(
                     _utc_dt(2026, 5, 4, 0, 0),
                     _utc_dt(2026, 5, 5, 0, 0),
@@ -859,8 +857,8 @@ class TestOfficialSourceIsolation:
             m.raise_for_status = lambda: None
             return m
 
-        with mock.patch("requests.get", side_effect=fake_get):
-            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", sources):
+        with mock.patch("requests.get", side_effect=fake_get), \
+             mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", sources):
                 result = fetch_all(
                     _utc_dt(2026, 5, 4, 0, 0),
                     _utc_dt(2026, 5, 5, 0, 0),

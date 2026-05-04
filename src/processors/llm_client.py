@@ -102,7 +102,7 @@ class LLMClient:
         *,
         task_extra: str | None = None,
         system_override: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 2048,
         temperature: float = 0.3,
         timeout: int = 45,
         top_p: float | None = None,
@@ -158,6 +158,12 @@ class LLMClient:
 
         text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
         usage = _extract_usage(resp)
+        if not text and usage.reasoning_tokens > max_tokens * 0.7:
+            logger.warning(
+                "llm.reasoning_starved model=%s reasoning=%d max_tokens=%d "
+                "output text empty — reasoning 可能挤空了输出预算",
+                self._model, usage.reasoning_tokens, max_tokens,
+            )
         self._accumulate(usage)
         logger.info(
             "llm.chat_ok model=%s in=%d out=%d reasoning=%d cache_hit=%d "
