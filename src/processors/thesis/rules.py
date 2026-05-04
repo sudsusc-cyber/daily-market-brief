@@ -57,7 +57,11 @@ AUTHORITATIVE_NAMES: set[str] = {
 }
 
 CORE_CAP = 12
-COOLDOWN_DAYS = 30
+COOLDOWN_DAYS = 21
+# TODO(2026-05-04): 当前对所有 cadence 一刀切。fast/quarterly/slow/structural
+# 主题在变化节奏上差异巨大(stale_after_days 从 90 到 720),21 天 cooldown 对快主题
+# 偏长、对结构性主题偏短。等去重上线观察 30+ 天后,可考虑改成 cadence-aware 表
+# (见 docs/plans/2026-05-04-thesis-cooldown-21d.md 末尾"未来路径")。
 
 EMERGING_MIN_EVENTS = 3
 EMERGING_MIN_SOURCES = 2
