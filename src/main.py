@@ -32,6 +32,7 @@ from src.collectors import (
     buffett_13f,
     company_news,
     figures,
+    frontier_labs,
     header_image,
     macro_news,
     sentiment,
@@ -40,6 +41,7 @@ from src.collectors import (
 from src.config import HOLDINGS, Holding
 from src.processors import (
     figure_filter,
+    frontier_labs_filter,
     holdings_intro,
     macro_filter,
     news_summarizer,
@@ -146,6 +148,12 @@ def main() -> int:
     figures_state_path = _STATE_DIR / "pushed_figures.json"
     fig_bundles, figures_pending_pushed = figures.fetch_all(state_path=figures_state_path)
 
+    logger.info("collect.frontier_labs")
+    frontier_labs_state_path = _STATE_DIR / "pushed_frontier_labs.json"
+    frontier_labs_bundles, frontier_labs_pending_pushed = frontier_labs.fetch_all(
+        state_path=frontier_labs_state_path,
+    )
+
     logger.info("collect.buffett_13f")
     buffett_bundle = buffett_13f.fetch(state_path=_STATE_DIR / "last_13f.json")
 
@@ -189,6 +197,9 @@ def main() -> int:
 
     logger.info("processors.sentiment_judge")
     sentiment_verdict = sentiment_judge.judge(sentiment_bundle, client=llm)
+
+    logger.info("processors.frontier_labs_filter")
+    frontier_labs_items = frontier_labs_filter.filter_all(frontier_labs_bundles, client=llm)
 
     logger.info("processors.holdings_intro")
     holdings_intro_text = holdings_intro.write_intro(signals, client=llm)
@@ -234,6 +245,7 @@ def main() -> int:
         macro_news=macro_bundles,
         macro_news_summary=macro_news_summary,
         buffett_13f=buffett_bundle,
+        frontier_labs_items=frontier_labs_items,
     )
 
     # ---------- 主题生成(M5.11:DeepSeek 8 字两段四言古典对仗) ----------
@@ -269,6 +281,11 @@ def main() -> int:
         figures.commit_pushed(figures_state_path, figures_pending_pushed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("figures.commit_pushed_failed exc=%r", exc)
+
+    try:
+        frontier_labs.commit_pushed(frontier_labs_state_path, frontier_labs_pending_pushed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("frontier_labs.commit_pushed_failed exc=%r", exc)
 
     logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0
