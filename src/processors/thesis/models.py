@@ -63,6 +63,7 @@ class ThesisState:
     evidence_count_recent_90d: int = 0
     rolling_evidence: list[dict] = field(default_factory=list)  # 最近 20 条摘要
     one_line_thesis: str = ""
+    last_state_change_date: str | None = None  # 上次 status 变更日期(YYYY-MM-DD)
 
 
 @dataclass

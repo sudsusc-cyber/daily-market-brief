@@ -10,6 +10,14 @@
 - core→stable 联合条件：半 cadence 无 strong support AND 90d evidence < 5
 - core→dormant 用 elif（与 stable 互斥）
 - has_authoritative_source 用 section ∈ {berkshire, frontier_labs} + source_name 域名白名单
+
+校准期说明（2026-05 起）
+company_news 与 macro_news 引入 7 天 hash + 同日模糊去重之后，
+evidence 流入量较此前下降约一半。这是历史去重缺失导致的虚高归正，
+**不调整阈值**（EMERGING_MIN_EVENTS / CORE_MIN_EVENTS_90D），让 90 天滚动
+窗口自然将虚高 evidence 滚出。预期 30-90 天内会有一波 core → stable 降级，
+是正常校准。日志 `thesis.demotions_today` 每日跟踪。
+详见 docs/plans/2026-05-04-dedup-state-side-effects.md。
 """
 
 from __future__ import annotations
@@ -230,7 +238,7 @@ def substantiate_priority(
 # ─── core cap enforcement ──────────────────────────────────────────
 
 
-def enforce_core_cap(state: dict[str, ThesisState], *, cap: int = CORE_CAP) -> int:
+def enforce_core_cap(state: dict[str, ThesisState], *, today: date, cap: int = CORE_CAP) -> int:
     """core 数量超过 cap 时，将最旧/最弱的降级为 stable。返回降级数量。"""
     core_themes = [t for t, s in state.items() if s.status == "core"]
     if len(core_themes) <= cap:
@@ -246,6 +254,7 @@ def enforce_core_cap(state: dict[str, ThesisState], *, cap: int = CORE_CAP) -> i
     for theme in to_downgrade:
         st = state[theme]
         st.status = "stable"
+        st.last_state_change_date = today.isoformat()
         logger.info(
             "rules.core_cap_downgrade theme=%s last_strong=%s count_90d=%d",
             theme, st.last_strong_evidence_date, st.evidence_count_recent_90d,
@@ -300,7 +309,7 @@ def run_state_transitions(
                 st.last_strong_evidence_date = max(strong_support_dates)
 
         if st.status == "candidate":
-            _transition_candidate(st, evs_30d, theme)
+            _transition_candidate(st, evs_30d, today, theme)
 
         elif st.status == "emerging":
             _transition_emerging(st, evs_90d, today, theme)
@@ -315,7 +324,7 @@ def run_state_transitions(
             _transition_dormant(st, evs_30d, today, theme)
 
     # ── Step 3) Core cap（先于事件生成）──
-    enforce_core_cap(state, cap=CORE_CAP)
+    enforce_core_cap(state, today=today, cap=CORE_CAP)
 
     # ── Step 4) 仅在 cap 之后，core 生成「渐明」事件 ──
     events: list[ThesisEvent] = []
@@ -339,6 +348,20 @@ def run_state_transitions(
         events.sort(
             key=lambda e: substantiate_priority(e, holdings_tickers), reverse=True,
         )
+
+    # ── 降级汇总(校准期可观测性) ──
+    demotions = [
+        (theme, st.status) for theme, st in state.items()
+        if st.last_state_change_date == today_str
+        and st.status in ("stable", "dormant")
+    ]
+    if demotions:
+        logger.warning(
+            "thesis.demotions_today count=%d themes=%s",
+            len(demotions),
+            [f"{t}→{s}" for t, s in demotions],
+        )
+
     return state, events[:3]
 
 
@@ -348,6 +371,7 @@ def run_state_transitions(
 def _transition_candidate(
     st: ThesisState,
     evs_30d: list[ThesisEvidence],
+    today: date,
     theme: str,
 ) -> None:
     if (
@@ -356,6 +380,7 @@ def _transition_candidate(
         and any(is_strong_support(e) for e in evs_30d)
     ):
         st.status = "emerging"
+        st.last_state_change_date = today.isoformat()
         best = max(evs_30d, key=lambda e: e.strength)
         st.one_line_thesis = best.why_it_matters[:200]
         logger.info(
@@ -378,6 +403,7 @@ def _transition_emerging(
         and has_authoritative_source(evs_90d)
     ):
         st.status = "core"
+        st.last_state_change_date = today.isoformat()
         logger.info(
             "rules.core theme=%s elapsed=%d ev_90d=%d",
             theme, elapsed, len(evs_90d),
@@ -394,6 +420,7 @@ def _transition_core(
     last_d = days_since(st.last_evidence_date, today)
     if last_d is not None and last_d > st.stale_after_days:
         st.status = "dormant"
+        st.last_state_change_date = today.isoformat()
         logger.info(
             "rules.dormant theme=%s last_evidence=%s stale_days=%d",
             theme, st.last_evidence_date, st.stale_after_days,
@@ -410,6 +437,7 @@ def _transition_core(
         and not has_risk_evidence(evs_90d)
     ):
         st.status = "stable"
+        st.last_state_change_date = today.isoformat()
         logger.info(
             "rules.stable theme=%s last_strong=%s threshold=%d ev_90d=%d",
             theme, st.last_strong_evidence_date,
@@ -426,6 +454,7 @@ def _transition_stable(
     # stable → core (reactivated): 30d 内出现 strength≥4
     if any(e.strength >= 4 for e in evs_30d):
         st.status = "core"
+        st.last_state_change_date = today.isoformat()
         if any(is_strong_support(e) for e in evs_30d):
             st.last_strong_evidence_date = today.isoformat()
         logger.info("rules.stable_reactivated theme=%s", theme)
@@ -435,6 +464,7 @@ def _transition_stable(
     last_d = days_since(st.last_evidence_date, today)
     if last_d is not None and last_d > st.stale_after_days:
         st.status = "dormant"
+        st.last_state_change_date = today.isoformat()
         logger.info("rules.stable_to_dormant theme=%s last=%s", theme, st.last_evidence_date)
 
 
@@ -447,6 +477,7 @@ def _transition_dormant(
     # dormant → core (reactivated): strength≥4
     if any(e.strength >= 4 for e in evs_30d):
         st.status = "core"
+        st.last_state_change_date = today.isoformat()
         if any(is_strong_support(e) for e in evs_30d):
             st.last_strong_evidence_date = today.isoformat()
         logger.info("rules.reactivated theme=%s", theme)

@@ -268,6 +268,7 @@ def _state_to_dict(st: ThesisState) -> dict[str, Any]:
         "evidence_count_recent_90d": st.evidence_count_recent_90d,
         "rolling_evidence": st.rolling_evidence,
         "one_line_thesis": st.one_line_thesis,
+        "last_state_change_date": st.last_state_change_date,
     }
 
 
@@ -286,4 +287,5 @@ def _dict_to_state(obj: dict[str, Any]) -> ThesisState:
         evidence_count_recent_90d=int(obj.get("evidence_count_recent_90d", 0)),
         rolling_evidence=list(obj.get("rolling_evidence", [])),
         one_line_thesis=obj.get("one_line_thesis", ""),
+        last_state_change_date=obj.get("last_state_change_date"),
     )
