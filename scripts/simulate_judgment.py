@@ -86,7 +86,8 @@ def main():
         evidence_today.append(
             _ev(today_str, theme, strength=strength, direction="support",
                 source_name=src, source_section="company_news",
-                tickers=tickers, eid=f"ev-{theme}-{today_str}")
+                tickers=tickers, eid=f"ev-{theme}-{today_str}",
+                text=fact_text)
         )
 
     # ── 跑状态机 ──
@@ -176,7 +177,7 @@ def main():
     print("═" * 66)
     if section:
         for i, item in enumerate(section.items, 1):
-            print(f"  [{i}] {item['label']} ｜ {item['text']}")
+            print(f"  [{i}] {item['text']}")
     else:
         print("  (无渐明事件 — 区块不渲染)")
     print("═" * 66)
