@@ -75,9 +75,14 @@ def fetch_one(holding: Holding) -> StockSignal:
             f"周线仅 {rows} 行,< 200 周,无法计算 200w SMA(可能是新上市)",
         )
 
-    last_close = float(hist["Close"].iloc[-1])
-    sma_120 = float(hist["Close"].tail(120).mean())
-    sma_200 = float(hist["Close"].tail(200).mean())
+    # 取最近非 NaN 收盘价:yfinance 对港股/非美股有时当天最新行为 NaN
+    close_series = hist["Close"]
+    valid_closes = close_series.dropna()
+    if valid_closes.empty:
+        return _failed(holding, "yfinance Close 列全 NaN(数据源异常)")
+    last_close = float(valid_closes.iloc[-1])
+    sma_120 = float(close_series.tail(120).mean())
+    sma_200 = float(close_series.tail(200).mean())
     delta_120 = (last_close - sma_120) / sma_120
     delta_200 = (last_close - sma_200) / sma_200
     signal = _judge_signal(last_close, sma_120, sma_200)
