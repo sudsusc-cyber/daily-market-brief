@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from src.processors.thesis.models import ThesisEvidence, ThesisState
 from src.processors.thesis.rules import (
+    COOLDOWN_DAYS,
     any_new_strong_support_today,
     cooldown_passed,
     distinct_sources,
@@ -184,23 +185,25 @@ def test_cooldown_passed_none():
     assert cooldown_passed(None, date.today()) is True
 
 
-def test_cooldown_passed_after_31_days():
+def test_cooldown_passed_after_period():
+    """超过 cooldown 窗口 → 可以再次展示"""
     today = date.today()
-    long_ago = (today - timedelta(days=31)).isoformat()
+    long_ago = (today - timedelta(days=COOLDOWN_DAYS + 1)).isoformat()
     assert cooldown_passed(long_ago, today) is True
 
 
-def test_cooldown_not_passed_within_30_days():
+def test_cooldown_not_passed_within_period():
+    """cooldown 窗口内 → 不能再次展示"""
     today = date.today()
-    recent = (today - timedelta(days=15)).isoformat()
+    recent = (today - timedelta(days=COOLDOWN_DAYS // 2)).isoformat()
     assert cooldown_passed(recent, today) is False
 
 
-def test_cooldown_not_passed_at_exactly_30():
-    """30 天边界:需要 > 30 天才能触发"""
+def test_cooldown_not_passed_at_boundary():
+    """边界:严格 > COOLDOWN_DAYS 才能触发(== COOLDOWN_DAYS 时仍 False)"""
     today = date.today()
-    exactly_30 = (today - timedelta(days=30)).isoformat()
-    assert cooldown_passed(exactly_30, today) is False
+    at_boundary = (today - timedelta(days=COOLDOWN_DAYS)).isoformat()
+    assert cooldown_passed(at_boundary, today) is False
 
 
 # ─── state transitions ─────────────────────────────────────────────
@@ -534,7 +537,7 @@ def test_strong_risk_no_substantiate():
 
 
 def test_cooldown_blocks_substantiate():
-    """30 天内已展示 → 不触发展示"""
+    """cooldown 窗口内已展示 → 不触发展示"""
     today = date.today()
     state = {
         "test": ThesisState(
