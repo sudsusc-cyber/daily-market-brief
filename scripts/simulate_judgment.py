@@ -6,10 +6,8 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
 from datetime import date, timedelta, datetime
 from pathlib import Path
-from typing import Any
 from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -18,12 +16,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.processors.thesis.models import ThesisEvidence, ThesisState
 from src.processors.thesis.rules import run_state_transitions
 from src.processors.thesis.renderer import build_judgment_section
-
-
-@dataclass
-class JudgmentSection:
-    """Jinja2 用 .items 访问属性，不能直接用 dict（会和 .items() 方法冲突）。"""
-    items: list[dict[str, Any]]
 
 
 def _d(days_ago: int) -> str:
@@ -98,13 +90,7 @@ def main():
         holdings_tickers=holdings_tickers,
     )
 
-    raw_section = build_judgment_section(events)
-
-    # 将 dict 转为 Jinja2 兼容的 dataclass（避免 .items 属性 vs 方法冲突）
-    if raw_section:
-        section = JudgmentSection(items=raw_section["items"])
-    else:
-        section = None
+    section = build_judgment_section(events)
 
     # ── 渲染为真实 email HTML ──
     from src.renderer.render import _build_env
@@ -177,7 +163,7 @@ def main():
     print("═" * 66)
     if section:
         for i, item in enumerate(section.items, 1):
-            print(f"  [{i}] {item['text']}")
+            print(f"  [{i}] 「{item['thesis']}」{item['tail']}")
     else:
         print("  (无渐明事件 — 区块不渲染)")
     print("═" * 66)

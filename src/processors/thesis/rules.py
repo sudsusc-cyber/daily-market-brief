@@ -197,31 +197,24 @@ def make_substantiate_event(
 ) -> ThesisEvent:
     """用最近 is_strong_support evidence 生成「渐明」事件。
 
-    headline 格式：TICKER ｜ 事实描述（不重复 thesis，不写「获得新证据支持」）。
-    事实描述取自 evidence.text（extractor 阶段 LLM 已抽取的关键事实）。
+    thesis 取自 state.one_line_thesis（LLM 抽取阶段填写的核心断言）。
+    tail 固定为“获得新证据支持。”。
+    headline 为拼接结果（用于日志/兼容）。
     """
     strong = [e for e in recent_evs if is_strong_support(e)]
     best = strong[-1] if strong else recent_evs[-1]
 
-    ticker_str = " / ".join(st.related_tickers[:3])
-    fact = best.text.strip()
-
-    headline = f"{ticker_str} ｜ {fact}"
-    if len(headline) < 24:
-        headline = f"{ticker_str} ｜ {fact}。"
-    if len(headline) > 42:
-        truncated = headline[:42]
-        last_stop = max(truncated.rfind("。"), truncated.rfind("，"), truncated.rfind("；"))
-        if last_stop > 30:
-            headline = truncated[:last_stop + 1]
-        else:
-            headline = truncated[:39] + "…"
+    thesis = st.one_line_thesis or st.theme
+    tail = "获得新证据支持。"
+    headline = f"「{thesis}」{tail}"
 
     return ThesisEvent(
         kind="substantiate",
         theme=st.theme,
         related_tickers=st.related_tickers,
         headline=headline,
+        thesis=thesis,
+        tail=tail,
         source_url=best.url,
         source_section=best.source_section,
     )
