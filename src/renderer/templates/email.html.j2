@@ -574,8 +574,6 @@
         <tr>
           <td style="padding:18px 24px 0 24px;">
             <p style="margin:0; font-family:{{ serif_body }}; font-size:15px; line-height:1.8; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
-              <span style="font-family:{{ serif_display }}; font-size:13px; font-variant:small-caps; color:{{ color_accent }}; letter-spacing:0.06em;">{{ item.label }}</span>
-              <span style="color:{{ color_muted }}; margin:0 6px;">｜</span>
               {%- if item.url %}
               <a href="{{ item.url | safe_url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.text }}</a>
               {%- else %}
