@@ -179,7 +179,8 @@ def main() -> int:
     )
 
     logger.info("collect.macro_news")
-    macro_bundles = macro_news.fetch_all()
+    macro_news_state_path = _STATE_DIR / "pushed_macro_news.json"
+    macro_bundles, macro_news_pending_pushed = macro_news.fetch_all(state_path=macro_news_state_path)
 
     logger.info("collect.figures")
     figures_state_path = _STATE_DIR / "pushed_figures.json"
@@ -368,6 +369,11 @@ def main() -> int:
         company_news.commit_pushed(company_news_state_path, company_news_pending_pushed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("company_news.commit_pushed_failed exc=%r", exc)
+
+    try:
+        macro_news.commit_pushed(macro_news_state_path, macro_news_pending_pushed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("macro_news.commit_pushed_failed exc=%r", exc)
 
     logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0
