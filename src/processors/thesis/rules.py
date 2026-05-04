@@ -282,13 +282,14 @@ def run_state_transitions(
         evs_30d = filter_recent(theme_evs, days=30, today=today)
         evs_90d = filter_recent(theme_evs, days=90, today=today)
 
-        # 更新 counters。recent_evidence 已由 state.load_recent_evidence 按 evidence_id
-        # 去重；这里仍按唯一 id 计算，保证同日重跑不会虚增 total。
-        if theme_evs:
-            st.evidence_count_total = max(
-                st.evidence_count_total,
-                unique_evidence_count(theme_evs),
-            )
+        # 更新 counters。evidence_count_total 是累计值，只加今日新增的 unique evidence。
+        # 以 last_evidence_date != today 作为幂等守卫：同日重跑不会重复累加。
+        # （不能用 max(旧值, 窗口内计数)，因为旧 evidence 超过 90 天移出窗口后，
+        #   再有新 evidence 进来会被 max 吞掉。）
+        today_evs = [e for e in theme_evs if e.date == today_str]
+        today_new = unique_evidence_count(today_evs) if today_evs else 0
+        if today_new and st.last_evidence_date != today_str:
+            st.evidence_count_total += today_new
         st.evidence_count_recent_90d = unique_evidence_count(evs_90d)
         if theme_evs:
             latest = max(theme_evs, key=lambda e: e.date)

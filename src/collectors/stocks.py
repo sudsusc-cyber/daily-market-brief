@@ -47,8 +47,12 @@ def _judge_signal(last_close: float, sma_120: float, sma_200: float) -> SignalKi
 
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
 def _yf_history(symbol: str):
-    """yfinance 周线拉取,带重试退避(限流时 2s/5s/12s 三次重试)。"""
-    return yf.Ticker(symbol).history(period="5y", interval="1wk", auto_adjust=False)
+    """yfinance 周线拉取,带重试退避(限流时 2s/5s/12s 三次重试)。
+
+    Ticker 构造也在此处完成，确保网络抖动时一并重试。
+    返回 (Ticker, history) 元组，Ticker 用于后续 fast_info 取当日价。"""
+    t = yf.Ticker(symbol)
+    return t, t.history(period="5y", interval="1wk", auto_adjust=False)
 
 
 def fetch_one(holding: Holding) -> StockSignal:
@@ -60,7 +64,7 @@ def fetch_one(holding: Holding) -> StockSignal:
     """
     symbol = holding.yfinance_symbol
     try:
-        hist = _yf_history(symbol)
+        ticker, hist = _yf_history(symbol)
     except Exception as exc:  # noqa: BLE001
         logger.exception("yfinance.fetch_failed ticker=%s symbol=%s", holding.ticker, symbol)
         return _failed(holding, f"yfinance 异常: {type(exc).__name__}: {exc}")

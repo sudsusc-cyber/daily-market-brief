@@ -470,15 +470,19 @@ def test_new_theme_starts_candidate():
 
 
 def test_evidence_count_total_idempotent_on_rerun():
-    """同一批 recent evidence 重跑，不应重复累加 evidence_count_total。"""
+    """同一批 recent evidence 重跑，不应重复累加 evidence_count_total。
+
+    以 last_evidence_date != today 作为幂等守卫：第一次运行时是昨天，正常累加；
+    运行后 last_evidence_date 被更新为今天，第二次再跑被守卫拦截。"""
     today = date.today()
+    yesterday = (today - timedelta(days=1)).isoformat()
     ev = _ev(today.isoformat(), "test", strength=4, direction="support")
     ev.evidence_id = "same-id"
     state = {
         "test": ThesisState(
             theme="test", status="candidate", related_tickers=["TEST"],
             cadence="quarterly", stale_after_days=180,
-            first_seen=_d(20), last_evidence_date=today.isoformat(),
+            first_seen=_d(20), last_evidence_date=yesterday,
             evidence_count_total=0,
         )
     }
@@ -486,6 +490,7 @@ def test_evidence_count_total_idempotent_on_rerun():
     state, _ = run_state_transitions(today, state, [ev])
     assert state["test"].evidence_count_total == 1
 
+    # 第二次调用：last_evidence_date 已被第一次调用更新为 today，应跳过累加
     state, _ = run_state_transitions(today, state, [ev])
     assert state["test"].evidence_count_total == 1
 
