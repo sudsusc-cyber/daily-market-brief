@@ -52,6 +52,7 @@
 {%- set color_rule = '#1A1A1A' -%}
 {%- set color_hairline = '#D9D2BE' -%}
 {%- set color_accent = '#7A1F2B' -%}
+{%- set color_lab_pinned = '#A07735' -%}{# Frontier Labs 头排品牌色，仅 OpenAI / Anthropic；新增 lab 默认走 color_ink #}
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -422,7 +423,7 @@
           <td style="padding:48px 24px 0 24px;">
             {% for item in frontier_labs_items[:2] %}
             <p style="margin:{% if loop.first %}0{% else %}6px{% endif %} 0 0 0; font-family:{{ serif_body }}; font-size:12.5px; line-height:1.6; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
-              <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em;">{{ item.lab }}</span>
+              <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_lab_pinned if item.lab in ('OpenAI', 'Anthropic') else color_ink }}; letter-spacing:0.04em;">{{ item.lab }}</span>
               <span style="color:{{ color_muted }}; margin:0 0.7em;">｜</span>
               {{ item.text | cjk_spaced }}<sup><a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11px; font-style:normal;">[{{ loop.index }}]</a></sup>
             </p>
