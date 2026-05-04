@@ -585,7 +585,69 @@ def test_core_cap_downgrades_excess():
             last_strong_evidence_date=f"2026-{(i % 12) + 1:02d}-01",
             evidence_count_recent_90d=10 - i,
         )
-    downgraded = enforce_core_cap(state, cap=12)
+    downgraded = enforce_core_cap(state, today=date(2026, 5, 4), cap=12)
     assert downgraded == 3
     core_count = sum(1 for s in state.values() if s.status == "core")
     assert core_count == 12
+
+
+# ─── Part B: 校准监控 ────────────────────────────────────────────
+
+
+def test_transition_updates_last_state_change_date() -> None:
+    """status 变更时 last_state_change_date 被设置为当天。"""
+    today = date(2026, 5, 4)
+    st = ThesisState(
+        theme="test-theme", status="candidate",
+        related_tickers=["TEST"], cadence="quarterly", stale_after_days=180,
+        first_seen="2026-01-01", last_evidence_date="2026-05-04",
+        evidence_count_total=5, evidence_count_recent_90d=5,
+    )
+    ev = _ev("2026-05-04", "test-theme", strength=5, direction="support", source_name="Reuters")
+    ev2 = _ev("2026-05-04", "test-theme", strength=4, direction="support", source_name="Bloomberg")
+    ev3 = _ev("2026-05-04", "test-theme", strength=4, direction="support", source_name="WSJ")
+    run_state_transitions(
+        today=today, state={"test-theme": st}, recent_evidence=[ev, ev2, ev3],
+    )
+    assert st.last_state_change_date == today.isoformat()
+    assert st.status == "emerging"
+
+
+def test_core_cap_sets_last_state_change_date() -> None:
+    """enforce_core_cap 降级时也设置 last_state_change_date。"""
+    today = date(2026, 5, 4)
+    state: dict[str, ThesisState] = {}
+    for i in range(13):
+        theme = f"theme-{i}"
+        state[theme] = ThesisState(
+            theme=theme, status="core",
+            related_tickers=["TEST"], cadence="quarterly", stale_after_days=180,
+            first_seen=f"2026-{(i % 12) + 1:02d}-01",
+            last_evidence_date="2026-05-01",
+            last_strong_evidence_date=f"2026-{(i % 12) + 1:02d}-01",
+            evidence_count_recent_90d=10 - i,
+        )
+    enforce_core_cap(state, today=today, cap=12)
+    for _theme, st in state.items():
+        if st.status == "stable":
+            assert st.last_state_change_date == today.isoformat()
+
+
+def test_demotions_logged(monkeypatch, caplog) -> None:
+    """降级时 logger.warning 包含 thesis.demotions_today。"""
+    import logging
+    caplog.set_level(logging.WARNING)
+
+    today = date(2026, 5, 4)
+    st = ThesisState(
+        theme="old-theme", status="core",
+        related_tickers=["TEST"], cadence="quarterly", stale_after_days=1,
+        first_seen="2024-01-01", last_evidence_date="2024-01-15",
+        last_strong_evidence_date="2024-01-10",
+        evidence_count_total=8, evidence_count_recent_90d=0,
+    )
+    run_state_transitions(
+        today=today, state={"old-theme": st}, recent_evidence=[],
+    )
+    assert "thesis.demotions_today" in caplog.text
+    assert "old-theme→dormant" in caplog.text

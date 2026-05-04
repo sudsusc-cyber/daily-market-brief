@@ -285,3 +285,35 @@ def test_year_rolling_file_naming(monkeypatch):
 
         assert (state_dir / "thesis_evidence_2026.jsonl").exists()
         assert not (state_dir / "thesis_evidence_2027.jsonl").exists()
+
+
+# ─── Part B: last_state_change_date 序列化 ────────────────────────
+
+
+def test_state_serialization_preserves_last_state_change_date(tmp_path) -> None:
+    from src.processors.thesis.state import _dict_to_state, _state_to_dict
+    st = ThesisState(
+        theme="test", status="core",
+        related_tickers=["NVDA"], cadence="quarterly", stale_after_days=180,
+        first_seen="2026-01-01", last_evidence_date="2026-05-04",
+        last_state_change_date="2026-05-01",
+    )
+    d = _state_to_dict(st)
+    assert d["last_state_change_date"] == "2026-05-01"
+    restored = _dict_to_state(d)
+    assert restored.last_state_change_date == "2026-05-01"
+
+
+def test_legacy_state_without_last_state_change_date_loads(tmp_path) -> None:
+    from src.processors.thesis.state import _dict_to_state
+    legacy = {
+        "theme": "test",
+        "status": "core",
+        "related_tickers": ["NVDA"],
+        "cadence": "quarterly",
+        "stale_after_days": 180,
+        "first_seen": "2026-01-01",
+        "last_evidence_date": "2026-05-04",
+    }
+    st = _dict_to_state(legacy)
+    assert st.last_state_change_date is None
