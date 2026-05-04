@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from src.processors.thesis.prompts import build_user_prompt
+from src.processors.thesis.prompts import MAX_ACTIVE_THEMES_IN_PROMPT, build_user_prompt
 
 
 @dataclass
@@ -71,3 +71,13 @@ def test_frontier_labs_prompt_formats_dataclass_items() -> None:
     assert "OpenAI: 企业采用提速" in prompt
     assert "url: https://openai.com/news/x" in prompt
     assert "tickers: MSFT,NVDA" in prompt
+
+
+def test_active_themes_are_capped_in_prompt() -> None:
+    themes = [f"theme-{i:03d}" for i in range(MAX_ACTIVE_THEMES_IN_PROMPT + 5)]
+
+    prompt = build_user_prompt(active_themes=themes)
+
+    assert f"`theme-{MAX_ACTIVE_THEMES_IN_PROMPT - 1:03d}`" in prompt
+    assert f"`theme-{MAX_ACTIVE_THEMES_IN_PROMPT:03d}`" not in prompt
+    assert f"只注入前 {MAX_ACTIVE_THEMES_IN_PROMPT} 个" in prompt

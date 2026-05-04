@@ -1,15 +1,19 @@
 """test_extractor.py — LLM 响应解析、validation、canonicalize、evidence_id 单测"""
 
 import json
+from datetime import date
 
+from src.processors.llm_client import LLMResponse, LLMUsage
 from src.processors.thesis.extractor import (
     canonicalize_theme,
+    extract,
     make_evidence_id,
     normalize_text,
     parse_response,
     validate_and_build,
 )
 from src.processors.thesis.models import ThesisEvidence
+from src.processors.thesis.prompts import MAX_EVIDENCE_ITEMS
 
 # ─── parse_response ────────────────────────────────────────────────
 
@@ -239,3 +243,28 @@ def test_theme_canonicalized():
 def test_null_url_preserved():
     result = validate_and_build([_valid_item(url=None)], "2026-05-04")
     assert result[0].url is None
+
+
+class _DummyClient:
+    def __init__(self, text: str):
+        self.text = text
+
+    def chat(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        return LLMResponse(text=self.text, usage=LLMUsage(), error=None)
+
+
+def test_extract_caps_evidence_items():
+    payload = [
+        _valid_item(text=f"测试文本 {i}", why_it_matters=f"测试原因 {i}")
+        for i in range(MAX_EVIDENCE_ITEMS + 4)
+    ]
+
+    result = extract(
+        client=_DummyClient(json.dumps(payload)),
+        company_news="已筛选摘要",
+        today=date(2026, 5, 4),
+    )
+
+    assert len(result) == MAX_EVIDENCE_ITEMS
+    assert result[0].text == "测试文本 0"
+    assert result[-1].text == f"测试文本 {MAX_EVIDENCE_ITEMS - 1}"

@@ -64,6 +64,38 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _LOGOS_DIR = _PROJECT_ROOT / "assets" / "logos"
 _STATE_DIR = _PROJECT_ROOT / "state"
 
+_ACTIVE_THESIS_STATUS_RANK = {
+    "core": 0,
+    "emerging": 1,
+    "stable": 2,
+    "dormant": 3,
+}
+_ACTIVE_THESIS_THEME_LIMIT = 120
+
+
+def _select_active_thesis_themes(
+    state_dict: dict,
+    *,
+    limit: int = _ACTIVE_THESIS_THEME_LIMIT,
+) -> list[str]:
+    """按状态重要性与最近 evidence 时间挑选注入 prompt 的 active themes。"""
+    rows: list[tuple[int, str, str]] = []
+    for theme, st in state_dict.items():
+        status = getattr(st, "status", "")
+        if status not in _ACTIVE_THESIS_STATUS_RANK:
+            continue
+        rows.append((
+            _ACTIVE_THESIS_STATUS_RANK[status],
+            getattr(st, "last_evidence_date", "") or "",
+            str(theme),
+        ))
+
+    # 稳定排序：先 theme 字母序，再按最近 evidence 时间降序，最后按状态优先级。
+    rows.sort(key=lambda row: row[2])
+    rows.sort(key=lambda row: row[1], reverse=True)
+    rows.sort(key=lambda row: row[0])
+    return [theme for _, _, theme in rows[:limit]]
+
 
 def _translate_all_bundles(
     *,
@@ -204,10 +236,7 @@ def main() -> int:
     try:
         # 第一次读 state：获取 active themes 用于注入 prompt（防 theme 漂移）
         state_dict = thesis_state.load_state(_STATE_DIR)
-        active_themes = [
-            t for t, st in state_dict.items()
-            if st.status in {"emerging", "core", "stable", "dormant"}
-        ]
+        active_themes = _select_active_thesis_themes(state_dict)
 
         evidence_today = thesis_extractor.extract(
             client=llm,

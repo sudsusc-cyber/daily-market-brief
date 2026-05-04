@@ -19,7 +19,7 @@ from typing import Any
 from src.processors.llm_client import LLMClient
 
 from .models import ThesisEvidence
-from .prompts import SYSTEM_EXTRA, build_user_prompt
+from .prompts import MAX_EVIDENCE_ITEMS, SYSTEM_EXTRA, build_user_prompt
 
 logger = logging.getLogger("thesis.extractor")
 
@@ -234,4 +234,11 @@ def extract(
         return []
 
     raw_items = parse_response(resp.text)
-    return validate_and_build(raw_items, today_str)
+    evidence = validate_and_build(raw_items, today_str)
+    if len(evidence) > MAX_EVIDENCE_ITEMS:
+        logger.info(
+            "extractor.cap_evidence total=%d kept=%d",
+            len(evidence), MAX_EVIDENCE_ITEMS,
+        )
+        evidence = evidence[:MAX_EVIDENCE_ITEMS]
+    return evidence
