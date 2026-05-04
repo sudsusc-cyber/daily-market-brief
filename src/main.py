@@ -212,10 +212,20 @@ def main() -> int:
     )
 
     logger.info("processors.news_summarizer")
-    company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
+    company_news_silence_note = None
+    if cn_bundles:
+        company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
+    else:
+        company_news_summary = None
+        company_news_silence_note = news_summarizer.generate_silence_note(client=llm)
 
     logger.info("processors.macro_filter")
-    macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
+    macro_news_silence_note = None
+    if macro_bundles:
+        macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
+    else:
+        macro_news_summary = None
+        macro_news_silence_note = macro_filter.generate_silence_note(client=llm)
 
     logger.info("processors.figure_filter")
     figure_summaries = figure_filter.filter_all(fig_bundles, client=llm)
@@ -329,6 +339,8 @@ def main() -> int:
         figure_footnotes=figure_footnotes,
         macro_news=macro_bundles,
         macro_news_summary=macro_news_summary,
+        company_news_silence_note=company_news_silence_note,
+        macro_news_silence_note=macro_news_silence_note,
         buffett_13f=buffett_bundle,
         frontier_labs_items=frontier_labs_items,
         judgment_section=judgment_section,
