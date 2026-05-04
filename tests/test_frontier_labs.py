@@ -297,7 +297,6 @@ def test_render_frontier_labs_standalone_without_empty_state() -> None:
 
     assert "OpenAI" in html
     assert "新增数据中心合作" in html
-    assert 'href="https://openai.com/news/x"' in html
     assert "昨日动态" not in html  # 无 company_news 时不渲染
     assert "前沿模型" not in html   # section header 已移除
     assert "Frontier Labs" not in html

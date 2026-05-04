@@ -24,8 +24,8 @@ def test_single_event():
     result = build_judgment_section([e])
     assert result is not None
     assert len(result["items"]) == 1
-    assert result["items"][0]["label"] == "渐明"
     assert result["items"][0]["text"] == "MSFT AI capex 获得新证据支持"
+    assert "label" not in result["items"][0]  # label 不再暴露给模板
 
 
 def test_two_events():

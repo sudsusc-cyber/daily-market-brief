@@ -131,17 +131,59 @@ def main():
     )
 
     from src.processors.news_summarizer import CompanyNewsSummary, Footnote
+    # 模拟 news_summarizer 真实输出:行内 <sup>[N]</sup> + 底部脚注列表
+    row_style = (
+        "margin:0 0 10px 0;padding:0;"
+        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',"
+        "Charter,Cambria,Georgia,serif;"
+        "font-size:16px;line-height:1.9;color:#1A1A1A;letter-spacing:0.02em;"
+    )
+    name_style = "color:#7A1F2B;letter-spacing:0.04em;"
+    sep_style = "color:#D9D2BE;margin:0 6px;"
+    fn_style = (
+        "color:#0563C1;text-decoration:none;font-family:Charter,Georgia,serif;"
+        "font-size:11px;font-style:normal;"
+    )
     mock_cn_summary = CompanyNewsSummary(
         summary_html=(
-            '<div style="margin:0 0 10px 0;'
-            "font-family:'Noto Serif SC','Source Han Serif SC',Charter,Georgia,serif;"
-            'font-size:16px;line-height:1.9;color:#1A1A1A;">'
-            '<span style="color:#7A1F2B;">英伟达</span>'
-            '<span style="color:#D9D2BE;margin:0 6px;">|</span>'
-            "Blackwell GPU 量产进度超预期，资本开支指引上调。</div>"
+            f'<div style="{row_style}">'
+            f'<span style="{name_style}">英伟达</span>'
+            f'<span style="{sep_style}">│</span>'
+            f'Blackwell GPU 量产进度超预期，资本开支指引上调。'
+            f'<sup><a href="https://reuters.com/1" target="_blank" rel="noopener" style="{fn_style}">[1]</a></sup>'
+            f'</div>'
+            f'<div style="{row_style}">'
+            f'<span style="{name_style}">苹果</span>'
+            f'<span style="{sep_style}">│</span>'
+            f'App Store 抽成案被最高法院驳回。'
+            f'<sup><a href="https://reuters.com/2" target="_blank" rel="noopener" style="{fn_style}">[2]</a></sup>'
+            f'</div>'
         ),
-        footnotes=[Footnote(index=1, url="https://example.com/1", source="Reuters")],
+        footnotes=[
+            Footnote(index=1, url="https://reuters.com/1", source="Reuters"),
+            Footnote(index=2, url="https://reuters.com/2", source="Reuters"),
+        ],
     )
+
+    from src.processors.frontier_labs_filter import FrontierKeyPoint
+    mock_frontier_labs = [
+        FrontierKeyPoint(
+            lab="OpenAI",
+            text="新一代推理模型发布，企业 API 调用量周环比增长 40%，云基础设施需求持续扩张。",
+            related_tickers=["MSFT", "NVDA"],
+            source_url="https://openai.com/news/model-x",
+            source_name="OpenAI",
+            score=5,
+        ),
+        FrontierKeyPoint(
+            lab="Anthropic",
+            text="获得新一轮 35 亿美元融资，将主要用于扩大算力集群规模。",
+            related_tickers=["GOOG", "NVDA"],
+            source_url="https://anthropic.com/blog/series-e",
+            source_name="Anthropic",
+            score=4,
+        ),
+    ]
 
     html = template.render(
         signals=mock_signals,
@@ -161,7 +203,7 @@ def main():
         macro_news=None,
         macro_news_summary=None,
         buffett_13f=None,
-        frontier_labs_items=None,
+        frontier_labs_items=mock_frontier_labs,
         judgment_section=section,
     )
 
