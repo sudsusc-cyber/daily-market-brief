@@ -424,9 +424,18 @@
             <p style="margin:{% if loop.first %}0{% else %}6px{% endif %} 0 0 0; font-family:{{ serif_body }}; font-size:12.5px; line-height:1.6; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
               <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em;">{{ item.lab }}</span>
               <span style="color:{{ color_muted }}; margin:0 0.7em;">｜</span>
-              {{ item.text | cjk_spaced }} <a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; white-space:nowrap;">[{{ item.source_name }}]</a>
+              {{ item.text | cjk_spaced }}<sup><a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11px; font-style:normal;">[{{ loop.index }}]</a></sup>
             </p>
             {% endfor %}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 24px 0 24px;">
+            <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
+              {% for item in frontier_labs_items[:2] %}
+              <a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:nowrap;">[{{ loop.index }}] {{ item.source_name }}</a>
+              {% endfor %}
+            </div>
           </td>
         </tr>
         {% endif %}
