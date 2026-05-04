@@ -82,6 +82,8 @@ jobs:
 
       # 仅发送成功时保存 state,避免失败 run 也记录"已处理"导致未送达内容被跳过。
       # 注意:actions/cache/save 的 key 每天唯一,下一次 restore 回退到最近一次成功的 state。
+      # TODO(audit-2026-05-04 #B1): follower run 也会执行此步骤，leader 失败时可能用旧 state 覆盖。
+      # 修复方向：if: success() && env.LEADER == 'true'。当前 monitor 兜底，先观察不修。
       - name: Save state for next run
         if: success()
         uses: actions/cache/save@v4

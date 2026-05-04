@@ -5,6 +5,10 @@
 
 **当前阶段**:M6(部署上线 + 稳定性)— ✅ 已实施;后续进入生产观察 / 可选 M7
 
+> 当前开发分支 `codex/frontier-labs-addendum` (HEAD `e192d2f`)，领先 `main` 61 提交。
+> 生产仍跑 `main`（`41b4ded`）。
+> 新模块:thesis (Judgment Ledger, ADR-0012) / subject (标题生成) / frontier_labs / figure_official_sources。
+
 > M4 内修复:排版基本功 + prompt 结构化 + 脚注 (方案 B) — 用户在 M4 验收期间追加的细化指令,已落地
 > M4 v2 内修复:序号字体协调 + 脚注横排 + Word 蓝 + IV 字体统一 + 但斌 + prompt 去 "XXX 说" 前缀
 
@@ -13,8 +17,9 @@
 > M2 期间将 PLAN 原 M5 的精美设计、logo、表头对齐等指令一并落地,详见 ADR-0002 / ADR-0003
 > M3 已于 2026-04-30 验收通过,验收期间打了 4 个补丁(TSM 移动端 / Reuters→CNBC / 提前接 LLM 翻译 / 相关性过滤),详见 ADR-0005
 > M5 已于 2026-04-30 验收通过并扩展为四季刊头图 + 跨客户端兼容,详见 ADR-0009 / ADR-0010
-> M6 已于 2026-04-30 实施;后续又完成监控 workflow、幂等过滤、SMTP 部分发送容错、Android QQ 兼容修复,当前 main HEAD `41b4ded`
+> M6 已于 2026-04-30 实施;后续又完成监控 workflow、幂等过滤、SMTP 部分发送容错、Android QQ 兼容修复
 > 2026-05-01 追加"关键发言"双层质量门槛,详见 ADR-0011
+> 2026-05-04 审计修复（lint、异常安全、yfinance 空数据重试等 15 文件），详见 `e192d2f`
 
 ---
 
