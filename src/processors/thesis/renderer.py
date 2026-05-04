@@ -6,7 +6,7 @@ V1 只输出「渐明」事件，最多 3 条。
 
 from __future__ import annotations
 
-from .models import EVENT_LABELS, ThesisEvent
+from .models import ThesisEvent
 
 
 def build_judgment_section(events: list[ThesisEvent]) -> dict | None:
@@ -17,7 +17,6 @@ def build_judgment_section(events: list[ThesisEvent]) -> dict | None:
     items = []
     for e in events[:3]:
         items.append({
-            "label": EVENT_LABELS.get(e.kind, e.kind),
             "text": e.headline,
             "url": e.source_url,
         })
