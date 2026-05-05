@@ -48,7 +48,7 @@ from src.processors import (
     sentiment_judge,
     translator,
 )
-from src.processors.llm_client import LLMClient
+from src.processors.llm_client import LLMClient, resolve_latest_flash_model
 from src.processors.thesis import extractor as thesis_extractor
 from src.processors.thesis import renderer as thesis_renderer
 from src.processors.thesis import rules as thesis_rules
@@ -201,7 +201,8 @@ def main() -> int:
     sentiment_bundle = sentiment.fetch_all(settings.fred_api_key)
 
     # ---------- LLM 处理(M4) ----------
-    llm = LLMClient(api_key=settings.deepseek_api_key)
+    deepseek_model = resolve_latest_flash_model(settings.deepseek_api_key)
+    llm = LLMClient(api_key=settings.deepseek_api_key, model=deepseek_model)
 
     logger.info("translate.titles")
     _translate_all_bundles(

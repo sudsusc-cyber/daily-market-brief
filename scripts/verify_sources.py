@@ -418,7 +418,7 @@ def check_sec_edgar_13f() -> CheckResult:
 
 
 # =============================================================
-# 9. DeepSeek V4-Flash — LLM API
+# 9. DeepSeek Flash — LLM API
 # =============================================================
 def check_deepseek_llm(skip: bool = False) -> CheckResult:
     if skip:
@@ -430,9 +430,10 @@ def check_deepseek_llm(skip: bool = False) -> CheckResult:
 
     from openai import OpenAI
 
-    # PLAN 第 3 节指定 model = deepseek-v4-flash;若该模型名不存在,在结果里标 ⚠️ 等用户决策
-    model_name = "deepseek-v4-flash"
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    from src.processors.llm_client import DEFAULT_BASE_URL, resolve_latest_flash_model
+
+    model_name = resolve_latest_flash_model(api_key)
+    client = OpenAI(api_key=api_key, base_url=DEFAULT_BASE_URL)
     try:
         resp = client.chat.completions.create(
             model=model_name,
