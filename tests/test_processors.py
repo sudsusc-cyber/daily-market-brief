@@ -29,9 +29,9 @@ from src.processors.figure_filter import _format_input as fig_format
 from src.processors.figure_filter import _parse_output as fig_parse
 from src.processors.macro_filter import _format_input as macro_format
 from src.processors.news_summarizer import _format_input as news_format
+from src.processors.sentiment_judge import _TASK_INSTRUCTION, score_sentiment
 from src.processors.sentiment_judge import _format_input as sent_format
 from src.processors.sentiment_judge import _parse_json as sent_parse_json
-from src.processors.sentiment_judge import score_sentiment
 from src.processors.translator import _is_chinese, _parse_lines
 
 
@@ -262,6 +262,11 @@ class TestScoreSentiment:
                            rating=None, error="x"),
         ], fetched_at=_utc(2026, 4, 30))
         assert score_sentiment(b) is None
+
+    def test_sentiment_prompt_downplays_shiller_pe(self) -> None:
+        assert "Shiller PE 是慢变量" in _TASK_INSTRUCTION
+        assert "不得作为每日情绪判断的主论据" in _TASK_INSTRUCTION
+        assert "不得写\"历史极值\"" in _TASK_INSTRUCTION
 
 
 class TestFigureFilterUrlSafety:
