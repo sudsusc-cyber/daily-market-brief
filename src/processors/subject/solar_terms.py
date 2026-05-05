@@ -101,10 +101,12 @@ def _solar_longitude(jd: float) -> float:
     # ephem 的儒略日纪元从 1899-12-31 12:00 UT 起算,需要转换
     # ephem.Date 接受 Dublin JD = JD - 2415020
     djd = jd - 2415020.0
-    sun = ephem.Sun(ephem.Date(djd))
-    # ephem 给的 hlong 是日心黄经,我们需要地心黄经(geocentric)
-    # 用 ecliptic.lon (geocentric ecliptic longitude)
-    ecl = ephem.Ecliptic(sun)
+    epoch = ephem.Date(djd)
+    sun = ephem.Sun(epoch)
+    # ephem 给的 hlong 是日心黄经,我们需要地心黄经(geocentric)。
+    # 节气使用太阳在"当日平分点"下的黄经;Ecliptic 默认 epoch=J2000,
+    # 2026 年会因岁差偏约 0.37°(约 9 小时),所以必须显式传入当前 epoch。
+    ecl = ephem.Ecliptic(sun, epoch=epoch)
     return math.degrees(float(ecl.lon)) % 360
 
 

@@ -110,11 +110,11 @@ SCENARIOS: list[Scenario] = [
              0, 1, [], ["MCO"], None, None),
 
     # 15. 节气切换日
-    Scenario("立夏当日", date(2026, 5, 6), "中性", 50, 18, 50,
+    Scenario("立夏当日", date(2026, 5, 5), "中性", 50, 18, 50,
              0, 0, [], [], None, None),
 
     # 16. 节气前夕
-    Scenario("立夏前一日", date(2026, 5, 5), "中性", 50, 18, 50,
+    Scenario("立夏前一日", date(2026, 5, 4), "中性", 50, 18, 50,
              0, 0, [], [], None, None),
 
     # 17. 偏热 + DCA + 宏观
