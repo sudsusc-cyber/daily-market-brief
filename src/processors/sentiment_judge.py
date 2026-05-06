@@ -2,13 +2,13 @@
 情绪综合判断(模块 5 加工)。
 
 verdict(温度档位)由**确定性加权打分**得出,同样输入永远同样档位:
-  - 6 指标各打 0-100 分(0=极度恐慌,100=极度贪婪)
+  - 5 指标各打 0-100 分(0=极度恐慌,100=极度贪婪)
   - 加权平均(失败指标从权重中剔除并重新归一化)
   - 阈值切档:<25 极度恐慌 / 25-40 偏冷 / 40-60 中性 / 60-75 偏热 / >75 极度贪婪
 
 argument(2-3 句论据)仍由 LLM 撰写,prompt 强制 verdict 已固定,LLM 只能解释"为什么是这个档位"。
 
-输入:SentimentBundle(6 个指标的 当前 / 一周前 / rating / unit)
+输入:SentimentBundle(5 个指标的 当前 / 前一日 / rating / unit)
 输出:dict { verdict, argument, score, breakdown } 或 None
 """
 
@@ -27,12 +27,11 @@ logger = logging.getLogger(__name__)
 # ──────────────────  确定性打分  ──────────────────
 
 _WEIGHTS: dict[str, float] = {
-    "CNN Fear & Greed": 0.25,
-    "VIX": 0.25,
-    "高收益债利差": 0.20,
-    "恒指 14 日 RSI": 0.12,
-    "Shiller PE": 0.10,
-    "DXY": 0.08,
+    "CNN Fear & Greed": 0.284,
+    "VIX": 0.318,
+    "高收益债利差": 0.250,
+    "Shiller PE": 0.057,
+    "DXY": 0.091,
 }
 
 
@@ -61,9 +60,6 @@ def _score_metric(name: str, value: float) -> float | None:
     if name == "高收益债利差":
         # FRED 单位 %。越低越贪婪:2→90,3→75,4→50,5→35,6→20,8→5
         return _piecewise_linear(value, [(2, 90), (3, 75), (4, 50), (5, 35), (6, 20), (8, 5)])
-    if name == "恒指 14 日 RSI":
-        # 标准 RSI:30→20(超卖,接近恐慌),50→50,70→80(超买,接近贪婪)
-        return _piecewise_linear(value, [(20, 5), (30, 20), (50, 50), (70, 80), (80, 95)])
     if name == "Shiller PE":
         # 历史均值约 17。<15 极度恐慌,>35 极度贪婪
         return _piecewise_linear(value, [(10, 5), (15, 15), (20, 35), (25, 50), (28, 65), (32, 80), (38, 95)])
@@ -128,10 +124,14 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
 # ──────────────────  LLM 写 argument(verdict 已固定,LLM 只解释)  ──────────────────
 
 _TASK_INSTRUCTION = """\
-任务:基于下列 6 个情绪指标的"当前值 / 一周前值 / 变化",**给定固定档位**写 argument(2-3 句中文论据)。
+任务:基于下列 5 个情绪指标的"当前值 / 前一日值 / 变化",**给定固定档位**写 argument(2-3 句中文论据)。
 
 档位由确定性加权算法已经决定,你**不得**改变它。你的工作是:
 - 用 2-3 句话解释为什么算法会落到这个档位,引用关键指标的具体数字与方向
+- 重点引用 CNN Fear & Greed / VIX / 高收益债利差 这类更贴近日频风险偏好的指标
+- Shiller PE 是慢变量,只能作为长期估值背景轻轻带过;除非它有显著日度变化,不得作为每日情绪判断的主论据
+- 没有真实历史分位/区间数据时,不得写"历史极值""历史高位""极端估值""接近泡沫"等绝对化表述
+- Shiller PE 允许的最强表述是:"Shiller PE 偏高,提示长期预期收益需克制"
 - 提示对应的投资纪律:偏冷/极度恐慌 → "DCA 触发概率上升,保持耐心";偏热/极度贪婪 → "暂缓加仓,守住现金仓位";中性 → 给出留意事项
 - 不要写"今日"等时间副词,直接陈述
 - 不要 AI 腔,不要"让我们"
@@ -147,7 +147,7 @@ def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
     lines: list[str] = [
         f"已固定档位:今日情绪 · {fixed_verdict}(加权分:{score:.1f}/100)",
         "",
-        "6 指标明细:",
+        "5 指标明细:",
     ]
     for m in b.metrics:
         if m.error:
@@ -159,7 +159,7 @@ def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
         if m.delta is not None:
             delta = f"{m.delta:+.2f}{m.unit}"
         rating = f" [{m.rating}]" if m.rating else ""
-        lines.append(f"- {m.name}{rating}: 当前 {cur} | 一周前 {pri} | 变化 {delta}")
+        lines.append(f"- {m.name}{rating}: 当前 {cur} | 前一日 {pri} | 变化 {delta}")
     return "\n".join(lines)
 
 

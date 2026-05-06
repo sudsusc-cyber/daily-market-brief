@@ -37,7 +37,6 @@ class Scenario:
     mood_label: str
     cnn: float | None
     vix: float | None
-    rsi: float | None
     dca_count: int
     lump_sum_count: int
     dca_tickers: list[str]
@@ -48,83 +47,83 @@ class Scenario:
 
 SCENARIOS: list[Scenario] = [
     # 1. 今日实际:谷雨偏热 MCO DCA
-    Scenario("今日 5/1 谷雨", date(2026, 5, 1), "偏热", 63, 18, 48,
+    Scenario("今日 5/1 谷雨", date(2026, 5, 1), "偏热", 63, 18,
              1, 0, ["MCO"], [], "苹果 App Store 案上诉至最高法院", None),
 
     # 2. 多只 DCA 春分
-    Scenario("春分 3 只 DCA", date(2026, 3, 21), "中性", 50, 17, 50,
+    Scenario("春分 3 只 DCA", date(2026, 3, 21), "中性", 50, 17,
              3, 0, ["MCO", "AAPL", "AXP"], [], None, None),
 
     # 3. 单只 LUMP-SUM 霜降
-    Scenario("霜降 1 LUMP-SUM", date(2026, 10, 24), "偏冷", 30, 25, 35,
+    Scenario("霜降 1 LUMP-SUM", date(2026, 10, 24), "偏冷", 30, 25,
              0, 1, [], ["MCO"], None, None),
 
     # 4. 多只 LUMP-SUM 大寒
-    Scenario("大寒 5 LUMP-SUM", date(2026, 1, 25), "极度恐慌", 12, 38, 22,
+    Scenario("大寒 5 LUMP-SUM", date(2026, 1, 25), "极度恐慌", 12, 38,
              0, 5, [], ["MCO", "AAPL", "AXP", "KO", "GOOG"], None, None),
 
     # 5. 极度贪婪静默 夏至
-    Scenario("夏至极度贪婪", date(2026, 6, 22), "极度贪婪", 85, 11, 75,
+    Scenario("夏至极度贪婪", date(2026, 6, 22), "极度贪婪", 85, 11,
              0, 0, [], [], None, None),
 
     # 6. 极度恐惧静默 冬至
-    Scenario("冬至极度恐慌", date(2026, 12, 22), "极度恐慌", 12, 40, 18,
+    Scenario("冬至极度恐慌", date(2026, 12, 22), "极度恐慌", 12, 40,
              0, 0, [], [], None, None),
 
     # 7. 偏热静默 立秋
-    Scenario("立秋偏热", date(2026, 8, 8), "偏热", 65, 16, 60,
+    Scenario("立秋偏热", date(2026, 8, 8), "偏热", 65, 16,
              0, 0, [], [], None, None),
 
     # 8. 偏冷静默 立冬
-    Scenario("立冬偏冷", date(2026, 11, 8), "偏冷", 35, 22, 35,
+    Scenario("立冬偏冷", date(2026, 11, 8), "偏冷", 35, 22,
              0, 0, [], [], None, None),
 
     # 9. 完全中性 春分
-    Scenario("春分中性", date(2026, 3, 21), "中性", 50, 18, 50,
+    Scenario("春分中性", date(2026, 3, 21), "中性", 50, 18,
              0, 0, [], [], None, None),
 
     # 10. 重大宏观-油价
-    Scenario("立秋油价新高", date(2026, 8, 8), "中性", 50, 19, 48,
+    Scenario("立秋油价新高", date(2026, 8, 8), "中性", 50, 19,
              0, 0, [], [], None, "布伦特原油创战后新高,突破 130 美元"),
 
     # 11. 重大宏观-地缘
-    Scenario("秋分中东战事", date(2026, 9, 23), "偏冷", 38, 24, 40,
+    Scenario("秋分中东战事", date(2026, 9, 23), "偏冷", 38, 24,
              0, 0, [], [], None, "中东局势升级,以色列与伊朗冲突再起"),
 
     # 12. 重大宏观-央行
-    Scenario("白露美联储加息", date(2026, 9, 8), "偏冷", 35, 21, 38,
+    Scenario("白露美联储加息", date(2026, 9, 8), "偏冷", 35, 21,
              0, 0, [], [], None, "美联储宣布加息 25 个基点"),
 
     # 13. DCA + 持仓要闻
-    Scenario("小满 MCO DCA + 苹果新闻", date(2026, 5, 21), "中性", 55, 17, 50,
+    Scenario("小满 MCO DCA + 苹果新闻", date(2026, 5, 21), "中性", 55, 17,
              1, 0, ["MCO"], [], "苹果财报业绩超预期,服务收入新高", None),
 
     # 14. LUMP-SUM + 极度恐惧
-    Scenario("大寒 SPGI LUMP-SUM", date(2026, 1, 25), "极度恐慌", 18, 36, 25,
+    Scenario("大寒 SPGI LUMP-SUM", date(2026, 1, 25), "极度恐慌", 18, 36,
              0, 1, [], ["MCO"], None, None),
 
     # 15. 节气切换日
-    Scenario("立夏当日", date(2026, 5, 6), "中性", 50, 18, 50,
+    Scenario("立夏当日", date(2026, 5, 6), "中性", 50, 18,
              0, 0, [], [], None, None),
 
     # 16. 节气前夕
-    Scenario("立夏前一日", date(2026, 5, 5), "中性", 50, 18, 50,
+    Scenario("立夏前一日", date(2026, 5, 5), "中性", 50, 18,
              0, 0, [], [], None, None),
 
     # 17. 偏热 + DCA + 宏观
-    Scenario("芒种偏热DCA+原油", date(2026, 6, 6), "偏热", 68, 14, 65,
+    Scenario("芒种偏热DCA+原油", date(2026, 6, 6), "偏热", 68, 14,
              1, 0, ["AAPL"], [], None, "OPEC+ 维持减产决定"),
 
     # 18. 极度贪婪 + LUMP-SUM(罕见组合)
-    Scenario("立春极度贪婪+LUMP", date(2026, 2, 4), "极度贪婪", 80, 11, 78,
+    Scenario("立春极度贪婪+LUMP", date(2026, 2, 4), "极度贪婪", 80, 11,
              0, 1, [], ["KO"], None, None),
 
     # 19. 节气深处 + 多 DCA
-    Scenario("惊蛰 4 DCA", date(2026, 3, 12), "偏冷", 30, 26, 38,
+    Scenario("惊蛰 4 DCA", date(2026, 3, 12), "偏冷", 30, 26,
              4, 0, ["MCO", "AAPL", "GOOG", "AXP"], [], None, None),
 
     # 20. 2027 年某日(测算法跨年)
-    Scenario("2027 春分中性", date(2027, 3, 21), "中性", 50, 18, 50,
+    Scenario("2027 春分中性", date(2027, 3, 21), "中性", 50, 18,
              0, 0, [], [], None, None),
 ]
 
@@ -132,7 +131,7 @@ SCENARIOS: list[Scenario] = [
 def _build_data(s: Scenario) -> SubjectData:
     return SubjectData(
         solar_term=get_solar_term_context(s.today),
-        mood=MoodInfo(label=s.mood_label, cnn_fear_greed=s.cnn, vix=s.vix, hsi_rsi=s.rsi),
+        mood=MoodInfo(label=s.mood_label, cnn_fear_greed=s.cnn, vix=s.vix),
         signals=SignalSummary(
             dca_count=s.dca_count, lump_sum_count=s.lump_sum_count,
             dca_tickers=list(s.dca_tickers), lump_sum_tickers=list(s.lump_tickers),
