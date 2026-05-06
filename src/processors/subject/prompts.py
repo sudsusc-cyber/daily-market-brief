@@ -178,8 +178,6 @@ def _format_mood(mood: dict) -> str:
         parts.append(f"CNN={mood['cnn_fear_greed']:.0f}")
     if mood.get("vix") is not None:
         parts.append(f"VIX={mood['vix']:.1f}")
-    if mood.get("hsi_rsi") is not None:
-        parts.append(f"恒指RSI={mood['hsi_rsi']:.0f}")
     if parts:
         return f"{label}({' '.join(parts)})"
     return label

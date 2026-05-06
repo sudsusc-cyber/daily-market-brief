@@ -13,7 +13,6 @@
         "score": float,                     # 0-100 加权打分
         "cnn_fear_greed": float | None,
         "vix": float | None,
-        "hsi_rsi": float | None,
     },
     "signals": {                            # 持仓信号
         "dca_count": int,
@@ -48,7 +47,6 @@ class MoodInfo:
     score: float = 50.0
     cnn_fear_greed: float | None = None
     vix: float | None = None
-    hsi_rsi: float | None = None
 
 
 @dataclass
@@ -83,7 +81,6 @@ class SubjectData:
                 "score": self.mood.score,
                 "cnn_fear_greed": self.mood.cnn_fear_greed,
                 "vix": self.mood.vix,
-                "hsi_rsi": self.mood.hsi_rsi,
             },
             "signals": {
                 "dca_count": self.signals.dca_count,
@@ -129,7 +126,6 @@ def _extract_mood(sentiment_verdict: dict | None, sentiment_bundle: Any) -> Mood
         score=score,
         cnn_fear_greed=_metric_value(sentiment_bundle, "CNN Fear & Greed"),
         vix=_metric_value(sentiment_bundle, "VIX"),
-        hsi_rsi=_metric_value(sentiment_bundle, "恒指 14 日 RSI"),
     )
 
 
