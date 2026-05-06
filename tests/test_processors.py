@@ -191,9 +191,9 @@ class TestScoreSentiment:
     def _bundle(self, **vals) -> SentimentBundle:
         names = {
             "fg": "CNN Fear & Greed", "vix": "VIX", "hy": "高收益债利差",
-            "rsi": "恒指 14 日 RSI", "pe": "Shiller PE", "dxy": "DXY",
+            "pe": "Shiller PE", "dxy": "DXY",
         }
-        units = {"hy": "%", "fg": "", "vix": "", "rsi": "", "pe": "", "dxy": ""}
+        units = {"hy": "%", "fg": "", "vix": "", "pe": "", "dxy": ""}
         metrics = [
             SentimentMetric(name=names[k], current=vals.get(k), prior=None,
                            rating=None, unit=units[k])
@@ -203,20 +203,20 @@ class TestScoreSentiment:
 
     def test_extreme_fear_low_score(self) -> None:
         # 全部指标都极度恐慌
-        out = score_sentiment(self._bundle(fg=10, vix=35, hy=7, rsi=15, pe=12, dxy=110))
+        out = score_sentiment(self._bundle(fg=10, vix=35, hy=7, pe=12, dxy=110))
         assert out is not None
         assert out["score"] < 25
         assert out["verdict"] == "极度恐慌"
 
     def test_extreme_greed_high_score(self) -> None:
         # 全部指标都极度贪婪
-        out = score_sentiment(self._bundle(fg=92, vix=10, hy=2, rsi=78, pe=38, dxy=92))
+        out = score_sentiment(self._bundle(fg=92, vix=10, hy=2, pe=38, dxy=92))
         assert out is not None
         assert out["score"] > 75
         assert out["verdict"] == "极度贪婪"
 
     def test_neutral_middle(self) -> None:
-        out = score_sentiment(self._bundle(fg=50, vix=20, hy=4, rsi=50, pe=25, dxy=100))
+        out = score_sentiment(self._bundle(fg=50, vix=20, hy=4, pe=25, dxy=100))
         assert out is not None
         assert 40 <= out["score"] <= 60
         assert out["verdict"] == "中性"
@@ -224,28 +224,26 @@ class TestScoreSentiment:
     def test_deterministic_same_input(self) -> None:
         # 同一输入运行 5 次结果完全一致
         results = [
-            score_sentiment(self._bundle(fg=63, vix=18, hy=3.5, rsi=55, pe=27, dxy=103))
+            score_sentiment(self._bundle(fg=63, vix=18, hy=3.5, pe=27, dxy=103))
             for _ in range(5)
         ]
         assert len({r["score"] for r in results}) == 1
         assert len({r["verdict"] for r in results}) == 1
 
     def test_partial_failure_renormalizes(self) -> None:
-        # 三个指标失败,剩三个仍出结果
+        # 三个指标失败,剩两个仍出结果
         b = SentimentBundle(metrics=[
             SentimentMetric(name="CNN Fear & Greed", current=70, prior=None, rating=None),
             SentimentMetric(name="VIX", current=14, prior=None, rating=None),
             SentimentMetric(name="高收益债利差", current=None, prior=None, rating=None,
                            unit="%", error="网络错误"),
-            SentimentMetric(name="恒指 14 日 RSI", current=None, prior=None, rating=None,
-                           error="ya"),
             SentimentMetric(name="Shiller PE", current=None, prior=None, rating=None,
                            error="multpl 选择器失败"),
             SentimentMetric(name="DXY", current=None, prior=None, rating=None, error="x"),
         ], fetched_at=_utc(2026, 4, 30))
         out = score_sentiment(b)
         assert out is not None
-        # CNN F&G(70 → ~70 score, w=0.25)+ VIX(14 → ~80 score, w=0.25)归一化后 ≈ 75
+        # CNN F&G(70 → ~70 score)+ VIX(14 → ~80 score)归一化后 ≈ 75
         assert out["score"] > 60
 
     def test_all_failed_returns_none(self) -> None:

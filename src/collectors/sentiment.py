@@ -5,7 +5,6 @@
   - CNN Fear & Greed:非官方 JSON 端点
   - VIX:yfinance ^VIX
   - DXY:yfinance DX-Y.NYB
-  - 恒指 RSI(14 日):yfinance ^HSI 计算
   - Shiller PE:multpl.com 抓取
   - 高收益债利差:FRED BAMLH0A0HYM2
 
@@ -94,7 +93,7 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
     )
 
 
-# ---------- yfinance: VIX / DXY / ^HSI ----------
+# ---------- yfinance: VIX / DXY ----------
 @retry(max_attempts=3, base_delay=1.0)
 def _fetch_yfinance_close(ticker: str, period: str = "2mo") -> list[float]:
     hist = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=False)
@@ -117,39 +116,6 @@ def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> Senti
     # 前一交易日(closes[-2])作为"前一日"参考
     prior = closes[-2] if len(closes) >= 2 else None
     return SentimentMetric(name=display_name, current=current, prior=prior, rating=None, unit=unit)
-
-
-def _fetch_hsi_rsi(period_days: int = 14) -> SentimentMetric:
-    """恒指 14 日 RSI"""
-    try:
-        closes = _fetch_yfinance_close("^HSI", period="3mo")
-    except Exception as exc:  # noqa: BLE001
-        return SentimentMetric(name="恒指 14 日 RSI", current=None, prior=None, rating=None,
-                              error=f"{type(exc).__name__}: {exc}")
-    if len(closes) < period_days + 1:
-        return SentimentMetric(name="恒指 14 日 RSI", current=None, prior=None, rating=None,
-                              error="数据不足")
-
-    def _rsi(series: list[float]) -> float | None:
-        gains: list[float] = []
-        losses: list[float] = []
-        for i in range(1, len(series)):
-            d = series[i] - series[i - 1]
-            gains.append(max(d, 0.0))
-            losses.append(max(-d, 0.0))
-        if len(gains) < period_days:
-            return None
-        avg_gain = sum(gains[-period_days:]) / period_days
-        avg_loss = sum(losses[-period_days:]) / period_days
-        if avg_loss == 0:
-            return 100.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
-
-    current = _rsi(closes)
-    # RSI 前一交易日:截掉最后一根 K 线后再算 RSI
-    prior = _rsi(closes[:-1]) if len(closes) > period_days + 1 else None
-    return SentimentMetric(name="恒指 14 日 RSI", current=current, prior=prior, rating=None)
 
 
 # ---------- multpl.com: Shiller PE ----------
@@ -218,7 +184,6 @@ def fetch_all(fred_api_key: str) -> SentimentBundle:
         ("CNN F&G", _fetch_cnn_fear_greed),
         ("VIX",     lambda: _fetch_simple_index("^VIX", "VIX")),
         ("DXY",     lambda: _fetch_simple_index("DX-Y.NYB", "DXY")),
-        ("HSI RSI", _fetch_hsi_rsi),
         ("ShillerPE", _fetch_shiller_pe),
         ("FRED HY", lambda: _fetch_fred_hy_spread(fred_api_key)),
     ]
