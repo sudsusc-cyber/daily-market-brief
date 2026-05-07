@@ -106,19 +106,29 @@ def check_today_status() -> tuple[bool, str]:
 
 
 def send_alert(reason: str) -> None:
-    """发告警邮件。失败抛异常(让 monitor 这个 run 报 failure,GH 也会通知)。"""
+    """发告警邮件。失败抛异常(让 monitor 这个 run 报 failure,GH 也会通知)。
+
+    reason / repo 都做 HTML escape:reason 来自 check_today_status,可能含异常 repr,
+    若异常 message 含 < > & " 字符,直接拼 HTML 会显示错乱(极端情况 注入)。
+    """
+    import html as _html
+
     settings = load_settings()
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
     repo = os.environ.get("GH_REPO", "")
-    actions_url = f"https://github.com/{repo}/actions" if repo else "GitHub Actions"
+    actions_url = (
+        f"https://github.com/{_html.escape(repo, quote=True)}/actions"
+        if repo else "https://github.com/"
+    )
     cronjob_url = "https://console.cron-job.org/jobs"
+    safe_reason = _html.escape(reason or "未知原因")
 
     subject = "⚠️ 朝闻录监控告警 — 今日邮件可能未发出"
     body = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
       <h2 style="color: #c0392b; margin-top: 0;">⚠️ 朝闻录监控告警</h2>
       <p><strong>检测时间:</strong>{datetime.now(UTC).isoformat(timespec='seconds')} UTC</p>
-      <p><strong>原因:</strong>{reason}</p>
+      <p><strong>原因:</strong>{safe_reason}</p>
 
       <hr style="border: 0; border-top: 1px solid #e0e0e0; margin: 24px 0;">
 

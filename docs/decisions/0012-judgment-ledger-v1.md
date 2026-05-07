@@ -109,4 +109,14 @@ V1 渲染经历了多次迭代（详见 commits `1746579` → `2f1175f` → `42d
 
 - V2：展示 risk 事件（当前仅展示 support，risk 只在状态迁移时生效）
 - V2：new_variable 事件（LLM 标注的新维度，尚未映射到具体判断）
-- 参数调优：cooldown 30 天、core cap 12 可能需要根据实际生产数据调整
+- 参数调优：cooldown 21 天、core cap 12 可能需要根据实际生产数据调整
+
+---
+
+## Amendments
+
+### 2026-05 — `COOLDOWN_DAYS` 从 30 改为 21
+
+上文初版定义 `COOLDOWN_DAYS = 30`，但 [src/processors/thesis/rules.py](../../src/processors/thesis/rules.py) 已在 PR #40 期间调整为 21 天。原因：30 天对快主题（regulatory / antitrust / geopolitical 等 fast cadence）显得过长，core 主题获得新证据后要等 30 天才能再次展示，会让"渐明"事件长期空白。21 天是当前折中值；rules.py 内 TODO 注释提到，等去重上线观察 30+ 天后可能改为 cadence-aware 表（fast 主题更短、structural 主题更长）。
+
+校准期(2026-05 起)：`company_news` / `macro_news` 引入 7 天 hash + 同日模糊去重后,evidence 流入量较此前下降约一半。这是历史去重缺失导致的虚高归正,**不调整 EMERGING/CORE 阈值**,让 90 天滚动窗口自然将虚高 evidence 滚出。预期 30-90 天内会有一波 core → stable 降级,日志 `thesis.demotions_today` 跟踪。

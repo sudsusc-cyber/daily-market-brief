@@ -12,12 +12,13 @@
 
 ## 当前主线状态
 
-- 当前分支:`codex/frontier-labs-addendum`,代码 HEAD 为 `e192d2f`。领先 `main`（`41b4ded`）61 个提交。
-- M1-M6 已完成;以下新模块已上线:
-  - `src/processors/thesis/` — 长期判断 Judgment Ledger（状态机 candidate→core→stable→dormant，见 ADR-0012）
+- M1-M6 已完成并合入 `main`;以下扩展模块也已上线（PR #38-#41,均已合入）:
+  - `src/processors/thesis/` — 长期判断 Judgment Ledger（状态机 candidate→emerging→core→stable→dormant，见 ADR-0012；`COOLDOWN_DAYS=21`，与 ADR 早期版本的 30 天不同，详见 rules.py 注释）
   - `src/processors/subject/` — DeepSeek 8 字两段四言标题生成（含节气意象校验）
   - `src/collectors/frontier_labs.py` + `src/processors/frontier_labs_filter.py` — OpenAI/Anthropic 跟踪
   - `src/collectors/figure_official_sources.py` — 关键人物官方源补充（OpenAI Blog、Microsoft Blog、AMD IR、Berkshire 官网）
+- 情绪温度计已从 6 指标减为 5 指标(PR #38 移除恒指 14 日 RSI),权重重新归一化,详见 `src/processors/sentiment_judge.py` 和 ADR-0010 末尾 amendment。
+- 所有 collector 统一为"延后写盘"模式:fetch_all/fetch 返回 `pending_pushed` / `pending_save`,main.py 在 SMTP 成功后才调 `commit_pushed`。包括 `buffett_13f`(2026-05 起对齐),避免 LLM/SMTP 失败时 state 已写导致漏发。
 - 接下来不要从 M5 重做,除非用户明确要求;优先处理用户给的新问题、生产运行问题、兼容性小修或可选 M7。
 
 ## 本地运行
@@ -30,7 +31,7 @@ uv run ruff check .
 
 当前基线:
 
-- `uv run pytest tests/ -q` 通过:474 passed,1 deselected（`test_subject_dryrun.py` 已加 `dryrun` mark 默认排除）。
+- `uv run pytest tests/ -q` 通过:542 passed,1 deselected（`test_subject_dryrun.py` 已加 `dryrun` mark 默认排除）。
 - `uv run ruff check .` 0 个错误。
 
 ## 运行入口

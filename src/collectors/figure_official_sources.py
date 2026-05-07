@@ -195,23 +195,6 @@ def _parse_entry_date(entry: dict, *, default_year: int | None = None) -> dateti
 # ── 入口 ──
 
 
-def _entry_to_mention(entry: dict, source_name: str) -> FigureMention:
-    """将条目字典转为 FigureMention。调用方保证已通过日期检查。"""
-    pp = entry.get("published_parsed")
-    pub = datetime(*pp[:6], tzinfo=UTC) if pp else datetime.now(UTC)
-    title = (entry.get("title") or "").strip()
-    snippet = (entry.get("summary") or "").strip()
-    if not snippet:
-        snippet = title
-    return FigureMention(
-        title=title,
-        snippet=snippet,
-        published_at=pub,
-        url=str(entry.get("link") or ""),
-        source=source_name,
-    )
-
-
 def fetch_all(
     start_utc: datetime,
     end_utc: datetime,

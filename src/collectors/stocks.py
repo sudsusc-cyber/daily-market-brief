@@ -95,12 +95,13 @@ def fetch_one(holding: Holding) -> StockSignal:
     sma_120 = float(close_series.tail(120).mean())
     sma_200 = float(close_series.tail(200).mean())
 
-    # 优先取 fast_info 当日价展示，拿不到时退回周线最新收盘价
+    # 优先取 fast_info 当日价展示,拿不到时退回周线最新收盘价。
+    # fast_info.last_price 为 None / 缺失会抛 TypeError;非正数 (<=0) 视为脏数据弃用。
     try:
-        live_price = float(ticker.fast_info.last_price)
-        if live_price is None or live_price <= 0:
-            live_price = None
-    except Exception:
+        live_price: float | None = float(ticker.fast_info.last_price)
+    except Exception:  # noqa: BLE001 — 取不到 live 价是已知降级路径
+        live_price = None
+    if live_price is not None and live_price <= 0:
         live_price = None
 
     weekly_close = float(valid_closes.iloc[-1])

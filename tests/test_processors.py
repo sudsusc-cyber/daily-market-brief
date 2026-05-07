@@ -12,7 +12,6 @@ from unittest import mock
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
 from src.collectors.figure_official_sources import (
     OfficialSource,
-    _entry_to_mention,
     _fetch_berkshire_entries,
     _fetch_rss_entries,
     _parse_entry_date,
@@ -597,21 +596,6 @@ class TestOfficialSourceParsing:
             m_get.return_value.raise_for_status = lambda: None
             entries = _fetch_berkshire_entries("https://www.berkshirehathaway.com/news/2026news.html")
         assert len(entries) == 0
-
-    def test_entry_to_mention_converts_published(self) -> None:
-        entry = {
-            "title": "Test",
-            "link": "https://example.com",
-            "summary": "Summary text",
-            "published_parsed": (2026, 5, 4, 9, 0, 0, 0, 0, 0),
-        }
-        mention = _entry_to_mention(entry, "OpenAI")
-        assert mention.title == "Test"
-        assert mention.url == "https://example.com"
-        assert mention.snippet == "Summary text"
-        assert mention.source == "OpenAI"
-        assert mention.published_at.year == 2026
-
 
 class TestPersonMatching:
     """逐条目人物匹配：text 必须命中 aliases 才归入对应人物。"""

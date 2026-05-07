@@ -107,49 +107,46 @@ def _load_last_seen(state_path: Path) -> str | None:
         return None
 
 
-def _save_last_seen(state_path: Path, filing: Filing13F, first_seen_at: datetime) -> None:
-    """原子写入(.tmp + replace),失败仅 warning。
+def fetch(
+    state_path: Path, display_window_days: int = 7,
+) -> tuple[BuffettBundle, dict | None]:
+    """拉 Berkshire 13F atom,对比上次记录;仅在新发布后 display_window_days 天内输出 is_new。
 
-    磁盘满 / 权限问题不应让整个 fetch() 抛 → main.py 失败 → 邮件不发。
-    state 写不下,下次 run 会以为这是"未见过的 filing"重发一次,可接受。
+    返回 (bundle, pending_save):
+      - bundle:供下游渲染消费
+      - pending_save:首次见到新 filing 时的待落盘 payload(含 filing 与 first_seen 时间)。
+        无新 filing / fetch 失败时为 None。**fetch 不写盘**;调用方在邮件成功发送后
+        调 commit_pushed(state_path, pending_save) 提交。
+
+    为何延后写盘:与 figures / company_news / macro_news / frontier_labs 一致——
+    fetch 后 LLM / 渲染 / SMTP 任一失败 → 用户没收到邮件,但 state 已记录"已见过"
+    → 下次 run is_new=False → 这次新 13F 永远不会再展示。13F 一年仅 4 次,错过窗口
+    很难补救。延后到邮件成功才提交,失败时下次 run 还能重新评估。
     """
-    try:
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
-        tmp.write_text(
-            json.dumps({
-                "accession_no": filing.accession_no,
-                "filed_at": filing.filed_at.isoformat(),
-                "first_seen_at": first_seen_at.isoformat(),
-                "title": filing.title,
-            }, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp.replace(state_path)
-    except OSError as exc:
-        logger.warning("last_13f.save_failed exc=%s; 下次 run 可能重发,主流程继续", exc)
-
-
-def fetch(state_path: Path, display_window_days: int = 7) -> BuffettBundle:
-    """拉 Berkshire 13F atom,对比上次记录;仅在新发布后 display_window_days 天内输出 is_new"""
     try:
         filings = _fetch_atom()
     except Exception as exc:  # noqa: BLE001
         logger.error("buffett_13f.fetch_failed exc_type=%s msg=%s", type(exc).__name__, redact_secrets(str(exc))[:200])
-        return BuffettBundle(error=f"{type(exc).__name__}: {exc}")
+        return BuffettBundle(error=f"{type(exc).__name__}: {exc}"), None
 
     if not filings:
-        return BuffettBundle(error="EDGAR atom 无条目")
+        return BuffettBundle(error="EDGAR atom 无条目"), None
 
     latest = filings[0]
     last_accession = _load_last_seen(state_path)
     now = datetime.now(UTC)
 
     is_new = last_accession != latest.accession_no
+    pending_save: dict | None = None
     if is_new:
-        _save_last_seen(state_path, latest, now)
+        pending_save = {
+            "accession_no": latest.accession_no,
+            "filed_at": latest.filed_at.isoformat(),
+            "first_seen_at": now.isoformat(),
+            "title": latest.title,
+        }
         logger.info(
-            "buffett_13f.new accession=%s filed=%s",
+            "buffett_13f.new accession=%s filed=%s (pending_save)",
             latest.accession_no, latest.filed_at.isoformat(),
         )
 
@@ -161,4 +158,27 @@ def fetch(state_path: Path, display_window_days: int = 7) -> BuffettBundle:
         latest=latest,
         is_new=is_new and in_window,
         days_since_filed=days,
-    )
+    ), pending_save
+
+
+def commit_pushed(state_path: Path, pending_save: dict | None) -> None:
+    """邮件发送成功后调用 — 把 fetch 返回的 pending_save 落盘。
+
+    pending_save 为 None 时(无新 filing 或 fetch 失败)直接 no-op。
+    """
+    if not pending_save:
+        return
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+        tmp.write_text(
+            json.dumps(pending_save, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp.replace(state_path)
+        logger.info(
+            "buffett_13f.commit_pushed accession=%s",
+            pending_save.get("accession_no"),
+        )
+    except OSError as exc:
+        logger.warning("last_13f.save_failed exc=%s; 下次 run 可能重发,主流程继续", exc)

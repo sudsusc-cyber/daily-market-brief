@@ -119,3 +119,22 @@ on:
 - 半日交易日(感恩节后周五等)的提示
 - 港股节假日单独处理(目前只看美股,港股空数据由模板降级)
 - Pexels 图库季度刷新工具(`scripts/curate_pexels.py` 已实现采集,补流程文档)
+
+---
+
+## Amendments(本 ADR 主体之后的演进,按时间顺序)
+
+### 2026-05 — 情绪温度计减项 + 节假日逻辑重构
+
+1. **情绪指标从 6 项减为 5 项**(PR #38 `ad52bf2`)
+   恒指 14 日 RSI 删除,权重重新归一化为:
+   - CNN F&G 0.290 / VIX 0.325 / 高收益债利差 0.260 / Shiller PE 0.030 / DXY 0.095
+   - 后续 codex `2d4c490` 又把 Shiller PE 降权 50%,余量按比例分摊到其余 4 项
+   - 当前权重见 [src/processors/sentiment_judge.py](../../src/processors/sentiment_judge.py)
+   - 上文"加权打分权重(最终落地)"小节是 M5 当时的 6 项快照,作为历史保留
+
+2. **NYSE 节假日改为纯算法生成**
+   原计划写死 `state/us_holidays_2026.json`,实际重构为 [src/utils/holidays.py](../../src/utils/holidays.py) 用 Anonymous Gregorian Algorithm + 月内第 N 周判定,无需人工维护任何外部表。年度刷新工作消失。
+
+3. **collector state 统一延后写盘**
+   `figures` / `company_news` / `macro_news` / `frontier_labs` / `buffett_13f` 全部改为 `fetch → pending_pushed → main 在 SMTP 成功后 commit_pushed`,避免 LLM 或 SMTP 失败时 state 已写导致下次 run 跳过未送达内容。`buffett_13f` 是最后对齐的(2026-05),原本在 `fetch` 中即时写盘,有错过 13F 通知的窗口。

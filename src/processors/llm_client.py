@@ -20,6 +20,7 @@ import requests
 from openai import OpenAI
 
 from src.utils.dates import now_beijing_human
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -138,9 +139,10 @@ def resolve_latest_flash_model(
             return selected
         logger.warning("llm.model_resolve_no_flash fallback=%s ids=%s", fallback, model_ids[:10])
     except Exception as exc:  # noqa: BLE001
+        # 与其他 collector 一致:异常 str 可能含 query-string 凭据,先脱敏
         logger.warning(
             "llm.model_resolve_failed fallback=%s exc_type=%s msg=%s",
-            fallback, type(exc).__name__, str(exc)[:200],
+            fallback, type(exc).__name__, redact_secrets(str(exc))[:200],
         )
     return fallback
 
@@ -209,15 +211,18 @@ class LLMClient:
         except Exception as exc:  # noqa: BLE001 — 失败降级,绝不阻断邮件
             # 不用 logger.exception(会打整段 traceback,某些 SDK 异常会带 url
             # 或请求 body,理论上能携带 Authorization header 痕迹);
-            # 改记 type + 截断后的 str(短消息够 debug,长 traceback 进降级)
+            # 改记 type + 截断后的 str(短消息够 debug,长 traceback 进降级)。
+            # str(exc) 经 redact_secrets 脱敏 query-string 凭据,与其他 collector
+            # 保持一致;error 字段也用脱敏版,因其会经 LLMResponse 流回上层做日志/兜底文案。
+            redacted_msg = redact_secrets(str(exc))[:200]
             logger.error(
                 "llm.chat_failed model=%s exc_type=%s msg=%s",
-                self._model, type(exc).__name__, str(exc)[:200],
+                self._model, type(exc).__name__, redacted_msg,
             )
             return LLMResponse(
                 text=None,
                 usage=LLMUsage(),
-                error=f"{type(exc).__name__}: {str(exc)[:200]}",
+                error=f"{type(exc).__name__}: {redacted_msg}",
             )
 
         text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
