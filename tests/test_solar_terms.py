@@ -25,22 +25,22 @@ class TestKnownDates:
     """几个查证过的标志性节气日期(来源:香港天文台 + 紫金山天文台 2026 节气表)。"""
 
     def test_2026_chunfen(self) -> None:
-        """2026 春分 3/21(北京时间 07:30)"""
+        """2026 春分 3/20(北京时间 22:40)"""
         # term index 5 = 春分(0°)
-        assert _term_date_beijing(2026, 5) == date(2026, 3, 21)
+        assert _term_date_beijing(2026, 5) == date(2026, 3, 20)
 
     def test_2026_xiazhi(self) -> None:
-        """2026 夏至 6/22(北京时间 01:37)"""
+        """2026 夏至 6/21(北京时间 16:19)"""
         # term index 11 = 夏至(90°)
-        assert _term_date_beijing(2026, 11) == date(2026, 6, 22)
+        assert _term_date_beijing(2026, 11) == date(2026, 6, 21)
 
     def test_2026_qiufen(self) -> None:
-        """2026 秋分 9/23(北京时间 17:10)"""
+        """2026 秋分 9/23(北京时间 08:00)"""
         # term index 17 = 秋分(180°)
         assert _term_date_beijing(2026, 17) == date(2026, 9, 23)
 
     def test_2026_dongzhi(self) -> None:
-        """2026 冬至 12/22(北京时间 13:38)"""
+        """2026 冬至 12/22(北京时间 04:46)"""
         # term index 23 = 冬至(270°)
         assert _term_date_beijing(2026, 23) == date(2026, 12, 22)
 
@@ -49,8 +49,8 @@ class TestKnownDates:
         assert _term_date_beijing(2026, 2) == date(2026, 2, 4)
 
     def test_2026_lixia(self) -> None:
-        """2026 立夏 5/6(北京时间 04:49)"""
-        assert _term_date_beijing(2026, 8) == date(2026, 5, 6)
+        """2026 立夏 5/5(北京时间 19:43)"""
+        assert _term_date_beijing(2026, 8) == date(2026, 5, 5)
 
     def test_2027_chunfen(self) -> None:
         """跨年验证:2027 春分应在 3/20 或 3/21"""
@@ -78,18 +78,18 @@ class TestSpacing:
 
 class TestContextAPI:
     def test_today_2026_05_01_is_guyu(self) -> None:
-        """2026 年 5 月 1 日:谷雨 4/20 ~ 立夏 5/6"""
+        """2026 年 5 月 1 日:谷雨 4/20 ~ 立夏 5/5"""
         ctx = get_solar_term_context(date(2026, 5, 1))
         assert ctx.current == "谷雨"
         assert ctx.next == "立夏"
         # 5/1 距 4/20 是 11 天 → days_into=12
         assert ctx.days_into == 12
-        # 5/1 到 立夏 5/6 是 5 天
-        assert ctx.days_to_next == 5
+        # 5/1 到 立夏 5/5 是 4 天
+        assert ctx.days_to_next == 4
 
     def test_term_first_day(self) -> None:
-        """春分当天 3/21 → days_into=1, phrase=初临"""
-        ctx = get_solar_term_context(date(2026, 3, 21))
+        """春分当天 3/20 → days_into=1, phrase=初临"""
+        ctx = get_solar_term_context(date(2026, 3, 20))
         assert ctx.current == "春分"
         assert ctx.days_into == 1
         assert "初临" in ctx.phrase
@@ -120,9 +120,11 @@ class TestContextAPI:
     def test_solar_term_on_shortcut(self) -> None:
         """快捷接口"""
         # 春分当天
-        assert solar_term_on(date(2026, 3, 21)) == "春分"
+        assert solar_term_on(date(2026, 3, 20)) == "春分"
+        # 立夏当天
+        assert solar_term_on(date(2026, 5, 5)) == "立夏"
         # 夏至当天
-        assert solar_term_on(date(2026, 6, 22)) == "夏至"
+        assert solar_term_on(date(2026, 6, 21)) == "夏至"
         # 秋分当天
         assert solar_term_on(date(2026, 9, 23)) == "秋分"
         # 冬至当天

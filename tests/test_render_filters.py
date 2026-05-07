@@ -51,12 +51,20 @@ class TestMetricFilters:
     def test_metric_num_none(self) -> None:
         assert _filter_metric_num(None) == "—"
 
+    def test_metric_num_nonfinite(self) -> None:
+        assert _filter_metric_num(float("nan")) == "—"
+        assert _filter_metric_num(float("inf")) == "—"
+
     def test_metric_delta_signed(self) -> None:
         assert _filter_metric_delta(2.5) == "+2.50"
         assert _filter_metric_delta(-2.5) == "-2.50"
 
     def test_metric_delta_none(self) -> None:
         assert _filter_metric_delta(None) == "—"
+
+    def test_metric_delta_nonfinite(self) -> None:
+        assert _filter_metric_delta(float("nan")) == "—"
+        assert _filter_metric_delta(float("-inf")) == "—"
 
 
 class TestBjTimeFilter:
