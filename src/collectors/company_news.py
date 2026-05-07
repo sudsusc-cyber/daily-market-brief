@@ -113,7 +113,17 @@ def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNew
         ts = n.get("datetime")
         if ts is None:
             continue
-        pub = datetime.fromtimestamp(int(ts), tz=UTC)
+        # Finnhub 偶发返回脏数据(0 / 负值 / 毫秒级时间戳 ts*1000),
+        # int(ts) 不抛但产出 1970 年或 5000 年的 datetime,后续窗口过滤会全部 drop
+        # 但日志看不出原因。先把范围外的丢弃并跳过,避免 fromtimestamp 上限抛 OverflowError。
+        try:
+            ts_int = int(ts)
+        except (TypeError, ValueError):
+            continue
+        # 合理 unix 秒区间:2001-01-01 ~ 2100-01-01
+        if not (978307200 <= ts_int <= 4102444800):
+            continue
+        pub = datetime.fromtimestamp(ts_int, tz=UTC)
         # Finnhub date filter 是 UTC,精确到日;我们再过滤一遍北京日窗口
         if not (start_utc <= pub < end_utc):
             continue

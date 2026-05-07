@@ -126,9 +126,10 @@ def _tier1_pexels(today: date) -> dict:
     }
 
 
-def _tier2_bing(today: date | None = None) -> dict:
-    if today is None:
-        today = date.today()
+def _tier2_bing(today: date) -> dict:
+    # today 必须是 BJT 当日(由 pick_header_image 注入)。GH Actions runner 以 UTC 跑,
+    # date.today() 会在 BJT 06:00-08:00 间(UTC 22:00-00:00)给出"前一日 UTC",
+    # 与缓存键 bing_<today>.jpg 错位,导致每次都重新下载。强制传参以杜绝这条隐患。
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     api = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN"
     with opener.open(api, timeout=_TIMEOUT) as resp:

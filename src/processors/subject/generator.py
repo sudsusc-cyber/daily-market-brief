@@ -257,6 +257,7 @@ def _save_to_cache_and_log(
 def _light_clean(raw: str) -> str:
     """对 LLM 输出做轻度清洗:去引号 / 去前后缀 / 半角空格 → 全角。
     不做激进改造(违规的就让 validator 拒绝,触发重试或兜底)。"""
+    import re
     s = raw.strip()
     # 去常见包裹符号
     for pair in [('"', '"'), ("'", "'"), ('"', '"'), ("「", "」"), ("『", "』")]:
@@ -266,7 +267,9 @@ def _light_clean(raw: str) -> str:
     for prefix in ["主题:", "主题:", "今日:", "输出:", "输出:"]:
         if s.startswith(prefix):
             s = s[len(prefix):].strip()
-    # 半角空格 → 全角(若中间出现半角空格,救一下;CJK 之间多半是全角分隔)
+    # 半角空格 → 全角(若中间出现半角空格,救一下;CJK 之间多半是全角分隔)。
+    # 用单步 re.sub 收敛任意连续空白:之前的双 .replace 在 "a   b"(三连空格)等
+    # 输入下会产出 "a　　b"(两个全角空格,len 长 1),触发 validator 拒绝。
     if " " in s and "　" not in s:
-        s = s.replace("  ", "　").replace(" ", "　")
+        s = re.sub(r"\s+", "　", s)
     return s

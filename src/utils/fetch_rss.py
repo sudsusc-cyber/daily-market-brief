@@ -34,6 +34,10 @@ def fetch_rss(url: str, timeout: int = 20) -> Any:
     用 requests 拉到字节,再交 feedparser 解析,返回 feedparser 的 FeedParserDict。
 
     raises requests.RequestException / feedparser 异常由调用方处理(通常套 retry / fallback)。
+
+    timeout 拆 (connect, read):部分站点 TLS 握手秒级,但慢慢吐 chunked body 长达 60s+,
+    单个 timeout=20 是 connect+read 合并(单次任意阶段超时即抛),把 read 限到 20 避免
+    一个慢站把 @retry(3 次) 总耗 60s+ 拖到 daily.yml 的 15 分钟 job timeout。
     """
     resp = requests.get(
         url,
@@ -44,7 +48,7 @@ def fetch_rss(url: str, timeout: int = 20) -> Any:
                 "application/xml;q=0.9, */*;q=0.8"
             ),
         },
-        timeout=timeout,
+        timeout=(min(10, timeout), timeout),
     )
     resp.raise_for_status()
     feed = feedparser.parse(resp.content)

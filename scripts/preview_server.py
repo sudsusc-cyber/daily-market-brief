@@ -2,7 +2,7 @@
 本地极简静态服务器,只为预览邮件模板渲染效果。
 
 会先调用 preview_email 重新生成 /tmp/email-preview/index.html,
-然后在 0.0.0.0:8765 上以静态方式提供。
+然后在 127.0.0.1:8765 上以静态方式提供(只本机访问,不暴露到 LAN)。
 """
 
 from __future__ import annotations
