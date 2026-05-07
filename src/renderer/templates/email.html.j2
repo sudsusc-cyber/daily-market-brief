@@ -578,12 +578,14 @@
         {% if judgment_section or (buffett_13f and buffett_13f.is_new) %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
-            {# ❀ 横线 ornament #}
-            <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:36px;">
-              <div style="flex:1; border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</div>
-              <span style="font-family:'Apple Color Emoji','Segoe UI Symbol','Noto Sans Symbols','Songti SC','STSong',serif; font-size:14px; line-height:1; color:#a89c83;">❀</span>
-              <div style="flex:1; border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</div>
-            </div>
+            {# ❀ 横线 ornament — table-based 以兼容 Outlook(避免 flex/grid,符合 CLAUDE.md 邮件约束) #}
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:36px; border-collapse:collapse;">
+              <tr>
+                <td width="50%" style="border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</td>
+                <td style="padding:0 18px; font-family:'Apple Color Emoji','Segoe UI Symbol','Noto Sans Symbols','Songti SC','STSong',serif; font-size:14px; line-height:1; color:#a89c83; white-space:nowrap;">❀</td>
+                <td width="50%" style="border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</td>
+              </tr>
+            </table>
             {% if judgment_section %}
             <div style="font-size:15px; line-height:2; color:{{ color_ink }}; text-align:center;">
               {% for item in judgment_section.items %}

@@ -195,7 +195,8 @@ def main() -> int:
     )
 
     logger.info("collect.buffett_13f")
-    buffett_bundle = buffett_13f.fetch(state_path=_STATE_DIR / "last_13f.json")
+    buffett_13f_state_path = _STATE_DIR / "last_13f.json"
+    buffett_bundle, buffett_13f_pending_save = buffett_13f.fetch(state_path=buffett_13f_state_path)
 
     logger.info("collect.sentiment")
     sentiment_bundle = sentiment.fetch_all(settings.fred_api_key)
@@ -293,8 +294,13 @@ def main() -> int:
         thesis_state.save_state(state_dict, _STATE_DIR)
 
         judgment_section = thesis_renderer.build_judgment_section(thesis_events)
-    except Exception as exc:
-        logger.warning("thesis.pipeline_failed: %s", exc, exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — 任何 thesis 步骤失败都降级到无 judgment_section
+        # 与项目其他异常处理对齐:不用 exc_info=True / logger.exception,因 OpenAI SDK 异常
+        # traceback 可能带请求 url 或 header 痕迹;只记 type + 截断后的 str。
+        logger.warning(
+            "thesis.pipeline_failed exc_type=%s msg=%s",
+            type(exc).__name__, str(exc)[:200],
+        )
         judgment_section = None
 
     logger.info("processors.holdings_intro")
@@ -395,6 +401,11 @@ def main() -> int:
         macro_news.commit_pushed(macro_news_state_path, macro_news_pending_pushed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("macro_news.commit_pushed_failed exc=%r", exc)
+
+    try:
+        buffett_13f.commit_pushed(buffett_13f_state_path, buffett_13f_pending_save)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("buffett_13f.commit_pushed_failed exc=%r", exc)
 
     logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0
