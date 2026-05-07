@@ -32,6 +32,7 @@ from src.collectors import (
     buffett_13f,
     company_news,
     figures,
+    frontier_labs,
     header_image,
     macro_news,
     sentiment,
@@ -40,6 +41,7 @@ from src.collectors import (
 from src.config import HOLDINGS, Holding
 from src.processors import (
     figure_filter,
+    frontier_labs_filter,
     holdings_intro,
     macro_filter,
     news_summarizer,
@@ -186,6 +188,12 @@ def main() -> int:
     figures_state_path = _STATE_DIR / "pushed_figures.json"
     fig_bundles, figures_pending_pushed = figures.fetch_all(state_path=figures_state_path)
 
+    logger.info("collect.frontier_labs")
+    frontier_labs_state_path = _STATE_DIR / "pushed_frontier_labs.json"
+    frontier_labs_bundles, frontier_labs_pending_pushed = frontier_labs.fetch_all(
+        state_path=frontier_labs_state_path,
+    )
+
     logger.info("collect.buffett_13f")
     buffett_bundle = buffett_13f.fetch(state_path=_STATE_DIR / "last_13f.json")
 
@@ -241,11 +249,8 @@ def main() -> int:
     logger.info("processors.sentiment_judge")
     sentiment_verdict = sentiment_judge.judge(sentiment_bundle, client=llm)
 
-    # NOTE: frontier_labs module lives in a separate PR (feat/frontier-labs).
-    # When that PR merges, the stub below is replaced by the real
-    # `frontier_labs_filter.filter_all(...)` call. Until then, thesis
-    # extractor receives an empty list so the rest of the pipeline still works.
-    frontier_labs_items: list = []
+    logger.info("processors.frontier_labs_filter")
+    frontier_labs_items = frontier_labs_filter.filter_all(frontier_labs_bundles, client=llm)
 
     logger.info("processors.thesis")
     try:
@@ -376,8 +381,11 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         logger.warning("figures.commit_pushed_failed exc=%r", exc)
 
-    # NOTE: frontier_labs.commit_pushed lives in feat/frontier-labs PR;
-    # added back when that PR merges.
+    try:
+        frontier_labs.commit_pushed(frontier_labs_state_path, frontier_labs_pending_pushed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("frontier_labs.commit_pushed_failed exc=%r", exc)
+
     try:
         company_news.commit_pushed(company_news_state_path, company_news_pending_pushed)
     except Exception as exc:  # noqa: BLE001

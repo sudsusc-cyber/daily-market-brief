@@ -52,6 +52,7 @@
 {%- set color_rule = '#1A1A1A' -%}
 {%- set color_hairline = '#D9D2BE' -%}
 {%- set color_accent = '#7A1F2B' -%}
+{%- set color_lab_pinned = '#A07735' -%}{# Frontier Labs 头排品牌色，仅 OpenAI / Anthropic；新增 lab 默认走 color_ink #}
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -349,6 +350,7 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
+        {% if company_news %}
         {% if company_news_silence_note %}
         {# 所有持仓均无新闻:LLM 写一句古典韵味占位语,失败时退回固定兜底 #}
         <tr>
@@ -423,6 +425,7 @@
         </tr>
         {% endfor %}
         {% endif %}{# end silence / summary / raw list #}
+        {% endif %}{# end company_news outer #}
         {% endif %}{# end yesterday outer #}
         {% if frontier_labs_items %}
         <tr>
