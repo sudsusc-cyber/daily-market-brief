@@ -5,18 +5,28 @@
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
+from unittest import mock
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
+from src.collectors.figure_official_sources import (
+    OfficialSource,
+    _entry_to_mention,
+    _fetch_berkshire_entries,
+    _fetch_rss_entries,
+    _parse_entry_date,
+    _person_matches,
+    fetch_all,
+)
 from src.collectors.figures import FigureMention
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
 from src.collectors.sentiment import SentimentBundle, SentimentMetric
 from src.collectors.stocks import StockSignal  # noqa: F401  确保 import 不破坏
 from src.config import HOLDINGS
-from src.processors.figure_filter import FigureKeyPoint, FigureSummary
+from src.processors.figure_filter import FigureKeyPoint, FigureSummary, select_voice_summaries
 from src.processors.figure_filter import _format_input as fig_format
 from src.processors.figure_filter import _parse_output as fig_parse
-from src.processors.figure_filter import select_voice_summaries
 from src.processors.macro_filter import _format_input as macro_format
 from src.processors.news_summarizer import _format_input as news_format
 from src.processors.sentiment_judge import _format_input as sent_format
@@ -191,9 +201,9 @@ class TestScoreSentiment:
     def _bundle(self, **vals) -> SentimentBundle:
         names = {
             "fg": "CNN Fear & Greed", "vix": "VIX", "hy": "高收益债利差",
-            "rsi": "恒指 14 日 RSI", "pe": "Shiller PE", "dxy": "DXY",
+            "pe": "Shiller PE", "dxy": "DXY",
         }
-        units = {"hy": "%", "fg": "", "vix": "", "rsi": "", "pe": "", "dxy": ""}
+        units = {"hy": "%", "fg": "", "vix": "", "pe": "", "dxy": ""}
         metrics = [
             SentimentMetric(name=names[k], current=vals.get(k), prior=None,
                            rating=None, unit=units[k])
@@ -203,20 +213,20 @@ class TestScoreSentiment:
 
     def test_extreme_fear_low_score(self) -> None:
         # 全部指标都极度恐慌
-        out = score_sentiment(self._bundle(fg=10, vix=35, hy=7, rsi=15, pe=12, dxy=110))
+        out = score_sentiment(self._bundle(fg=10, vix=35, hy=7, pe=12, dxy=110))
         assert out is not None
         assert out["score"] < 25
         assert out["verdict"] == "极度恐慌"
 
     def test_extreme_greed_high_score(self) -> None:
         # 全部指标都极度贪婪
-        out = score_sentiment(self._bundle(fg=92, vix=10, hy=2, rsi=78, pe=38, dxy=92))
+        out = score_sentiment(self._bundle(fg=92, vix=10, hy=2, pe=38, dxy=92))
         assert out is not None
         assert out["score"] > 75
         assert out["verdict"] == "极度贪婪"
 
     def test_neutral_middle(self) -> None:
-        out = score_sentiment(self._bundle(fg=50, vix=20, hy=4, rsi=50, pe=25, dxy=100))
+        out = score_sentiment(self._bundle(fg=50, vix=20, hy=4, pe=25, dxy=100))
         assert out is not None
         assert 40 <= out["score"] <= 60
         assert out["verdict"] == "中性"
@@ -224,21 +234,19 @@ class TestScoreSentiment:
     def test_deterministic_same_input(self) -> None:
         # 同一输入运行 5 次结果完全一致
         results = [
-            score_sentiment(self._bundle(fg=63, vix=18, hy=3.5, rsi=55, pe=27, dxy=103))
+            score_sentiment(self._bundle(fg=63, vix=18, hy=3.5, pe=27, dxy=103))
             for _ in range(5)
         ]
         assert len({r["score"] for r in results}) == 1
         assert len({r["verdict"] for r in results}) == 1
 
     def test_partial_failure_renormalizes(self) -> None:
-        # 三个指标失败,剩三个仍出结果
+        # 三个指标失败,剩两个仍出结果
         b = SentimentBundle(metrics=[
             SentimentMetric(name="CNN Fear & Greed", current=70, prior=None, rating=None),
             SentimentMetric(name="VIX", current=14, prior=None, rating=None),
             SentimentMetric(name="高收益债利差", current=None, prior=None, rating=None,
                            unit="%", error="网络错误"),
-            SentimentMetric(name="恒指 14 日 RSI", current=None, prior=None, rating=None,
-                           error="ya"),
             SentimentMetric(name="Shiller PE", current=None, prior=None, rating=None,
                            error="multpl 选择器失败"),
             SentimentMetric(name="DXY", current=None, prior=None, rating=None, error="x"),
@@ -504,23 +512,6 @@ class TestVoiceThrottling:
         assert out == []
 
 
-# ── 官方源补充层测试 ──
-
-import xml.etree.ElementTree as ET
-from unittest import mock
-
-from src.collectors.figure_official_sources import (
-    OFFICIAL_SOURCES,
-    OfficialSource,
-    _entry_to_mention,
-    _fetch_rss_entries,
-    _fetch_berkshire_entries,
-    _parse_entry_date,
-    _person_matches,
-    fetch_all,
-)
-
-
 def _make_rss_xml(entries: list[dict]) -> bytes:
     """构建最小 RSS 2.0 XML 用于测试。"""
     rss = ET.Element("rss", version="2.0")
@@ -649,12 +640,14 @@ class TestPersonMatching:
         src = OfficialSource("OpenAI", "https://openai.com/rss",
                              aliases={"奥特曼": ["Sam Altman", "Altman", "奥特曼"]},
                              parser_type="rss")
-        with mock.patch("src.collectors.figure_official_sources._fetch_rss_entries", return_value=entries):
-            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]):
-                result = fetch_all(
-                    _utc_dt(2026, 5, 4, 0, 0),
-                    _utc_dt(2026, 5, 5, 0, 0),
-                )
+        with (
+            mock.patch("src.collectors.figure_official_sources._fetch_rss_entries", return_value=entries),
+            mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", [src]),
+        ):
+            result = fetch_all(
+                _utc_dt(2026, 5, 4, 0, 0),
+                _utc_dt(2026, 5, 5, 0, 0),
+            )
         assert "奥特曼" in result
         assert len(result["奥特曼"]) == 1  # 只有提到 Sam Altman 的那条
 
@@ -859,12 +852,14 @@ class TestOfficialSourceIsolation:
             m.raise_for_status = lambda: None
             return m
 
-        with mock.patch("requests.get", side_effect=fake_get):
-            with mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", sources):
-                result = fetch_all(
-                    _utc_dt(2026, 5, 4, 0, 0),
-                    _utc_dt(2026, 5, 5, 0, 0),
-                )
+        with (
+            mock.patch("requests.get", side_effect=fake_get),
+            mock.patch("src.collectors.figure_official_sources.OFFICIAL_SOURCES", sources),
+        ):
+            result = fetch_all(
+                _utc_dt(2026, 5, 4, 0, 0),
+                _utc_dt(2026, 5, 5, 0, 0),
+            )
         assert "人物A" in result
         assert len(result["人物A"]) == 1
         assert "人物B" not in result

@@ -261,12 +261,12 @@ def check_cnn_fear_greed() -> CheckResult:
 
 
 # =============================================================
-# 5. yfinance — VIX / DXY / ^HSI
+# 5. yfinance — VIX / DXY
 # =============================================================
 def check_yfinance_macro_indices() -> CheckResult:
     import yfinance as yf
 
-    tickers = {"^VIX": "VIX", "DX-Y.NYB": "DXY", "^HSI": "HSI"}
+    tickers = {"^VIX": "VIX", "DX-Y.NYB": "DXY"}
     samples: list[str] = []
     fail = []
 
@@ -283,7 +283,7 @@ def check_yfinance_macro_indices() -> CheckResult:
         print(s)
 
     if not fail:
-        return CheckResult("yfinance/macro_indices", STATUS_OK, "VIX/DXY/HSI 全部可达", samples)
+        return CheckResult("yfinance/macro_indices", STATUS_OK, "VIX/DXY 全部可达", samples)
     if len(fail) < len(tickers):
         return CheckResult(
             "yfinance/macro_indices",
@@ -291,7 +291,7 @@ def check_yfinance_macro_indices() -> CheckResult:
             f"部分指数失败: {','.join(fail)}",
             samples,
         )
-    return CheckResult("yfinance/macro_indices", STATUS_FAIL, "三个指数全部失败", samples)
+    return CheckResult("yfinance/macro_indices", STATUS_FAIL, "全部指数失败", samples)
 
 
 # =============================================================

@@ -50,7 +50,6 @@ class TestExtractMood:
         bundle = MockBundle([
             MockMetric(name="CNN Fear & Greed", current=63.43),
             MockMetric(name="VIX", current=18.05),
-            MockMetric(name="恒指 14 日 RSI", current=48.2),
             MockMetric(name="DXY", current=98.5),  # 不参与
         ])
         mood = _extract_mood(verdict, bundle)
@@ -58,7 +57,6 @@ class TestExtractMood:
         assert mood.score == 65.5
         assert mood.cnn_fear_greed == 63.43
         assert mood.vix == 18.05
-        assert mood.hsi_rsi == 48.2
 
     def test_failed_metrics_none(self) -> None:
         verdict = {"verdict": "今日情绪 · 中性", "score": 50.0}
@@ -69,7 +67,6 @@ class TestExtractMood:
         mood = _extract_mood(verdict, bundle)
         assert mood.cnn_fear_greed is None
         assert mood.vix == 18.0
-        assert mood.hsi_rsi is None  # 不在 bundle 里
 
     def test_no_verdict_defaults(self) -> None:
         mood = _extract_mood(None, None)
@@ -143,7 +140,6 @@ class TestExtractSubjectData:
             sentiment_bundle=MockBundle([
                 MockMetric("CNN Fear & Greed", 63.43),
                 MockMetric("VIX", 18.05),
-                MockMetric("恒指 14 日 RSI", 48.0),
             ]),
             company_news_summary=MockSummary(
                 '<div><span>苹果</span><span>│</span>App Store 案上诉至最高法院。</div>'
