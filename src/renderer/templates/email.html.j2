@@ -350,7 +350,6 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
-        {% if company_news %}
         {% if company_news_silence_note %}
         {# 所有持仓均无新闻:LLM 写一句古典韵味占位语,失败时退回固定兜底 #}
         <tr>
@@ -425,7 +424,6 @@
         </tr>
         {% endfor %}
         {% endif %}{# end silence / summary / raw list #}
-        {% endif %}{# end company_news outer #}
         {% endif %}{# end yesterday outer #}
         {% if frontier_labs_items %}
         <tr>
