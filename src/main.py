@@ -48,7 +48,11 @@ from src.processors import (
     sentiment_judge,
     translator,
 )
-from src.processors.llm_client import LLMClient
+from src.processors.llm_client import LLMClient, resolve_latest_flash_model
+from src.processors.thesis import extractor as thesis_extractor
+from src.processors.thesis import renderer as thesis_renderer
+from src.processors.thesis import rules as thesis_rules
+from src.processors.thesis import state as thesis_state
 from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
@@ -61,6 +65,38 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _LOGOS_DIR = _PROJECT_ROOT / "assets" / "logos"
 _STATE_DIR = _PROJECT_ROOT / "state"
+
+_ACTIVE_THESIS_STATUS_RANK = {
+    "core": 0,
+    "emerging": 1,
+    "stable": 2,
+    "dormant": 3,
+}
+_ACTIVE_THESIS_THEME_LIMIT = 120
+
+
+def _select_active_thesis_themes(
+    state_dict: dict,
+    *,
+    limit: int = _ACTIVE_THESIS_THEME_LIMIT,
+) -> list[str]:
+    """按状态重要性与最近 evidence 时间挑选注入 prompt 的 active themes。"""
+    rows: list[tuple[int, str, str]] = []
+    for theme, st in state_dict.items():
+        status = getattr(st, "status", "")
+        if status not in _ACTIVE_THESIS_STATUS_RANK:
+            continue
+        rows.append((
+            _ACTIVE_THESIS_STATUS_RANK[status],
+            getattr(st, "last_evidence_date", "") or "",
+            str(theme),
+        ))
+
+    # 稳定排序：先 theme 字母序，再按最近 evidence 时间降序，最后按状态优先级。
+    rows.sort(key=lambda row: row[2])
+    rows.sort(key=lambda row: row[1], reverse=True)
+    rows.sort(key=lambda row: row[0])
+    return [theme for _, _, theme in rows[:limit]]
 
 
 def _translate_all_bundles(
@@ -139,10 +175,14 @@ def main() -> int:
     signals = stocks.fetch_all(HOLDINGS)
 
     logger.info("collect.company_news")
-    cn_bundles = company_news.fetch_all(HOLDINGS, settings.finnhub_api_key)
+    company_news_state_path = _STATE_DIR / "pushed_company_news.json"
+    cn_bundles, company_news_pending_pushed = company_news.fetch_all(
+        HOLDINGS, settings.finnhub_api_key, state_path=company_news_state_path,
+    )
 
     logger.info("collect.macro_news")
-    macro_bundles = macro_news.fetch_all()
+    macro_news_state_path = _STATE_DIR / "pushed_macro_news.json"
+    macro_bundles, macro_news_pending_pushed = macro_news.fetch_all(state_path=macro_news_state_path)
 
     logger.info("collect.figures")
     figures_state_path = _STATE_DIR / "pushed_figures.json"
@@ -161,7 +201,8 @@ def main() -> int:
     sentiment_bundle = sentiment.fetch_all(settings.fred_api_key)
 
     # ---------- LLM 处理(M4) ----------
-    llm = LLMClient(api_key=settings.deepseek_api_key)
+    deepseek_model = resolve_latest_flash_model(settings.deepseek_api_key)
+    llm = LLMClient(api_key=settings.deepseek_api_key, model=deepseek_model)
 
     logger.info("translate.titles")
     _translate_all_bundles(
@@ -172,10 +213,20 @@ def main() -> int:
     )
 
     logger.info("processors.news_summarizer")
-    company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
+    company_news_silence_note = None
+    if cn_bundles:
+        company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
+    else:
+        company_news_summary = None
+        company_news_silence_note = news_summarizer.generate_silence_note(client=llm)
 
     logger.info("processors.macro_filter")
-    macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
+    macro_news_silence_note = None
+    if macro_bundles:
+        macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
+    else:
+        macro_news_summary = None
+        macro_news_silence_note = macro_filter.generate_silence_note(client=llm)
 
     logger.info("processors.figure_filter")
     figure_summaries = figure_filter.filter_all(fig_bundles, client=llm)
@@ -200,6 +251,51 @@ def main() -> int:
 
     logger.info("processors.frontier_labs_filter")
     frontier_labs_items = frontier_labs_filter.filter_all(frontier_labs_bundles, client=llm)
+
+    logger.info("processors.thesis")
+    try:
+        # 第一次读 state：获取 active themes 用于注入 prompt（防 theme 漂移）
+        state_dict = thesis_state.load_state(_STATE_DIR)
+        active_themes = _select_active_thesis_themes(state_dict)
+
+        evidence_today = thesis_extractor.extract(
+            client=llm,
+            company_news=company_news_summary,
+            macro_news=macro_news_summary,
+            figure_summaries=figure_summaries,
+            berkshire_events=buffett_bundle,
+            frontier_labs_events=frontier_labs_items,
+            active_themes=active_themes,
+            today=now_bj.date(),
+        )
+        # extractor 只 return；写入由 state.py 统一负责（内部按 evidence_id 去重）
+        thesis_state.append_evidence(evidence_today, _STATE_DIR)
+
+        recent_evidence = thesis_state.load_recent_evidence(
+            _STATE_DIR, days=90, today=now_bj.date(),
+        )
+        holdings_tickers = [h.ticker for h in HOLDINGS]
+        state_dict, thesis_events = thesis_rules.run_state_transitions(
+            today=now_bj.date(),
+            state=state_dict,
+            recent_evidence=recent_evidence,
+            holdings_tickers=holdings_tickers,
+        )
+
+        # 更新 rolling_evidence
+        by_theme_today: dict[str, list] = {}
+        for e in evidence_today:
+            by_theme_today.setdefault(e.theme, []).append(e)
+        for theme, st in state_dict.items():
+            if theme in by_theme_today:
+                thesis_state.update_rolling_evidence(st, by_theme_today[theme])
+
+        thesis_state.save_state(state_dict, _STATE_DIR)
+
+        judgment_section = thesis_renderer.build_judgment_section(thesis_events)
+    except Exception as exc:
+        logger.warning("thesis.pipeline_failed: %s", exc, exc_info=True)
+        judgment_section = None
 
     logger.info("processors.holdings_intro")
     holdings_intro_text = holdings_intro.write_intro(signals, client=llm)
@@ -244,8 +340,11 @@ def main() -> int:
         figure_footnotes=figure_footnotes,
         macro_news=macro_bundles,
         macro_news_summary=macro_news_summary,
+        company_news_silence_note=company_news_silence_note,
+        macro_news_silence_note=macro_news_silence_note,
         buffett_13f=buffett_bundle,
         frontier_labs_items=frontier_labs_items,
+        judgment_section=judgment_section,
     )
 
     # ---------- 主题生成(M5.11:DeepSeek 8 字两段四言古典对仗) ----------
@@ -260,7 +359,7 @@ def main() -> int:
         macro_news_summary=macro_news_summary,
         email_html=html,
     )
-    subject = generate_subject(subject_data, llm=llm, today_bj=now_bj.date())
+    subject = generate_subject(subject_data, llm=llm, today_bj=now_bj.date(), use_cache=not force_send)
 
     # ---------- 发送 ----------
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
@@ -286,6 +385,16 @@ def main() -> int:
         frontier_labs.commit_pushed(frontier_labs_state_path, frontier_labs_pending_pushed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("frontier_labs.commit_pushed_failed exc=%r", exc)
+
+    try:
+        company_news.commit_pushed(company_news_state_path, company_news_pending_pushed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("company_news.commit_pushed_failed exc=%r", exc)
+
+    try:
+        macro_news.commit_pushed(macro_news_state_path, macro_news_pending_pushed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("macro_news.commit_pushed_failed exc=%r", exc)
 
     logger.info("main.done  est_cost=¥%.4f", cost_cny)
     return 0

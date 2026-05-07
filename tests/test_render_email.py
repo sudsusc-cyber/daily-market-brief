@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from src.collectors.buffett_13f import BuffettBundle, Filing13F
 from src.collectors.figures import FigureBundle
 from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
+from src.processors.thesis.renderer import JudgmentSection
 from src.renderer.render import render_email
 
 
@@ -87,3 +89,105 @@ def test_render_email_no_logo_falls_back_to_text_box() -> None:
         logo_cids={},  # 不传 logo
     )
     assert s.holding.ticker[:3] in html
+
+
+# ─── 13F 区块重定位测试 ──────────────────────────────────────────────
+
+_MOCK_JUDGMENT = JudgmentSection(
+    items=[
+        {"thesis": "AI基础设施资本开支将持续十年以上", "tail": "获得新证据支持。"},
+        {"thesis": "保险定价权在经济周期中持续增强", "tail": "获得新证据支持。"},
+    ],
+)
+
+
+def _mock_13f_new() -> BuffettBundle:
+    return BuffettBundle(
+        latest=Filing13F(
+            accession_no="0001067983-26-000005",
+            filed_at=datetime(2026, 5, 1, 14, 0, tzinfo=UTC),
+            title="13F-HR",
+        ),
+        is_new=True,
+        days_since_filed=3,
+    )
+
+
+def _mock_13f_old() -> BuffettBundle:
+    return BuffettBundle(
+        latest=Filing13F(
+            accession_no="0001067983-26-000005",
+            filed_at=datetime(2026, 5, 1, 14, 0, tzinfo=UTC),
+            title="13F-HR",
+        ),
+        is_new=False,
+        days_since_filed=3,
+    )
+
+
+def test_template_renders_judgment_only() -> None:
+    """judgment 有,13F 无 → 含 ❀ 和判断,不含 13F 文案。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        judgment_section=_MOCK_JUDGMENT,
+    )
+    assert "❀" in html
+    assert "AI基础设施资本开支将持续十年以上" in html
+    assert "伯克希尔本季度 13F" not in html
+
+
+def test_template_renders_judgment_with_13f() -> None:
+    """judgment 有,13F.is_new → 含判断 + 13F 备注 + SEC 链接。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        judgment_section=_MOCK_JUDGMENT,
+        buffett_13f=_mock_13f_new(),
+    )
+    assert "❀" in html
+    assert "AI基础设施资本开支将持续十年以上" in html
+    assert "伯克希尔本季度 13F 已于 5 月 1 日披露" in html
+    assert "前往 SEC EDGAR 查阅持仓" in html
+    assert "0001067983" in html
+    assert "margin-top:36px" in html  # 判断存在时 13F 上方 36px 间距
+
+
+def test_template_renders_13f_only() -> None:
+    """judgment None,13F.is_new → 含 ❀ + 13F,不含判断。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        buffett_13f=_mock_13f_new(),
+    )
+    assert "❀" in html
+    assert "伯克希尔本季度 13F 已于 5 月 1 日披露" in html
+    assert "AI基础设施" not in html
+    assert "margin-top:0" in html  # 无判断时 13F 上方不额外加间距
+
+
+def test_template_omits_section_when_both_empty() -> None:
+    """judgment None,13F.is_new=False → 整个 tr 跳过,不含 ❀。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        buffett_13f=_mock_13f_old(),
+    )
+    assert "❀" not in html
+    assert "伯克希尔本季度 13F" not in html
+
+
+def test_template_13f_no_longer_in_figures_section() -> None:
+    """旧位置:13F 不再出现在'关键发言'章节。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        figures=[_one_figure_bundle()],
+        buffett_13f=_mock_13f_new(),
+    )
+    # 关键发言章节的 section header 应有
+    assert "关键发言" in html
+    # 但 Berkshire 13F 小标题不应在 figures 区域内出现
+    assert "Berkshire 13F" not in html
+    # 系统通知文案也被移除
+    assert "SEC EDGAR 检测到" not in html

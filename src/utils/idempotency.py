@@ -7,6 +7,11 @@
 实现:启动时通过 GitHub Actions REST API 查询本仓库今日(**BJT**)是否已有
 "成功 OR 正在运行" 的 run(排除当前 run)。已有 → exit(0) 跳过本次。
 
+TODO(audit-2026-05-04 #B1): leader 失败 + follower 后保存时,cache 会回退一天 state。
+monitor.yml 能捕获 leader 失败并告警,手动 force_send 后自动恢复。
+修复方案见 docs/audits/2026-05-04-audit.md B1 节(follower 不写 cache)。
+仅在 monitor 真观察到 "leader 失败 + state 倒退" 时再实施。
+
 为何用 BJT 而非 UTC 比较:
   cron 触发时 BJT 06:30 = UTC 22:30(前一日)。如果用 UTC 日期作为"今日",
   cron-job.org 在 22:59:50 启动 + GH schedule 在 23:00:10 启动这种场景

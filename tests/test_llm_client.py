@@ -5,9 +5,15 @@
 
 from __future__ import annotations
 
+import requests
+
 from src.processors.llm_client import (
+    DEFAULT_MODEL,
     INVESTMENT_FRAMEWORK,
+    _deepseek_flash_version_key,
+    _select_latest_flash_model,
     build_system_prompt,
+    resolve_latest_flash_model,
 )
 
 
@@ -44,3 +50,62 @@ class TestBuildSystemPrompt:
         sp = build_system_prompt()
         for word in ["AI 腔", "赋能", "抓手"]:
             assert word in sp
+
+
+class _FakeModelsResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class TestDeepSeekModelResolver:
+    def test_flash_version_key(self) -> None:
+        assert _deepseek_flash_version_key("deepseek-v4-flash") == (4,)
+        assert _deepseek_flash_version_key("deepseek-v4.1-flash") == (4, 1)
+        assert _deepseek_flash_version_key("deepseek-v4-pro") is None
+        assert _deepseek_flash_version_key("deepseek-chat") is None
+
+    def test_selects_latest_flash_only(self) -> None:
+        assert _select_latest_flash_model([
+            "deepseek-chat",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash",
+            "deepseek-v5-pro",
+            "deepseek-v5-flash",
+        ]) == "deepseek-v5-flash"
+
+    def test_resolve_latest_flash_model_uses_models_endpoint(self, monkeypatch) -> None:
+        calls = []
+
+        def fake_get(url, *, headers, timeout):
+            calls.append((url, headers, timeout))
+            return _FakeModelsResponse({
+                "object": "list",
+                "data": [
+                    {"id": "deepseek-v4-flash", "object": "model"},
+                    {"id": "deepseek-v5-pro", "object": "model"},
+                    {"id": "deepseek-v5-flash", "object": "model"},
+                ],
+            })
+
+        monkeypatch.setattr("src.processors.llm_client.requests.get", fake_get)
+
+        selected = resolve_latest_flash_model("secret-key", base_url="https://api.deepseek.com/")
+
+        assert selected == "deepseek-v5-flash"
+        assert calls[0][0] == "https://api.deepseek.com/models"
+        assert calls[0][1]["Authorization"] == "Bearer secret-key"
+        assert calls[0][2] == 10
+
+    def test_resolve_latest_flash_model_falls_back_on_failure(self, monkeypatch) -> None:
+        def fake_get(*_args, **_kwargs):
+            raise requests.Timeout("slow")
+
+        monkeypatch.setattr("src.processors.llm_client.requests.get", fake_get)
+
+        assert resolve_latest_flash_model("secret-key") == DEFAULT_MODEL

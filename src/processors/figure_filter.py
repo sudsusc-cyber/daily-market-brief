@@ -94,8 +94,8 @@ def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
 
 
 _TASK_INSTRUCTION = """\
-任务:对下面"人物的候选发言列表"做三件事:
-1. **质量门槛(严判!)**:判断每条是否真的是**该人物本人本周(过去 7 天内)的公开发声**
+任务:对下面"{PERSON}的候选发言列表"做三件事:
+1. **质量门槛(严判!)**:判断每条是否真的是**该{PERSON}本人本周(过去 7 天内)的公开发声**
    (直接引语 / 演讲 / 采访 / 正式声明 / 公开信)。下列情况一律 no:
    - **历史发言追忆/旧闻回顾**(关键!):任何"X 年 X 月某场会议曾说""19 年股东大会
      表示""巴菲特 2019 年的判断""老黄当年讲过"——历史发言不是当前发声,一律 no。
@@ -110,7 +110,7 @@ _TASK_INSTRUCTION = """\
    - **空洞口号**:"AI 是未来""市场需要谨慎""价值投资永不过时"等没有具体数字/
      具体事件/明确判断的话
    - **不相关内容**:讲的是公司业务/财报数字/股价波动,没引用人物本人的话
-   - **不是该人物的发言**(标题里出现别人的名字,主要内容是别人说的)
+   - **不是{PERSON}的发言**(标题里出现别人的名字,主要内容是别人说的)
 2. **跨媒体合并(重要)**:不同媒体(如第一财经、搜狐、Reuters、Bloomberg、CNBC)
    报道同一场演讲/采访/正式声明,即使措辞略有差异也必须**合并为一条**。
 3. 对通过 1-2 的条目,**打分 + 提炼 1-2 句中文关键观点**(优先用 LLM 看到的双引号原话,
@@ -304,7 +304,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
     payload = _format_input(qualified)
     resp = client.chat(
         payload,
-        task_extra=_TASK_INSTRUCTION.replace("人物", bundle.person),
+        task_extra=_TASK_INSTRUCTION.format(PERSON=bundle.person),
         max_tokens=3200,
         temperature=0.2,
     )

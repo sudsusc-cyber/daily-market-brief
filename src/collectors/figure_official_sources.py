@@ -198,7 +198,6 @@ def _parse_entry_date(entry: dict, *, default_year: int | None = None) -> dateti
 def _entry_to_mention(entry: dict, source_name: str) -> FigureMention:
     """将条目字典转为 FigureMention。调用方保证已通过日期检查。"""
     pp = entry.get("published_parsed")
-    # 兜底：调用方应在传入前用 _parse_entry_date 过滤，此处不应到达
     pub = datetime(*pp[:6], tzinfo=UTC) if pp else datetime.now(UTC)
     title = (entry.get("title") or "").strip()
     snippet = (entry.get("summary") or "").strip()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from src.renderer.render import (
+    _filter_bj_date_cn,
     _filter_bj_time,
     _filter_metric_delta,
     _filter_metric_num,
@@ -51,12 +52,20 @@ class TestMetricFilters:
     def test_metric_num_none(self) -> None:
         assert _filter_metric_num(None) == "—"
 
+    def test_metric_num_nonfinite(self) -> None:
+        assert _filter_metric_num(float("nan")) == "—"
+        assert _filter_metric_num(float("inf")) == "—"
+
     def test_metric_delta_signed(self) -> None:
         assert _filter_metric_delta(2.5) == "+2.50"
         assert _filter_metric_delta(-2.5) == "-2.50"
 
     def test_metric_delta_none(self) -> None:
         assert _filter_metric_delta(None) == "—"
+
+    def test_metric_delta_nonfinite(self) -> None:
+        assert _filter_metric_delta(float("nan")) == "—"
+        assert _filter_metric_delta(float("-inf")) == "—"
 
 
 class TestBjTimeFilter:
@@ -67,6 +76,25 @@ class TestBjTimeFilter:
 
     def test_none(self) -> None:
         assert _filter_bj_time(None) == ""
+
+
+class TestBjDateCnFilter:
+    def test_bj_date_cn_basic(self) -> None:
+        # 2026-05-01 22:00 UTC → 北京 5 月 2 日 06:00 → "5 月 2 日"
+        dt = datetime(2026, 5, 1, 22, 0, tzinfo=UTC)
+        assert _filter_bj_date_cn(dt) == "5 月 2 日"
+
+    def test_bj_date_cn_no_leading_zero(self) -> None:
+        # 2026-01-05 → "1 月 5 日",不是 "01 月 05 日"
+        dt = datetime(2026, 1, 5, 12, 0, tzinfo=UTC)
+        assert _filter_bj_date_cn(dt) == "1 月 5 日"
+
+    def test_bj_date_cn_none(self) -> None:
+        assert _filter_bj_date_cn(None) == ""
+
+    def test_bj_date_cn_naive_datetime_treated_as_utc(self) -> None:
+        dt = datetime(2026, 5, 1, 22, 0)  # naive → to_beijing 当 UTC → BJT 5 月 2 日
+        assert _filter_bj_date_cn(dt) == "5 月 2 日"
 
 
 class TestSafeUrlFilter:

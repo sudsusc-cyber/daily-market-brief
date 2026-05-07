@@ -19,6 +19,7 @@ M3 不出"一句结论",M4 由 LLM 综合判断。
 from __future__ import annotations
 
 import logging
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -34,6 +35,14 @@ from src.utils.secrets import redact_secrets
 logger = logging.getLogger(__name__)
 
 
+def _finite_float(value: object) -> float | None:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 @dataclass
 class SentimentMetric:
     """单个情绪指标"""
@@ -46,9 +55,11 @@ class SentimentMetric:
 
     @property
     def delta(self) -> float | None:
-        if self.current is None or self.prior is None:
+        current = _finite_float(self.current)
+        prior = _finite_float(self.prior)
+        if current is None or prior is None:
             return None
-        return self.current - self.prior
+        return current - prior
 
 
 @dataclass
@@ -87,8 +98,8 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
         prior = (best or {}).get("y")
     return SentimentMetric(
         name="CNN Fear & Greed",
-        current=float(current) if current is not None else None,
-        prior=float(prior) if prior is not None else None,
+        current=_finite_float(current),
+        prior=_finite_float(prior),
         rating=str(rating) if rating else None,
     )
 
@@ -99,14 +110,21 @@ def _fetch_yfinance_close(ticker: str, period: str = "2mo") -> list[float]:
     hist = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=False)
     if hist is None or hist.empty:
         raise RuntimeError(f"{ticker} 返回空数据")
-    return [float(v) for v in hist["Close"].tolist()]
+    closes = [
+        close
+        for raw in hist["Close"].tolist()
+        if (close := _finite_float(raw)) is not None
+    ]
+    if not closes:
+        raise RuntimeError(f"{ticker} Close 列无有效数据")
+    return closes
 
 
 def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> SentimentMetric:
     try:
         closes = _fetch_yfinance_close(ticker)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("sentiment.yf_failed ticker=%s", ticker)
+        logger.error("sentiment.yf_failed ticker=%s exc_type=%s msg=%s", ticker, type(exc).__name__, redact_secrets(str(exc))[:200])
         return SentimentMetric(name=display_name, current=None, prior=None, rating=None,
                               unit=unit, error=f"{type(exc).__name__}: {exc}")
     if not closes:
@@ -164,10 +182,7 @@ def _fetch_fred_hy_spread(api_key: str) -> SentimentMetric:
         v = o.get("value")
         if v in (None, "", "."):
             return None
-        try:
-            return float(v)
-        except ValueError:
-            return None
+        return _finite_float(v)
 
     current = _val(obs[0])
     # FRED 是降序;obs[1] 即前一观测日(节假日 FRED 不更新即为前一交易日)

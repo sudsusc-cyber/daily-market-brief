@@ -13,11 +13,17 @@
 未设置或想纯离线,会自动回退到只测兜底模板。
 """
 
+# ruff: noqa: E402 (src imports rely on pytest pythonpath config)
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 from datetime import date
+
+import pytest
+
+pytestmark = pytest.mark.dryrun
 
 from src.processors.subject.extractor import (
     MoodInfo,
@@ -103,11 +109,11 @@ SCENARIOS: list[Scenario] = [
              0, 1, [], ["MCO"], None, None),
 
     # 15. 节气切换日
-    Scenario("立夏当日", date(2026, 5, 6), "中性", 50, 18,
+    Scenario("立夏当日", date(2026, 5, 5), "中性", 50, 18,
              0, 0, [], [], None, None),
 
     # 16. 节气前夕
-    Scenario("立夏前一日", date(2026, 5, 5), "中性", 50, 18,
+    Scenario("立夏前一日", date(2026, 5, 4), "中性", 50, 18,
              0, 0, [], [], None, None),
 
     # 17. 偏热 + DCA + 宏观

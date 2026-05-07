@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,8 +29,19 @@ from src.utils.dates import to_beijing
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
+def _finite_number(value: float | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _filter_price(value: float | None) -> str:
     """浮点 → 千分位 + 2 位小数;None 或 NaN 返回长破折号"""
+    value = _finite_number(value)
     if value is None:
         return "—"
     try:
@@ -40,6 +52,7 @@ def _filter_price(value: float | None) -> str:
 
 def _filter_pct(value: float | None) -> str:
     """浮点(0.092 形式)→ '+9.2%'/'-9.2%';None 返回长破折号"""
+    value = _finite_number(value)
     if value is None:
         return "—"
     try:
@@ -52,6 +65,7 @@ def _filter_metric_num(value: float | None, unit: str = "") -> str:
     """情绪指标当前值/前一日值。**只输出数字**(单位由模板在指标名旁单独标注),
     使 right-align 列严格小数点对齐。unit 参数保留为兼容,内部忽略。"""
     _ = unit  # noqa: F841
+    value = _finite_number(value)
     if value is None:
         return "—"
     try:
@@ -67,6 +81,7 @@ def _filter_metric_delta(delta: float | None, unit: str = "") -> str:
     """情绪指标变化值,带正负号。None / 接近零 → '—',避免 '+0.00' 噪音。
     unit 参数为兼容保留,不再附在数字尾(单位由模板侧标注)。"""
     _ = unit  # noqa: F841
+    delta = _finite_number(delta)
     if delta is None:
         return "—"
     try:
@@ -87,6 +102,17 @@ def _filter_bj_time(dt: datetime | None) -> str:
         return ""
     try:
         return to_beijing(dt).strftime("%m-%d %H:%M")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _filter_bj_date_cn(dt: datetime | None) -> str:
+    """datetime → 北京日期 'M 月 D 日'(无时分,无前导零)。"""
+    if dt is None:
+        return ""
+    try:
+        bj = to_beijing(dt)
+        return f"{bj.month} 月 {bj.day} 日"
     except Exception:  # noqa: BLE001
         return ""
 
@@ -113,6 +139,7 @@ def _build_env() -> Environment:
     env.filters["metric_num"] = _filter_metric_num
     env.filters["metric_delta"] = _filter_metric_delta
     env.filters["bj_time"] = _filter_bj_time
+    env.filters["bj_date_cn"] = _filter_bj_date_cn
     env.filters["safe_url"] = _filter_safe_url
     env.filters["cjk_spaced"] = add_cjk_spacing
     return env
@@ -140,7 +167,10 @@ def render_email(
     figure_silence_note: str | None = None,           # 全员沉默时的占位语
     figure_footnotes: list[Any] | None = None,        # list[FigureFootnote] 章节底部脚注
     macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
+    company_news_silence_note: str | None = None,     # 持仓无新闻时的占位语
+    macro_news_silence_note: str | None = None,       # 无宏观新闻时的占位语
     frontier_labs_items: list[Any] | None = None,     # list[FrontierKeyPoint]
+    judgment_section: dict | None = None,             # Judgment Ledger payload
 ) -> str:
     """
     渲染完整邮件 HTML。
@@ -166,6 +196,9 @@ def render_email(
         figure_footnotes=figure_footnotes or [],
         macro_news=macro_news,
         macro_news_summary=macro_news_summary,
+        company_news_silence_note=company_news_silence_note,
+        macro_news_silence_note=macro_news_silence_note,
         buffett_13f=buffett_13f,
         frontier_labs_items=frontier_labs_items or [],
+        judgment_section=judgment_section,
     )
