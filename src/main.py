@@ -59,6 +59,7 @@ from src.settings import load_settings
 from src.utils.dates import now_beijing
 from src.utils.holidays import should_send_today
 from src.utils.idempotency import already_sent_today
+from src.utils.secrets import mask_emails
 
 logger = logging.getLogger(__name__)
 
@@ -369,7 +370,9 @@ def main() -> int:
 
     # ---------- 发送 ----------
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
-    logger.info("send recipients=%s subject=%r", recipients, subject)
+    # 收件人邮箱不全写日志,用 mask_emails 只留首字母 + 域名,降低 PII 在日志被
+    # actions/cache 持久化或外泄到第三方监控的风险(仓库虽 PRIVATE 但日志可能跨边界传递)
+    logger.info("send recipients=%s subject=%r", mask_emails(recipients), subject)
     send_html_email(
         sender=settings.qq_email_address,
         sender_display_name="每日期刊",

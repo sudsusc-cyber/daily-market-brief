@@ -22,6 +22,8 @@ from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 
+from src.utils.secrets import mask_email, mask_emails
+
 logger = logging.getLogger(__name__)
 
 
@@ -136,7 +138,7 @@ def send_html_email(
 
     logger.info(
         "smtp_send.start sender=%s recipients=%s subject=%r inline=%d port=%d",
-        sender, recipients, subject, len(inline_images), smtp_port,
+        mask_email(sender), mask_emails(recipients), subject, len(inline_images), smtp_port,
     )
     # 本机若有代理(Surge/ClashX 等)接管 DNS,smtp.qq.com 会被解到 198.18.x.x
     # 虚拟 IP 导致 SSL 握手被截。先用外部 DNS 拿真实 IP,临时打补丁让
@@ -180,7 +182,7 @@ def send_html_email(
             accepted = [r for r in recipients if r not in refused]
             logger.warning(
                 "smtp_send.partial accepted=%s refused=%s",
-                accepted, refused,
+                mask_emails(accepted), mask_emails(refused),
             )
             if not accepted:
                 raise smtplib.SMTPRecipientsRefused(refused_dict)

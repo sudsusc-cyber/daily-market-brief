@@ -17,6 +17,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 PORT = int(__import__("os").environ.get("PORT", 8766))
+# 默认仅绑回环,避免本地预览暴露到 LAN(咖啡店/合住 wifi 等场景)。
+# HOST=0.0.0.0 显式覆盖。
+HOST = __import__("os").environ.get("HOST", "127.0.0.1")
 PREVIEW_DIR = Path("/tmp/email-preview")
 PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -36,6 +39,7 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-with socketserver.TCPServer(("", PORT), QuietHandler) as httpd:
-    print(f"serving {PREVIEW_DIR} at http://localhost:{PORT}", flush=True)
+with socketserver.TCPServer((HOST, PORT), QuietHandler) as httpd:
+    display_host = "localhost" if HOST in ("", "127.0.0.1") else HOST
+    print(f"serving {PREVIEW_DIR} at http://{display_host}:{PORT}", flush=True)
     httpd.serve_forever()
