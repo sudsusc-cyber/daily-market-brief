@@ -12,9 +12,11 @@ DeepSeek V4-Flash 客户端封装(M4 起所有 LLM 调用走这里)。
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
+import requests
 from openai import OpenAI
 
 from src.utils.dates import now_beijing_human
@@ -23,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
+_FLASH_MODEL_RE = re.compile(r"^deepseek-v(?P<version>\d+(?:\.\d+)*)(?:-[a-z0-9]+)*-flash$")
 
 # PLAN 第 10 节"投资上下文",所有 LLM 调用必须以此作为 system prompt 开头
 INVESTMENT_FRAMEWORK = """\
@@ -81,8 +84,69 @@ def build_system_prompt(task_extra: str | None = None) -> str:
     return "\n".join(parts)
 
 
+def _deepseek_flash_version_key(model_id: str) -> tuple[int, ...] | None:
+    """返回 deepseek-v*-flash 的可排序版本号;非 flash 模型返回 None。"""
+    match = _FLASH_MODEL_RE.match(model_id.strip().lower())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.group("version").split("."))
+
+
+def _select_latest_flash_model(model_ids: list[str]) -> str | None:
+    candidates = [
+        (key, model_id)
+        for model_id in model_ids
+        if (key := _deepseek_flash_version_key(model_id)) is not None
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def resolve_latest_flash_model(
+    api_key: str,
+    *,
+    base_url: str = DEFAULT_BASE_URL,
+    fallback: str = DEFAULT_MODEL,
+    timeout: int = 10,
+) -> str:
+    """
+    调 DeepSeek /models 自动选择最新 deepseek-v*-flash。
+
+    失败时回退到 fallback,不阻断日报。只自动跟随 flash 系列,避免误切到更贵或更慢的
+    pro / speciale / legacy 模型。
+    """
+    try:
+        resp = requests.get(
+            f"{base_url.rstrip('/')}/models",
+            headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        model_ids = [
+            str(item.get("id", "")).strip()
+            for item in (data.get("data") or [])
+            if isinstance(item, dict) and item.get("id")
+        ]
+        selected = _select_latest_flash_model(model_ids)
+        if selected:
+            if selected != fallback:
+                logger.info("llm.model_resolved selected=%s fallback=%s", selected, fallback)
+            else:
+                logger.info("llm.model_resolved selected=%s", selected)
+            return selected
+        logger.warning("llm.model_resolve_no_flash fallback=%s ids=%s", fallback, model_ids[:10])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "llm.model_resolve_failed fallback=%s exc_type=%s msg=%s",
+            fallback, type(exc).__name__, str(exc)[:200],
+        )
+    return fallback
+
+
 class LLMClient:
-    """DeepSeek V4-Flash 客户端,带 system prompt 自动注入与 token 累计统计。"""
+    """DeepSeek 客户端,带 system prompt 自动注入与 token 累计统计。"""
 
     def __init__(
         self,
@@ -102,7 +166,7 @@ class LLMClient:
         *,
         task_extra: str | None = None,
         system_override: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 2048,
         temperature: float = 0.3,
         timeout: int = 45,
         top_p: float | None = None,
@@ -158,6 +222,12 @@ class LLMClient:
 
         text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
         usage = _extract_usage(resp)
+        if not text and usage.reasoning_tokens > max_tokens * 0.7:
+            logger.warning(
+                "llm.reasoning_starved model=%s reasoning=%d max_tokens=%d "
+                "output text empty — reasoning 可能挤空了输出预算",
+                self._model, usage.reasoning_tokens, max_tokens,
+            )
         self._accumulate(usage)
         logger.info(
             "llm.chat_ok model=%s in=%d out=%d reasoning=%d cache_hit=%d "

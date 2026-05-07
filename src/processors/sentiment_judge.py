@@ -28,11 +28,14 @@ logger = logging.getLogger(__name__)
 # ──────────────────  确定性打分  ──────────────────
 
 _WEIGHTS: dict[str, float] = {
-    "CNN Fear & Greed": 0.284,
-    "VIX": 0.318,
-    "高收益债利差": 0.250,
-    "Shiller PE": 0.057,
-    "DXY": 0.091,
+    # 在 PR #38 去 RSI 后的权重(0.284/0.318/0.250/0.057/0.091)基础上,
+    # 应用 codex 2d4c490 的"Shiller PE 降权 50%"意图:
+    # Shiller 0.057 → 0.030,腾出的 0.027 按现有比例分摊给其余 4 项后归一化。
+    "CNN Fear & Greed": 0.290,
+    "VIX": 0.325,
+    "高收益债利差": 0.260,
+    "Shiller PE": 0.030,
+    "DXY": 0.095,
 }
 
 

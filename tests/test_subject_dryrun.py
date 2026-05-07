@@ -13,11 +13,17 @@
 未设置或想纯离线,会自动回退到只测兜底模板。
 """
 
+# ruff: noqa: E402 (src imports rely on pytest pythonpath config)
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 from datetime import date
+
+import pytest
+
+pytestmark = pytest.mark.dryrun
 
 from src.processors.subject.extractor import (
     MoodInfo,

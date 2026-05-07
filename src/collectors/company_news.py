@@ -7,6 +7,14 @@
 
 时间窗口:北京时间昨日 00:00 ~ 今日 00:00(用户视角的"昨日")。
 
+两层去重:
+  1. 跨天 7 天 hash 去重:已推送过的 (ticker, 归一化标题 hash) 不再出现,
+     状态持久化到 state/pushed_company_news.json。
+  2. 同日 SequenceMatcher 模糊去重:同一 ticker 同一天内相似标题(≥0.72)
+     视为同一事件,仅保留最新一条。
+
+延后写盘——邮件发送成功后才 commit 跨天去重,失败时下次 run 仍能重新评估。
+
 输出:每只股票一个 CompanyNewsBundle,含若干 NewsItem(标题/发布时间/链接/来源)。
 M3 阶段不做 LLM 摘要,直接把列表传给模板渲染。
 M4 起 processors/news_summarizer.py 会读这些 bundle 输出段落叙述。
@@ -14,10 +22,15 @@ M4 起 processors/news_summarizer.py 会读这些 bundle 输出段落叙述。
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import re
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from difflib import SequenceMatcher
+from pathlib import Path
 
 import finnhub  # type: ignore[import-untyped]
 
@@ -25,6 +38,7 @@ from src.config import Holding
 from src.utils.dates import to_beijing, yesterday_beijing_window
 from src.utils.fetch_rss import fetch_rss
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +102,7 @@ def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNew
     try:
         raw = _fetch_finnhub(client, holding.ticker, date_from, date_to)
     except Exception as exc:  # noqa: BLE001 — 故障降级,不向上抛
-        logger.exception("finnhub.fetch_failed ticker=%s", holding.ticker)
+        logger.error("finnhub.fetch_failed ticker=%s exc_type=%s msg=%s", holding.ticker, type(exc).__name__, redact_secrets(str(exc))[:200])
         return CompanyNewsBundle(
             holding=holding, error=f"Finnhub 异常: {type(exc).__name__}: {exc}",
             data_source="finnhub",
@@ -116,6 +130,13 @@ def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNew
     logger.info("company_news.relevance ticker=%s raw=%d kept=%d",
                 holding.ticker, raw_count, len(items))
     items.sort(key=lambda x: x.published_at, reverse=True)
+    before_fuzzy = len(items)
+    items = _dedupe_fuzzy(items)
+    if len(items) < before_fuzzy:
+        logger.info(
+            "company_news.fuzzy_dedup ticker=%s before=%d after=%d (同日模糊去重 threshold=0.72)",
+            holding.ticker, before_fuzzy, len(items),
+        )
     return CompanyNewsBundle(holding=holding, items=items, data_source="finnhub")
 
 
@@ -147,20 +168,110 @@ _HK_QUERY_FALLBACK = {
 }
 
 
+# ---------- 同日 SequenceMatcher 模糊去重(Phase 2) ----------
+def _normalize_for_similarity(text: str) -> str:
+    """归一化:去空白 + 去标点 + 小写。"""
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[,。!?:;、—\-()()【】《》\"\"'']", "", text)
+    return text.lower()
+
+
+def _similar(a: str, b: str, threshold: float = 0.72) -> bool:
+    """SequenceMatcher 相似度 ≥ threshold 视为同一事件。
+
+    阈值 0.72 比 figure_filter 的 0.6 更严:
+    - figure_filter 比的是 LLM 已提炼的中文观点(短而密),0.6 合理
+    - 新闻标题更长、含模板化前缀,0.6 有误合并风险
+    """
+    return SequenceMatcher(
+        None, _normalize_for_similarity(a), _normalize_for_similarity(b),
+    ).ratio() >= threshold
+
+
+def _dedupe_fuzzy(items: list[NewsItem]) -> list[NewsItem]:
+    """对一只 ticker 的同日候选做模糊去重,保留发布时间最新的一条。
+
+    输入假设已按 published_at 降序排序。
+    """
+    kept: list[NewsItem] = []
+    for it in items:
+        if any(_similar(it.title, k.title) for k in kept):
+            continue
+        kept.append(it)
+    return kept
+
+
 def _collect_via_google_news(holding: Holding) -> CompanyNewsBundle:
     query = _HK_QUERY_FALLBACK.get(holding.ticker, holding.name)
     start_utc, end_utc = yesterday_beijing_window()
     try:
         all_items = _fetch_google_news_zh(query)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("google_news.fetch_failed ticker=%s query=%s", holding.ticker, query)
+        logger.error("google_news.fetch_failed ticker=%s query=%s exc_type=%s msg=%s", holding.ticker, query, type(exc).__name__, redact_secrets(str(exc))[:200])
         return CompanyNewsBundle(
             holding=holding, error=f"Google News 异常: {type(exc).__name__}: {exc}",
             data_source="google_news_cn",
         )
     items = [n for n in all_items if start_utc <= n.published_at < end_utc]
     items.sort(key=lambda x: x.published_at, reverse=True)
+    items = _dedupe_fuzzy(items)
     return CompanyNewsBundle(holding=holding, items=items, data_source="google_news_cn")
+
+
+# ---------- 状态持久化(7 天去重) ----------
+def _content_hash(ticker: str, item: NewsItem) -> str:
+    """归一化 hash:去媒体后缀 / 去标点空白 / 截 80 字 / 加 ticker 前缀。
+
+    与 figures._content_hash 同形,仅 person → ticker。
+    不包含 URL —— 通讯社 syndication 的 URL 各家不同,但内容是同一条。
+    包含 ticker 前缀 —— 同一标题打不同股票算两条 hash,避免误合并。
+    """
+    title = (item.title or "").lower()
+    title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
+    title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
+    title = title[:80]
+    h = hashlib.sha1(f"{ticker}|{title}".encode()).hexdigest()
+    return h[:16]
+
+
+def _load_pushed_news(state_path: Path) -> dict[str, str]:
+    """{content_hash: ISO8601 推送时间}"""
+    if not state_path.exists():
+        return {}
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("pushed_company_news.parse_failed exc=%s; treating as empty", exc)
+        return {}
+
+
+def _save_pushed_news(state_path: Path, data: dict[str, str]) -> None:
+    """原子写入 + 失败容错:磁盘满 / 权限问题不应阻断 fetch_all 主流程。"""
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+        tmp.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        tmp.replace(state_path)
+    except OSError as exc:
+        logger.warning("pushed_company_news.save_failed exc=%s; 7 天去重本轮失效,主流程继续", exc)
+
+
+def _purge_expired_news(pushed: dict[str, str], now: datetime, days: int = 7) -> dict[str, str]:
+    cutoff = now - timedelta(days=days)
+    out: dict[str, str] = {}
+    for k, v in pushed.items():
+        try:
+            ts = datetime.fromisoformat(v)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+        except (ValueError, TypeError):
+            continue
+        if ts >= cutoff:
+            out[k] = v
+    return out
 
 
 # ---------- 入口 ----------
@@ -177,10 +288,55 @@ def fetch_one(holding: Holding, finnhub_client: finnhub.Client) -> CompanyNewsBu
     return bundle
 
 
-def fetch_all(holdings: list[Holding], finnhub_api_key: str) -> list[CompanyNewsBundle]:
-    """串行采集所有持仓昨日新闻"""
+def fetch_all(
+    holdings: list[Holding],
+    finnhub_api_key: str,
+    *,
+    state_path: Path,
+) -> tuple[list[CompanyNewsBundle], dict[str, str]]:
+    """串行采集所有持仓昨日新闻 + 7 天 hash 去重。
+
+    返回 (bundles, pending_pushed):
+      - bundles:供下游 news_summarizer / 渲染消费
+      - pending_pushed:本次"应去重"的 hash → ISO time。**fetch_all 不写盘**;
+        调用方在邮件成功发送后调 commit_pushed 提交。
+
+    为何延后写盘:news_summarizer / 渲染 / SMTP 任一失败 → 没有真发到用户
+      → 已 push 的 hash 未来 7 天都不会再考虑 → 用户永远看不到这批。
+      延后到邮件成功才提交,失败时下次 run 还能重新评估同批候选。
+      与 figures.fetch_all 一致。
+    """
+    _, end_utc = yesterday_beijing_window()
+    pushed = _purge_expired_news(_load_pushed_news(state_path), end_utc)
+    new_pushed = dict(pushed)
+
     client = finnhub.Client(api_key=finnhub_api_key)
-    return [fetch_one(h, client) for h in holdings]
+    bundles: list[CompanyNewsBundle] = []
+    for h in holdings:
+        bundle = fetch_one(h, client)
+        if bundle.error or not bundle.items:
+            bundles.append(bundle)
+            continue
+        kept: list[NewsItem] = []
+        for it in bundle.items:
+            hh = _content_hash(h.ticker, it)
+            if hh in pushed:
+                continue
+            kept.append(it)
+            new_pushed[hh] = end_utc.isoformat()
+        if len(kept) < len(bundle.items):
+            logger.info(
+                "company_news.dedup ticker=%s before=%d after=%d (跨 7 天去重)",
+                h.ticker, len(bundle.items), len(kept),
+            )
+        bundle.items = kept
+        bundles.append(bundle)
+    return bundles, new_pushed
+
+
+def commit_pushed(state_path: Path, pending_pushed: dict[str, str]) -> None:
+    """邮件发送成功后调用 — 把 fetch_all 返回的 pending_pushed 落盘。"""
+    _save_pushed_news(state_path, pending_pushed)
 
 
 def format_published_beijing(item: NewsItem) -> str:

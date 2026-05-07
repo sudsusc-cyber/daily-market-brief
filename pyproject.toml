@@ -26,6 +26,8 @@ dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-m 'not dryrun'"
+markers = ["dryrun: tests that make real LLM calls (excluded by default)"]
 
 [build-system]
 requires = ["hatchling"]

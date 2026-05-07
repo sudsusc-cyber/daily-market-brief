@@ -15,6 +15,7 @@ import yfinance as yf
 
 from src.config import Holding
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,14 @@ def _judge_signal(last_close: float, sma_120: float, sma_200: float) -> SignalKi
 
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
 def _yf_history(ticker: yf.Ticker):
-    """yfinance 周线拉取,带重试退避(限流时 2s/5s/12s 三次重试)。"""
-    return ticker.history(period="5y", interval="1wk", auto_adjust=False)
+    """yfinance 周线拉取,带重试退避(限流时 2s/5s/12s 三次重试)。
+
+    yfinance 偶尔返回空 DataFrame 而不抛异常（Yahoo 端间歇性问题）；
+    此处显式 raise 让 @retry 退避重试，避免一次空响应就判为失败。"""
+    hist = ticker.history(period="5y", interval="1wk", auto_adjust=False)
+    if hist is None or hist.empty:
+        raise RuntimeError(f"yfinance 返回空数据 for {ticker.ticker}")
+    return hist
 
 
 def fetch_one(holding: Holding) -> StockSignal:
@@ -66,7 +73,7 @@ def fetch_one(holding: Holding) -> StockSignal:
         ticker = yf.Ticker(symbol)
         hist = _yf_history(ticker)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("yfinance.fetch_failed ticker=%s symbol=%s", holding.ticker, symbol)
+        logger.error("yfinance.fetch_failed ticker=%s symbol=%s exc_type=%s msg=%s", holding.ticker, symbol, type(exc).__name__, redact_secrets(str(exc))[:200])
         return _failed(holding, f"yfinance 异常: {type(exc).__name__}: {exc}")
 
     if hist is None or hist.empty:

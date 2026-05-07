@@ -30,6 +30,7 @@ import feedparser
 import requests
 
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ def fetch(state_path: Path, display_window_days: int = 7) -> BuffettBundle:
     try:
         filings = _fetch_atom()
     except Exception as exc:  # noqa: BLE001
-        logger.exception("buffett_13f.fetch_failed")
+        logger.error("buffett_13f.fetch_failed exc_type=%s msg=%s", type(exc).__name__, redact_secrets(str(exc))[:200])
         return BuffettBundle(error=f"{type(exc).__name__}: {exc}")
 
     if not filings:
