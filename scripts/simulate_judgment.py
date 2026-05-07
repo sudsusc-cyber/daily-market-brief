@@ -111,7 +111,7 @@ def main():
         metrics=[
             SentimentMetric(name="CNN Fear & Greed", current=52.0, prior=50.0, rating="neutral"),
             SentimentMetric(name="VIX", current=18.5, prior=19.2, rating=None),
-            SentimentMetric(name="HSI RSI(14)", current=48.0, prior=47.5, rating=None),
+            SentimentMetric(name="高收益债利差", current=3.2, prior=3.4, rating=None, unit="%"),
         ],
         fetched_at=datetime.now(ZoneInfo("UTC")),
     )
