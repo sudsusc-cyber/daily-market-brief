@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,8 +29,19 @@ from src.utils.dates import to_beijing
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
+def _finite_number(value: float | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _filter_price(value: float | None) -> str:
     """浮点 → 千分位 + 2 位小数;None 或 NaN 返回长破折号"""
+    value = _finite_number(value)
     if value is None:
         return "—"
     try:
@@ -40,6 +52,7 @@ def _filter_price(value: float | None) -> str:
 
 def _filter_pct(value: float | None) -> str:
     """浮点(0.092 形式)→ '+9.2%'/'-9.2%';None 返回长破折号"""
+    value = _finite_number(value)
     if value is None:
         return "—"
     try:
@@ -52,6 +65,7 @@ def _filter_metric_num(value: float | None, unit: str = "") -> str:
     """情绪指标当前值/前一日值。**只输出数字**(单位由模板在指标名旁单独标注),
     使 right-align 列严格小数点对齐。unit 参数保留为兼容,内部忽略。"""
     _ = unit  # noqa: F841
+    value = _finite_number(value)
     if value is None:
         return "—"
     try:
@@ -67,6 +81,7 @@ def _filter_metric_delta(delta: float | None, unit: str = "") -> str:
     """情绪指标变化值,带正负号。None / 接近零 → '—',避免 '+0.00' 噪音。
     unit 参数为兼容保留,不再附在数字尾(单位由模板侧标注)。"""
     _ = unit  # noqa: F841
+    delta = _finite_number(delta)
     if delta is None:
         return "—"
     try:

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 
 from src.collectors.sentiment import SentimentBundle
@@ -53,8 +54,19 @@ def _piecewise_linear(x: float, points: list[tuple[float, float]]) -> float:
     return points[-1][1]
 
 
+def _finite_float(value: object) -> float | None:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _score_metric(name: str, value: float) -> float | None:
     """把单个指标当前值映射到 0-100 fear-greed 量表。失败返回 None。"""
+    value = _finite_float(value)
+    if value is None:
+        return None
     if name == "CNN Fear & Greed":
         return max(0.0, min(100.0, value))
     if name == "VIX":
@@ -101,12 +113,15 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
     weighted_sum = 0.0
     weight_total = 0.0
     for m in bundle.metrics:
-        if m.error or m.current is None:
+        if m.error:
+            continue
+        current = _finite_float(m.current)
+        if current is None:
             continue
         w = _WEIGHTS.get(m.name)
         if w is None:
             continue
-        s = _score_metric(m.name, m.current)
+        s = _score_metric(m.name, current)
         if s is None:
             continue
         weighted_sum += s * w
@@ -147,6 +162,10 @@ _TASK_INSTRUCTION = """\
 
 
 def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
+    def _fmt(value: float | None, unit: str) -> str:
+        value = _finite_float(value)
+        return "—" if value is None else f"{value:.2f}{unit}"
+
     lines: list[str] = [
         f"已固定档位:今日情绪 · {fixed_verdict}(加权分:{score:.1f}/100)",
         "",
@@ -156,11 +175,12 @@ def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
         if m.error:
             lines.append(f"- {m.name}: 数据获取失败 ({m.error})")
             continue
-        cur = "—" if m.current is None else f"{m.current:.2f}{m.unit}"
-        pri = "—" if m.prior is None else f"{m.prior:.2f}{m.unit}"
+        cur = _fmt(m.current, m.unit)
+        pri = _fmt(m.prior, m.unit)
         delta = "—"
-        if m.delta is not None:
-            delta = f"{m.delta:+.2f}{m.unit}"
+        delta_value = _finite_float(m.delta)
+        if delta_value is not None:
+            delta = f"{delta_value:+.2f}{m.unit}"
         rating = f" [{m.rating}]" if m.rating else ""
         lines.append(f"- {m.name}{rating}: 当前 {cur} | 前一日 {pri} | 变化 {delta}")
     return "\n".join(lines)

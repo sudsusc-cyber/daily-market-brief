@@ -256,6 +256,13 @@ class TestScoreSentiment:
         # CNN F&G(70 → ~70 score, w=0.25)+ VIX(14 → ~80 score, w=0.25)归一化后 ≈ 75
         assert out["score"] > 60
 
+    def test_nonfinite_current_is_ignored(self) -> None:
+        b = SentimentBundle(metrics=[
+            SentimentMetric(name="VIX", current=float("nan"), prior=None, rating=None),
+        ], fetched_at=_utc(2026, 5, 5))
+
+        assert score_sentiment(b) is None
+
     def test_all_failed_returns_none(self) -> None:
         b = SentimentBundle(metrics=[
             SentimentMetric(name="CNN Fear & Greed", current=None, prior=None,
