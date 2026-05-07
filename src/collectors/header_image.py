@@ -139,7 +139,10 @@ def _tier2_bing(today: date | None = None) -> dict:
     if "1280" not in url:
         url = url.split("&w=")[0] + "&w=1280&h=400&rs=1&c=4"
     local_path = _download(url, _CACHE_DIR / f"bing_{today.isoformat()}.jpg")
-    logger.info("header.bing url=%s", url)
+    # 日志只打 host + path,丢弃 query —— Bing 当前 query 无凭据,但截 query 是
+    # 防御 future drift(若上游返回的 raw_url 偶发携带 token / session id 一类参数)
+    log_url = url.split("?", 1)[0]
+    logger.info("header.bing url=%s", log_url)
     return {
         "url": f"cid:{_HEADER_CID}",
         "source": "bing",
