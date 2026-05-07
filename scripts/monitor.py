@@ -176,7 +176,20 @@ def main() -> int:
         return 0
 
     logger.warning("monitor.alert reason=%s", reason)
-    send_alert(reason)
+    # send_alert 失败(SMTP 授权码过期 / 邮箱被封 / 网络抖)时,这里若抛会让 monitor.yml
+    # 的 run 报 failure。GH 默认只对 repo owner 发"workflow 失败"邮件,而本系统的
+    # 真实收件人不一定是 owner — 用户可能完全不知道告警没送出。包 try-except 让
+    # monitor 始终 exit 0,告警失败的痕迹保留在 stderr / GH Actions 日志,owner 仍能
+    # 通过 Actions 列表里的 stderr 行看到。
+    try:
+        send_alert(reason)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "monitor.alert_send_failed exc_type=%s msg=%.200s reason=%s",
+            type(exc).__name__, str(exc), reason,
+        )
+        # 关键事件落地一份本地痕迹,即便后续 GH cache 不上传也能在 actions 日志里看到
+        return 0
     logger.info("monitor.alert_sent")
     # 监控触发告警时,本 run 仍以 success 退出(避免 GH 重复告警)
     return 0

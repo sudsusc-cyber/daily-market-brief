@@ -141,7 +141,13 @@ def already_sent_today() -> bool:
     # 只有"自己的 run_id 是今日所有 active run 中最小(最早创建)" 才发,其他让位。
     # 这样两个并发 run 也不会"双双 skip":必有一个是最小 id → 发。
     if cur_run_id is None:
-        # 没有 GH_RUN_ID 不能 leader election → 保守 skip(避免重发)
+        # 异常:GH 环境通常有 GH_RUN_ID(由 daily.yml 显式注入)。能走到这里意味着
+        # token / repo 都齐全但 GH_RUN_ID 缺失或非数字 — 多半是 daily.yml 改坏了。
+        # 此时无法 leader election → 保守 skip(避免重发);monitor 会观察到漏发并告警。
+        logger.warning(
+            "idempotency.no_run_id token+repo present but GH_RUN_ID missing/invalid — "
+            "fail-close to avoid double send; check daily.yml env wiring",
+        )
         return True
 
     active_today_ids: list[int] = [cur_run_id]

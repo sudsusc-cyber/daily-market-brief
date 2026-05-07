@@ -13,6 +13,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import urljoin, urlparse
 
 import feedparser
 import requests
@@ -115,21 +116,24 @@ def _fetch_berkshire_entries(url: str) -> list[dict]:
     resp.raise_for_status()
     soup = BeautifulSoup(resp.content, "lxml")
     entries: list[dict] = []
+    base = "https://www.berkshirehathaway.com/news/"
+    expected_host = "www.berkshirehathaway.com"
     for a_tag in soup.find_all("a"):
         href = (a_tag.get("href") or "").strip()
         text = a_tag.get_text(strip=True)
         if not href or not text:
             continue
-        if href.startswith("#"):
+        if href.startswith("#") or href.startswith(("javascript:", "mailto:", "data:")):
             continue
-        # 补全相对 URL
-        if href.startswith("/"):
-            href = "https://www.berkshirehathaway.com" + href
-        elif not href.startswith("http"):
-            href = "https://www.berkshirehathaway.com/news/" + href
+        # 用 urljoin 安全合并:正确处理 "../"、绝对、protocol-relative "//host/path";
+        # 然后白名单 host 校验,防止 Berkshire 页面被注入跨站链接(被劫持时)。
+        absolute = urljoin(base, href)
+        parsed = urlparse(absolute)
+        if parsed.scheme not in ("http", "https") or parsed.netloc != expected_host:
+            continue
         entries.append({
             "title": text,
-            "link": href,
+            "link": absolute,
             "summary": text,
             "published_parsed": None,  # Berkshire 页面无精确时间，交给日期解析
         })

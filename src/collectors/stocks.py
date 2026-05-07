@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -94,6 +95,14 @@ def fetch_one(holding: Holding) -> StockSignal:
 
     sma_120 = float(close_series.tail(120).mean())
     sma_200 = float(close_series.tail(200).mean())
+    # pandas .mean() 默认 skipna=True,但若 tail(120/200) 全部 NaN 会返回 NaN。
+    # NaN 透传到 delta = (last - sma) / sma → NaN/inf,渲染层模板会显示 "nan%"
+    # 反复让用户看到脏数据。直接当数据不足处理,记 error 让上层显示降级文案。
+    if not math.isfinite(sma_120) or not math.isfinite(sma_200):
+        return _failed(
+            holding,
+            f"周线尾部数据全 NaN(sma_120={sma_120}, sma_200={sma_200}),无法计算均线",
+        )
 
     # 优先取 fast_info 当日价展示,拿不到时退回周线最新收盘价。
     # fast_info.last_price 为 None / 缺失会抛 TypeError;非正数 (<=0) 视为脏数据弃用。
