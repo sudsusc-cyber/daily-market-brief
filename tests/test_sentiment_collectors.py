@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import math
-
 from src.collectors import sentiment
 
 
 def test_sentiment_metric_delta_treats_nonfinite_as_missing() -> None:
     metric = sentiment.SentimentMetric(
-        name="恒指 14 日 RSI",
+        name="VIX",
         current=float("nan"),
         prior=48.0,
         rating=None,
@@ -52,35 +50,4 @@ def test_fetch_yfinance_close_drops_nonfinite_values(monkeypatch) -> None:
         lambda _ticker: _FakeTicker([100.0, float("nan"), None, float("inf"), 101.5]),
     )
 
-    assert sentiment._fetch_yfinance_close("^HSI", period="3mo") == [100.0, 101.5]
-
-
-def test_hsi_rsi_ignores_latest_nan(monkeypatch) -> None:
-    closes = [
-        100.0,
-        101.0,
-        99.0,
-        102.0,
-        100.0,
-        105.0,
-        103.0,
-        106.0,
-        104.0,
-        107.0,
-        109.0,
-        108.0,
-        110.0,
-        111.0,
-        112.0,
-        111.0,
-        float("nan"),
-    ]
-    monkeypatch.setattr(sentiment, "_fetch_yfinance_close", lambda *_args, **_kwargs: closes)
-
-    metric = sentiment._fetch_hsi_rsi()
-
-    assert metric.error is None
-    assert metric.current is not None
-    assert math.isfinite(metric.current)
-    assert metric.prior is not None
-    assert math.isfinite(metric.prior)
+    assert sentiment._fetch_yfinance_close("^VIX", period="3mo") == [100.0, 101.5]

@@ -258,7 +258,7 @@ class TestScoreSentiment:
 
     def test_nonfinite_current_is_ignored(self) -> None:
         b = SentimentBundle(metrics=[
-            SentimentMetric(name="恒指 14 日 RSI", current=float("nan"), prior=None, rating=None),
+            SentimentMetric(name="VIX", current=float("nan"), prior=None, rating=None),
         ], fetched_at=_utc(2026, 5, 5))
 
         assert score_sentiment(b) is None
