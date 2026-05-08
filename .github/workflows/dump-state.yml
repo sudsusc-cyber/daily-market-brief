@@ -1,0 +1,44 @@
+name: dump-thesis-state
+
+# 一次性诊断工具:从 daily-state 缓存中导出 thesis 状态/证据文件,
+# 供本地查看。不发邮件、不写 cache、不影响 daily.yml 主路径。
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read   # restore cache 需要
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Restore latest daily-state cache (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: dump-state-never-match-${{ github.run_id }}
+          restore-keys: |
+            daily-state-
+
+      - name: Inspect state directory
+        run: |
+          echo "=== state/ contents ==="
+          ls -la state/ || true
+          echo "=== thesis_state.json ==="
+          wc -c state/thesis_state.json 2>/dev/null || echo "(missing)"
+          echo "=== thesis_evidence_2026.jsonl ==="
+          wc -l state/thesis_evidence_2026.jsonl 2>/dev/null || echo "(missing)"
+
+      - name: Upload thesis state + evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: thesis-state-dump
+          path: |
+            state/thesis_state.json
+            state/thesis_evidence_2026.jsonl
+          if-no-files-found: warn
+          retention-days: 7
