@@ -117,6 +117,22 @@ def _filter_bj_date_cn(dt: datetime | None) -> str:
         return ""
 
 
+def _filter_iso_date_md(value: str | None) -> str:
+    """'YYYY-MM-DD' → 'M/D'(无前导零)。损坏时返回空串。
+
+    用于 sentiment.stale_from 等紧凑日期标注。
+    """
+    if not value or not isinstance(value, str):
+        return ""
+    parts = value.split("-")
+    if len(parts) != 3:
+        return ""
+    try:
+        return f"{int(parts[1])}/{int(parts[2])}"
+    except (ValueError, TypeError):
+        return ""
+
+
 def _filter_safe_url(url: str | None) -> str:
     """URL 白名单过滤 — 给模板里所有 <a href="{{ x | safe_url }}"> 用。
 
@@ -140,6 +156,7 @@ def _build_env() -> Environment:
     env.filters["metric_delta"] = _filter_metric_delta
     env.filters["bj_time"] = _filter_bj_time
     env.filters["bj_date_cn"] = _filter_bj_date_cn
+    env.filters["iso_date_md"] = _filter_iso_date_md
     env.filters["safe_url"] = _filter_safe_url
     env.filters["cjk_spaced"] = add_cjk_spacing
     return env

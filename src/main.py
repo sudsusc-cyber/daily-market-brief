@@ -200,7 +200,11 @@ def main() -> int:
     buffett_bundle, buffett_13f_pending_save = buffett_13f.fetch(state_path=buffett_13f_state_path)
 
     logger.info("collect.sentiment")
-    sentiment_bundle = sentiment.fetch_all(settings.fred_api_key)
+    sentiment_bundle = sentiment.fetch_all(
+        settings.fred_api_key,
+        state_dir=_STATE_DIR,
+        today=now_bj.date(),
+    )
 
     # ---------- LLM 处理(M4) ----------
     deepseek_model = resolve_latest_flash_model(settings.deepseek_api_key)
