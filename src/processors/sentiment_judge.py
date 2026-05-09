@@ -153,6 +153,7 @@ _TASK_INSTRUCTION = """\
 - 提示对应的投资纪律:偏冷/极度恐慌 → "DCA 触发概率上升,保持耐心";偏热/极度贪婪 → "暂缓加仓,守住现金仓位";中性 → 给出留意事项
 - 不要写"今日"等时间副词,直接陈述
 - 不要 AI 腔,不要"让我们"
+- 若某指标标注"(数据源故障,沿用 X 的值)",**不得**把它作为论据主角,只能作为"参考"轻轻带过或干脆不引用;不得写"今日 VIX 上升 / 下降"这类暗示是当天数据的措辞
 
 输出**严格 JSON**(无 markdown 代码块):
 {
@@ -182,7 +183,12 @@ def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
         if delta_value is not None:
             delta = f"{delta_value:+.2f}{m.unit}"
         rating = f" [{m.rating}]" if m.rating else ""
-        lines.append(f"- {m.name}{rating}: 当前 {cur} | 前一日 {pri} | 变化 {delta}")
+        # stale_from 非空 = 沿用了 last-known-good 缓存,不是当天数据。
+        # 让 LLM 在 argument 中淡化此指标(避免误导用户)。
+        stale = f"(数据源故障,沿用 {m.stale_from} 的值)" if m.stale_from else ""
+        lines.append(
+            f"- {m.name}{rating}: 当前 {cur} | 前一日 {pri} | 变化 {delta}{stale}"
+        )
     return "\n".join(lines)
 
 
