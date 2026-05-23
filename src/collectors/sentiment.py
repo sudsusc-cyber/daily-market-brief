@@ -27,7 +27,7 @@ import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import requests
@@ -93,20 +93,27 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
     historical = data.get("fear_and_greed_historical", {}).get("data", []) or []
     current = fg.get("score")
     rating = fg.get("rating")
-    prior = None
-    if historical:
-        # 1 天前(前一交易日)的目标毫秒时间戳;在 historical 中找最接近的 (x: ms 时间戳, y: 分值)
-        target_ts = (datetime.now(UTC) - timedelta(days=1)).timestamp() * 1000
-        best = min(
-            historical,
-            key=lambda e: abs((e.get("x") or 0) - target_ts),
-            default=None,
+    # 优先用 API 直接提供的 previous_close 字段(前一交易日收盘值)。
+    # 不能只用"距 1 天前时间戳最近的历史条目":脚本在美市开盘前运行时,
+    # fg.score 尚未刷新(仍等于昨日收盘值),historical 最新条目也是昨日数据,
+    # 导致 min() 命中同一条 → prior == current。
+    prior_raw = fg.get("previous_close")
+    if prior_raw is None and historical:
+        # 备选:取今日零点之前最近的历史条目,避免把"今日快照"当作前一日
+        today_start_ms = (
+            datetime.now(UTC)
+            .replace(hour=0, minute=0, second=0, microsecond=0)
+            .timestamp()
+            * 1000
         )
-        prior = (best or {}).get("y")
+        candidates = [e for e in historical if (e.get("x") or 0) < today_start_ms]
+        if candidates:
+            best = max(candidates, key=lambda e: e.get("x") or 0)
+            prior_raw = best.get("y")
     return SentimentMetric(
         name="CNN Fear & Greed",
         current=_finite_float(current),
-        prior=_finite_float(prior),
+        prior=_finite_float(prior_raw),
         rating=str(rating) if rating else None,
     )
 
