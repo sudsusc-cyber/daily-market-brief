@@ -93,23 +93,16 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
     historical = data.get("fear_and_greed_historical", {}).get("data", []) or []
     current = fg.get("score")
     rating = fg.get("rating")
-    # 优先用 API 直接提供的 previous_close 字段(前一交易日收盘值)。
-    # 不能只用"距 1 天前时间戳最近的历史条目":脚本在美市开盘前运行时,
-    # fg.score 尚未刷新(仍等于昨日收盘值),historical 最新条目也是昨日数据,
-    # 导致 min() 命中同一条 → prior == current。
-    prior_raw = fg.get("previous_close")
-    if prior_raw is None and historical:
-        # 备选:取今日零点之前最近的历史条目,避免把"今日快照"当作前一日
-        today_start_ms = (
-            datetime.now(UTC)
-            .replace(hour=0, minute=0, second=0, microsecond=0)
-            .timestamp()
-            * 1000
-        )
-        candidates = [e for e in historical if (e.get("x") or 0) < today_start_ms]
-        if candidates:
-            best = max(candidates, key=lambda e: e.get("x") or 0)
-            prior_raw = best.get("y")
+    # CNN historical data 的 x 字段为秒级时间戳(10 位),按 x 倒排后:
+    #   sorted_hist[0] = 最新快照(y 通常等于 fg.score)
+    #   sorted_hist[1] = 前一交易日的值  ← 这才是我们要的 prior
+    # 不能用"距 1 天前最近的时间戳"查找,因为:
+    #   - x 是秒,而 timedelta.timestamp()*1000 是毫秒,单位不统一
+    #   - 开盘前 score 未刷新时,最新历史条目 y == score,两者相同
+    prior_raw = None
+    if len(historical) >= 2:
+        sorted_hist = sorted(historical, key=lambda e: (e.get("x") or 0), reverse=True)
+        prior_raw = sorted_hist[1].get("y")
     return SentimentMetric(
         name="CNN Fear & Greed",
         current=_finite_float(current),

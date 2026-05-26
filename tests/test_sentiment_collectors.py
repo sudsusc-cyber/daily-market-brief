@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC
-from datetime import datetime as _dt
-
 import pytest
 
 from src.collectors import sentiment
@@ -60,53 +57,49 @@ class _FakeCNNResp:
         return self._data
 
 
-def _cnn_payload(score: float, previous_close: float | None, historical: list) -> dict:
-    fg: dict = {"score": score, "rating": "neutral"}
-    if previous_close is not None:
-        fg["previous_close"] = previous_close
-    return {"fear_and_greed": fg, "fear_and_greed_historical": {"data": historical}}
+def _cnn_payload(score: float, historical: list) -> dict:
+    return {
+        "fear_and_greed": {"score": score, "rating": "neutral"},
+        "fear_and_greed_historical": {"data": historical},
+    }
 
 
-def test_cnn_fg_uses_previous_close_when_available(monkeypatch) -> None:
-    """API 提供 previous_close 时直接使用,不走 historical 查找。"""
-    day_ms = 86_400_000
-    now_ms = 1_748_822_400_000  # 固定时间戳,避免依赖系统时间
+# CNN historical x 字段为秒级时间戳(10 位)
+_DAY_S = 86_400
+_BASE_S = 1_748_822_400  # May 22 2026 00:00 UTC (秒)
+
+
+def test_cnn_fg_prior_is_second_most_recent_entry(monkeypatch) -> None:
+    """historical 按 x 倒排后取第 2 条作为 prior,正确区分当前快照与前一交易日。"""
     historical = [
-        {"x": now_ms - 2 * day_ms, "y": 40.0},
-        {"x": now_ms - day_ms, "y": 50.0},  # 昨日快照 = score,模拟开盘前
+        {"x": _BASE_S - 2 * _DAY_S, "y": 40.0},  # 3 天前
+        {"x": _BASE_S - _DAY_S,     "y": 48.0},   # 昨日 ← 期望的 prior
+        {"x": _BASE_S,               "y": 52.0},   # 最新快照(与 score 相同)
     ]
-    payload = _cnn_payload(score=50.0, previous_close=45.0, historical=historical)
-    monkeypatch.setattr(
-        sentiment.requests, "get", lambda *_a, **_kw: _FakeCNNResp(payload),
-    )
-    m = sentiment._fetch_cnn_fear_greed()
-    assert m.current == pytest.approx(50.0)
-    # previous_close 应取代 historical 最新条目(50.0),给出正确的前日值
-    assert m.prior == pytest.approx(45.0)
-    assert m.prior != m.current
-
-
-def test_cnn_fg_historical_fallback_skips_today(monkeypatch) -> None:
-    """无 previous_close 时,fallback 应跳过今日条目,取今日零点之前最近的值。"""
-    day_ms = 86_400_000
-    today_midnight_ms = int(
-        _dt.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000
-    )
-
-    historical = [
-        {"x": today_midnight_ms - 2 * day_ms, "y": 40.0},   # 2 天前
-        {"x": today_midnight_ms - day_ms,      "y": 48.0},   # 昨日(今日零点前)
-        {"x": today_midnight_ms + 3_600_000,   "y": 52.0},   # 今日快照(与 score 相同)
-    ]
-    payload = _cnn_payload(score=52.0, previous_close=None, historical=historical)
+    payload = _cnn_payload(score=52.0, historical=historical)
     monkeypatch.setattr(
         sentiment.requests, "get", lambda *_a, **_kw: _FakeCNNResp(payload),
     )
     m = sentiment._fetch_cnn_fear_greed()
     assert m.current == pytest.approx(52.0)
-    # fallback 应取"今日零点之前最近"的条目,即昨日(48.0),而非今日快照(52.0)
-    assert m.prior == pytest.approx(48.0)
+    assert m.prior == pytest.approx(48.0)   # 前一日,不是最新快照
     assert m.prior != m.current
+
+
+def test_cnn_fg_prior_works_with_seconds_unit(monkeypatch) -> None:
+    """x 为秒级时间戳时,排序逻辑仍能取到正确的前一日值(复现 bug 场景)。"""
+    # 模拟开盘前:score == 最新历史条目 y,原始 min(abs(x - target_ms)) 实现会选同一条
+    historical = [
+        {"x": _BASE_S - _DAY_S, "y": 58.57},  # 前一日
+        {"x": _BASE_S,           "y": 60.83},  # 最新快照 == score
+    ]
+    payload = _cnn_payload(score=60.83, historical=historical)
+    monkeypatch.setattr(
+        sentiment.requests, "get", lambda *_a, **_kw: _FakeCNNResp(payload),
+    )
+    m = sentiment._fetch_cnn_fear_greed()
+    assert m.current == pytest.approx(60.83)
+    assert m.prior == pytest.approx(58.57)   # 应为前一日,不是 60.83
 
 
 def test_fetch_yfinance_close_drops_nonfinite_values(monkeypatch) -> None:
