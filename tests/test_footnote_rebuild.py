@@ -75,3 +75,11 @@ class TestRegexVariants:
         """两个 summarizer 共用同一 FOOTNOTE_RE,任一变体都应一致命中。"""
         assert _re("foo<sup>(99)</sup>") == [99]
         assert _re("结尾【88】。") == [88]
+
+    def test_bare_parens_fullwidth_no_hash(self) -> None:
+        """LLM 在中文语境下用全角括号 （N） 标注。"""
+        assert _re("一段话。（7）后续") == [7]
+
+    def test_hash_prefix_parens_fullwidth(self) -> None:
+        """最常见失效案例：（#N）全角括号 + # 前缀，宏观视野脚注直接裸露在正文的根因。"""
+        assert _re("达成协议（#14），上涨（#19）") == [14, 19]

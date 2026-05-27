@@ -25,15 +25,16 @@ _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 # 脚注标记识别 — LLM 输出可能用以下任一形式标注引用编号:
 #   <sup>[N]</sup> / <sup>(N)</sup> / <sup>【N】</sup>  ← 标准上标
 #   [N] / (N) / 【N】 / (N) — 后不跟字母数字时认作引用 ← 裸括号
-#   [#N] / (#N) / 【#N】                                 ← 前缀 # (LLM 误把
+#   [#N] / (#N) / 【#N】 / （#N）                        ← 前缀 # (LLM 误把
 #                                                       prompt 里的 "#" 编号
 #                                                       当成标记的一部分)
+#   （N）                                                ← 全角圆括号(中文语境)
 #   ^N^                                                ← markdown
 # 中英括号都接;括号内可有空格(\s*);避免 URL / 公式中误匹配。
 # 由 news_summarizer 与 macro_filter 共用 — 两边以前各自重复定义,容易漂移。
 FOOTNOTE_RE = re.compile(
-    r"<sup>\s*[\[【(\(]\s*#?\s*(\d+)\s*[\]】)\)]\s*</sup>"
-    r"|[\[【(\(]\s*#?\s*(\d+)\s*[\]】)\)](?![a-zA-Z\d])"
+    r"<sup>\s*[\[【（(\(]\s*#?\s*(\d+)\s*[\]】）)\)]\s*</sup>"
+    r"|[\[【（(\(]\s*#?\s*(\d+)\s*[\]】）)\)](?![a-zA-Z\d])"
     r"|\^(\d+)\^"
 )
 
