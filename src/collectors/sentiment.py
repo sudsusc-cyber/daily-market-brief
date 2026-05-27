@@ -27,7 +27,7 @@ import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import requests
@@ -93,20 +93,20 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
     historical = data.get("fear_and_greed_historical", {}).get("data", []) or []
     current = fg.get("score")
     rating = fg.get("rating")
-    prior = None
-    if historical:
-        # 1 天前(前一交易日)的目标毫秒时间戳;在 historical 中找最接近的 (x: ms 时间戳, y: 分值)
-        target_ts = (datetime.now(UTC) - timedelta(days=1)).timestamp() * 1000
-        best = min(
-            historical,
-            key=lambda e: abs((e.get("x") or 0) - target_ts),
-            default=None,
-        )
-        prior = (best or {}).get("y")
+    # CNN historical data 的 x 字段为秒级时间戳(10 位),按 x 倒排后:
+    #   sorted_hist[0] = 最新快照(y 通常等于 fg.score)
+    #   sorted_hist[1] = 前一交易日的值  ← 这才是我们要的 prior
+    # 不能用"距 1 天前最近的时间戳"查找,因为:
+    #   - x 是秒,而 timedelta.timestamp()*1000 是毫秒,单位不统一
+    #   - 开盘前 score 未刷新时,最新历史条目 y == score,两者相同
+    prior_raw = None
+    if len(historical) >= 2:
+        sorted_hist = sorted(historical, key=lambda e: (e.get("x") or 0), reverse=True)
+        prior_raw = sorted_hist[1].get("y")
     return SentimentMetric(
         name="CNN Fear & Greed",
         current=_finite_float(current),
-        prior=_finite_float(prior),
+        prior=_finite_float(prior_raw),
         rating=str(rating) if rating else None,
     )
 
