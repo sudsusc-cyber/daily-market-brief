@@ -581,9 +581,13 @@
             {# ❀ 横线 ornament — table-based 以兼容 Outlook(避免 flex/grid,符合 CLAUDE.md 邮件约束) #}
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:36px; border-collapse:collapse;">
               <tr>
-                <td width="50%" style="border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</td>
-                <td style="padding:0 18px; font-family:'Apple Color Emoji','Segoe UI Symbol','Noto Sans Symbols','Songti SC','STSong',serif; font-size:14px; line-height:1; color:#a89c83; white-space:nowrap;">❀</td>
-                <td width="50%" style="border-top:0.5px solid {{ color_hairline }}; line-height:0; font-size:0;">&nbsp;</td>
+                <td width="50%" style="border-bottom:1px solid {{ color_hairline }}; line-height:1px; font-size:0; height:8px;">&nbsp;</td>
+                <td rowspan="2" style="padding:0 18px; font-family:'Apple Color Emoji','Segoe UI Symbol','Noto Sans Symbols','Songti SC','STSong',serif; font-size:14px; line-height:1; color:#a89c83; white-space:nowrap; vertical-align:middle;">❀</td>
+                <td width="50%" style="border-bottom:1px solid {{ color_hairline }}; line-height:1px; font-size:0; height:8px;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="line-height:1px; font-size:0; height:7px;">&nbsp;</td>
+                <td style="line-height:1px; font-size:0; height:7px;">&nbsp;</td>
               </tr>
             </table>
             {% if judgment_section %}
