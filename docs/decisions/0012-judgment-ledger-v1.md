@@ -28,7 +28,7 @@ candidate → emerging → core → stable → dormant
 |---|---|---|
 | `candidate` | 新主题，观察中 | 任意新 evidence（自动） |
 | `emerging` | 多源验证中 | ≥3 条 evidence + ≥2 个不同 source |
-| `core` | 已确认，进入跟踪 | emerging 满足 + ≥60 天 + ≥5 条 90d evidence + 有权威源 |
+| `core` | 已确认，进入跟踪 | emerging 满足 + ≥30 天 + ≥5 条 90d evidence + 有权威源 |
 | `stable` | 确认但停滞 | core 状态 + 半 cadence 无 strong support + 90d evidence < 5 |
 | `dormant` | 长期无新证据 | core/stable + stale_after_days 过期或 cooldown 满 |
 
@@ -69,7 +69,7 @@ Cadence 通过关键字匹配 + horizon 退化确定（`cadence.py:resolve_caden
 - `COOLDOWN_DAYS = 30`：同一主题在邮件中的最小展示间隔
 - `EMERGING_MIN_EVENTS = 3`：candidate→emerging 最少 evidence 数
 - `EMERGING_MIN_SOURCES = 2`：至少两个不同数据源
-- `CORE_MIN_ELAPSED_DAYS = 60`：从首次出现到进 core 最短天数
+- `CORE_MIN_ELAPSED_DAYS = 30`：从首次出现到进 core 最短天数
 - `CORE_MIN_EVENTS_90D = 5`：进 core 需要近 90 天至少 5 条 evidence
 - `MAX_EVIDENCE_ITEMS = 8`：每天 LLM 抽取上限
 
