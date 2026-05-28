@@ -76,6 +76,31 @@ class SentimentBundle:
 
 
 # ---------- CNN Fear & Greed ----------
+def _ts_to_utc_day(ts: int) -> int:
+    """Convert a timestamp (seconds or milliseconds) to a UTC day integer (floor)."""
+    if ts > 10_000_000_000:  # 13-digit → milliseconds
+        ts //= 1000
+    return ts // 86_400
+
+
+def _cnn_prior_from_historical(historical: list[dict]) -> float | None:
+    """从 CNN historical 数组提取前一交易日的值。
+
+    x 可为秒(10 位)或毫秒(13 位)时间戳。historical 可能含日内多条记录。
+    策略:按 x 倒排,找第一条与最新记录"日历日(UTC)"不同的条目。
+    若所有条目均同日(极端情况),退化为取第 2 条。
+    """
+    if not historical:
+        return None
+    sorted_hist = sorted(historical, key=lambda e: (e.get("x") or 0), reverse=True)
+    latest_day = _ts_to_utc_day(int(sorted_hist[0].get("x") or 0))
+    for entry in sorted_hist[1:]:
+        if _ts_to_utc_day(int(entry.get("x") or 0)) != latest_day:
+            return entry.get("y")
+    # 所有条目同日,退化到第 2 条
+    return sorted_hist[1].get("y") if len(sorted_hist) >= 2 else None
+
+
 @retry(max_attempts=3, base_delay=1.0)
 def _fetch_cnn_fear_greed() -> SentimentMetric:
     url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
@@ -90,19 +115,14 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
     resp.raise_for_status()
     data = resp.json()
     fg = data.get("fear_and_greed", {}) or {}
-    historical = data.get("fear_and_greed_historical", {}).get("data", []) or []
     current = fg.get("score")
     rating = fg.get("rating")
-    # CNN historical data 的 x 字段为秒级时间戳(10 位),按 x 倒排后:
-    #   sorted_hist[0] = 最新快照(y 通常等于 fg.score)
-    #   sorted_hist[1] = 前一交易日的值  ← 这才是我们要的 prior
-    # 不能用"距 1 天前最近的时间戳"查找,因为:
-    #   - x 是秒,而 timedelta.timestamp()*1000 是毫秒,单位不统一
-    #   - 开盘前 score 未刷新时,最新历史条目 y == score,两者相同
-    prior_raw = None
-    if len(historical) >= 2:
-        sorted_hist = sorted(historical, key=lambda e: (e.get("x") or 0), reverse=True)
-        prior_raw = sorted_hist[1].get("y")
+    # 优先使用 CNN 自带的 previous_close 字段(前收盘价,最权威)
+    prior_raw = fg.get("previous_close")
+    # 降级:从历史数组按日历日跨越提取前一交易日值
+    if _finite_float(prior_raw) is None:
+        historical = data.get("fear_and_greed_historical", {}).get("data", []) or []
+        prior_raw = _cnn_prior_from_historical(historical)
     return SentimentMetric(
         name="CNN Fear & Greed",
         current=_finite_float(current),
