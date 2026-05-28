@@ -57,9 +57,12 @@ class _FakeCNNResp:
         return self._data
 
 
-def _cnn_payload(score: float, historical: list) -> dict:
+def _cnn_payload(score: float, historical: list, previous_close: float | None = None) -> dict:
+    fg: dict = {"score": score, "rating": "neutral"}
+    if previous_close is not None:
+        fg["previous_close"] = previous_close
     return {
-        "fear_and_greed": {"score": score, "rating": "neutral"},
+        "fear_and_greed": fg,
         "fear_and_greed_historical": {"data": historical},
     }
 
@@ -100,6 +103,56 @@ def test_cnn_fg_prior_works_with_seconds_unit(monkeypatch) -> None:
     m = sentiment._fetch_cnn_fear_greed()
     assert m.current == pytest.approx(60.83)
     assert m.prior == pytest.approx(58.57)   # 应为前一日,不是 60.83
+
+
+def test_cnn_fg_uses_previous_close_over_historical(monkeypatch) -> None:
+    """fg.previous_close 存在时直接用作 prior,不再解析 historical。"""
+    historical = [
+        {"x": _BASE_S - _DAY_S, "y": 48.0},
+        {"x": _BASE_S,           "y": 52.0},
+    ]
+    payload = _cnn_payload(score=52.0, historical=historical, previous_close=49.5)
+    monkeypatch.setattr(
+        sentiment.requests, "get", lambda *_a, **_kw: _FakeCNNResp(payload),
+    )
+    m = sentiment._fetch_cnn_fear_greed()
+    assert m.current == pytest.approx(52.0)
+    assert m.prior == pytest.approx(49.5)   # previous_close 优先,不是 historical[1]
+
+
+def test_cnn_fg_prior_skips_intraday_entries(monkeypatch) -> None:
+    """historical 含日内多条记录时,跨日找前一交易日而非取 sorted_hist[1]。"""
+    _HOUR_S = 3600
+    historical = [
+        {"x": _BASE_S - _DAY_S,        "y": 48.0},   # 前一日
+        {"x": _BASE_S,                  "y": 60.0},   # 今日 00:00
+        {"x": _BASE_S + _HOUR_S,        "y": 60.5},   # 今日 +1h
+        {"x": _BASE_S + _HOUR_S * 2,   "y": 61.0},   # 今日 +2h (最新)
+    ]
+    payload = _cnn_payload(score=61.0, historical=historical)
+    monkeypatch.setattr(
+        sentiment.requests, "get", lambda *_a, **_kw: _FakeCNNResp(payload),
+    )
+    m = sentiment._fetch_cnn_fear_greed()
+    assert m.current == pytest.approx(61.0)
+    assert m.prior == pytest.approx(48.0)   # 前一日,不是同日较早条目
+
+
+def test_cnn_fg_prior_handles_millisecond_timestamps(monkeypatch) -> None:
+    """x 为毫秒级时间戳时,日历日判断仍正确。"""
+    _DAY_MS = _DAY_S * 1000
+    _BASE_MS = _BASE_S * 1000
+    historical = [
+        {"x": _BASE_MS - _DAY_MS, "y": 55.0},   # 前一日(毫秒)
+        {"x": _BASE_MS,            "y": 62.0},   # 今日(毫秒)
+    ]
+    payload = _cnn_payload(score=62.0, historical=historical)
+    monkeypatch.setattr(
+        sentiment.requests, "get", lambda *_a, **_kw: _FakeCNNResp(payload),
+    )
+    m = sentiment._fetch_cnn_fear_greed()
+    assert m.current == pytest.approx(62.0)
+    assert m.prior == pytest.approx(55.0)
 
 
 def test_fetch_yfinance_close_drops_nonfinite_values(monkeypatch) -> None:
