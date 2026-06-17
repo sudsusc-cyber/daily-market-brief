@@ -76,10 +76,11 @@ def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION,
-        # V4-Flash reasoning 经常吃 500-2000 token;1800 余量在 reasoning 暴涨时
-        # 会把最终输出 token 挤到 0,导致 resp.text 为空 → 降级到 M2 静态文案。
-        # 与 subject generator 对齐到 2500,留够 reasoning + 输出双倍余量。
-        max_tokens=2500,
+        # V4-Flash reasoning 会把 max_tokens 全部吃掉做推理，2500 不够：
+        # 生产日志显示 reasoning=2500/max_tokens=2500，输出为空 → 降级到静态文案。
+        # 与 news_summarizer 主调用对齐到 6000，保证 reasoning 跑完后
+        # 仍有足够预算输出 60-110 字正文。
+        max_tokens=6000,
         temperature=0.7,
     )
     text = (resp.text or "").strip()
