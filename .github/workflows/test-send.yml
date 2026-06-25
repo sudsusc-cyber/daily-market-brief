@@ -1,0 +1,44 @@
+name: test-send-preview
+
+# 手动触发:用 mock 数据渲染整封晨报(头图 + 持仓表 + logo + 导语),
+# 发到指定收件人,用于预览版式效果。不跑真实管线、不调 LLM、不收新闻、
+# 不动 idempotency 状态(scripts/send_test_email.py 是纯本地渲染 + SMTP 发送)。
+#
+# 为什么需要它:云端开发沙箱出站 SMTP 被封,无法直接发邮件;GitHub runner
+# 有完整外网 + 已配置的 QQ secrets,是定向发预览的唯一可靠载体。
+on:
+  workflow_dispatch:
+    inputs:
+      recipient:
+        description: "收件人邮箱(留空则用 EMAIL_RECIPIENT secret 的第一个地址)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  send-preview:
+    name: render mock + send preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      QQ_EMAIL_ADDRESS:   ${{ secrets.QQ_EMAIL_ADDRESS }}
+      QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
+      EMAIL_RECIPIENT:    ${{ secrets.EMAIL_RECIPIENT }}
+      TEST_RECIPIENT:     ${{ github.event.inputs.recipient }}
+      PYTHONPATH:         .
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Send preview email
+        run: uv run python scripts/send_test_email.py
