@@ -2,7 +2,7 @@
 持仓公司昨日新闻采集(模块 1)。
 
 数据源策略(PLAN 第 4 节模块 1):
-  - 美股 + ADR(MSFT/COST/AAPL/NVDA/TSM/MCO/GOOG/BRK.B/KO/AXP):Finnhub /company-news
+  - 美股 + ADR(MSFT/COST/AAPL/NVDA/TSM/MCO/GOOG/BRK.B/KO/AXP/MA/LIN):Finnhub /company-news
   - 港股(0700.HK 腾讯 / 9992.HK 泡泡玛特):Finnhub 港股覆盖弱,降级到 Google News 中文搜索
 
 时间窗口:北京时间昨日 00:00 ~ 今日 00:00(用户视角的"昨日")。
@@ -76,6 +76,10 @@ _RELEVANCE_KEYWORDS: dict[str, list[str]] = {
     "BRK.B": ["BRK", "Berkshire", "Buffett", "GEICO", "BNSF"],
     "KO": ["Coca-Cola", "Coca Cola", "Coke", " KO "],  # KO 单字母太宽,只在带空格时匹配
     "AXP": ["AXP", "American Express", "Amex"],
+    # MA / LIN 同 KO:2 字母 ticker 太宽(MA 会命中 magazine 等,LIN 命中 link 等),
+    # 不放裸 ticker,只用公司名匹配。
+    "MA": ["Mastercard", "Master Card", "MasterCard"],
+    "LIN": ["Linde", "Linde plc", "林德"],
 }
 
 

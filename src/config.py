@@ -53,4 +53,8 @@ HOLDINGS: list[Holding] = [
     Holding("AXP", "American Express", "americanexpress.com"),
     Holding("0700.HK", "腾讯控股", "tencent.com"),
     Holding("9992.HK", "泡泡玛特", "popmart.com"),
+    # 2026-06 新增:万事达 / 林德气体(均为美股,走 Finnhub + yfinance 通用路径)。
+    # 追加在末尾——多个测试用 HOLDINGS[idx] 索引引用既有持仓,插入中间会破坏索引。
+    Holding("MA", "Mastercard", "mastercard.com"),
+    Holding("LIN", "Linde", "linde.com"),
 ]
