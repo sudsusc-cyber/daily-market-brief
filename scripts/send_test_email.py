@@ -9,6 +9,10 @@
 用法(从 worktree 跑):
     export TEST_RECIPIENT=xxx@qq.com   # 必须,避免把私人收件人写进公开脚本
     uv run python scripts/send_test_email.py
+
+在 CI(GitHub Actions)里跑:
+    无 .env 时,直接读取已注入的环境变量(QQ_EMAIL_ADDRESS / QQ_EMAIL_AUTH_CODE /
+    TEST_RECIPIENT 等,由 workflow 从 secrets/inputs 注入),见 .github/workflows/test-send.yml。
 """
 
 from __future__ import annotations
@@ -25,15 +29,16 @@ from zoneinfo import ZoneInfo
 _HERE = Path(__file__).resolve()
 _WORKTREE_ROOT = _HERE.parent.parent
 _ENV_FILE = _WORKTREE_ROOT / ".env"
-if not _ENV_FILE.exists():
-    sys.exit(f"找不到 .env: {_ENV_FILE}（请在项目根 {_WORKTREE_ROOT} 创建 .env）")
-
-for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
-    line = line.strip()
-    if not line or line.startswith("#") or "=" not in line:
-        continue
-    k, _, v = line.partition("=")
-    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+# 本地:有 .env 就加载(os.environ.setdefault 不覆盖已存在的真实环境变量)。
+# CI:无 .env 则跳过,直接依赖 workflow 从 secrets/inputs 注入的环境变量。
+# 凭据是否齐全的校验交给 main() 开头统一做,这里不再 hard-exit。
+if _ENV_FILE.exists():
+    for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 sys.path.insert(0, str(_WORKTREE_ROOT))
 
@@ -104,8 +109,11 @@ def _build_logos() -> tuple[dict[str, str], list[InlineImage]]:
 
 
 def main() -> int:
-    sender = os.environ["QQ_EMAIL_ADDRESS"]
-    auth_code = os.environ["QQ_EMAIL_AUTH_CODE"]
+    sender = os.environ.get("QQ_EMAIL_ADDRESS", "").strip()
+    auth_code = os.environ.get("QQ_EMAIL_AUTH_CODE", "").strip()
+    missing = [k for k, v in (("QQ_EMAIL_ADDRESS", sender), ("QQ_EMAIL_AUTH_CODE", auth_code)) if not v]
+    if missing:
+        sys.exit(f"缺少 SMTP 凭据环境变量: {', '.join(missing)}（本地放 .env,CI 由 secrets 注入）")
     recipient = (
         os.environ.get("TEST_RECIPIENT")
         or (os.environ.get("EMAIL_RECIPIENT", "").split(",")[0].strip() or None)
