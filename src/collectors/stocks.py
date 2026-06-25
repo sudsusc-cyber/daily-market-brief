@@ -156,5 +156,5 @@ def _failed(holding: Holding, reason: str) -> StockSignal:
 
 
 def fetch_all(holdings: list[Holding]) -> list[StockSignal]:
-    """串行拉取所有持仓。12 只规模下 yfinance 串行 ~10-15s,不需要并行。"""
+    """串行拉取所有持仓。14 只规模下 yfinance 串行 ~12-18s,不需要并行。"""
     return [fetch_one(h) for h in holdings]

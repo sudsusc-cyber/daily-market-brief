@@ -45,7 +45,7 @@ INVESTMENT_FRAMEWORK = """\
 - 不关注:短期股价波动、技术指标(除均线外)、分析师评级、KOL 看法
 
 开源的当前持仓清单:
-- 美股:MSFT, COST, AAPL, NVDA, TSM, MCO, GOOG, BRK.B, KO, AXP
+- 美股:MSFT, COST, AAPL, NVDA, TSM, MCO, GOOG, BRK.B, KO, AXP, MA, LIN
 - 港股:0700.HK(腾讯)、9992.HK(泡泡玛特)
 
 你的输出语言:简体中文,平实自然,严禁出现以下:

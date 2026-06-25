@@ -50,7 +50,7 @@ _LOGOS_DIR = _WORKTREE_ROOT / "assets" / "logos"
 
 
 def _build_mock_signals() -> list[StockSignal]:
-    """构造 12 只假 signal,覆盖 NONE / DCA / LUMP_SUM 三种状态。"""
+    """构造 14 只假 signal,覆盖 NONE / DCA / LUMP_SUM 三种状态。"""
     cases: list[tuple[Holding, float | None, float | None, float | None, str | None]] = [
         (HOLDINGS[0], 414.44, 438.85, 381.78, None),   # MSFT, NONE
         (HOLDINGS[1], 1011.70, 908.45, 756.63, None),  # COST, NONE
@@ -64,6 +64,8 @@ def _build_mock_signals() -> list[StockSignal]:
         (HOLDINGS[9], 268.90, 295.40, 312.80, None),   # AXP, LUMP_SUM
         (HOLDINGS[10], 412.40, 380.60, 340.20, None),  # 0700.HK, NONE
         (HOLDINGS[11], 157.10, 136.01, 89.67, None),   # 9992.HK 泡泡玛特, NONE
+        (HOLDINGS[12], 512.30, 478.20, 412.60, None),  # MA 万事达, NONE
+        (HOLDINGS[13], 445.80, 462.10, 398.40, None),  # LIN 林德, DCA
     ]
     signals: list[StockSignal] = []
     for h, last, s120, s200, err in cases:
