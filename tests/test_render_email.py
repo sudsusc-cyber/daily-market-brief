@@ -106,6 +106,11 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
             "verdict": "今日情绪 · 偏热",
             "argument": "风险偏好有所回升。",
             "score": 67.5,
+            "coverage": {
+                "valid_metrics": 5,
+                "total_metrics": 5,
+                "stale_metrics": 1,
+            },
         },
     )
 
@@ -119,6 +124,8 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert "font-size:14px; color:#A96D4F; letter-spacing" in html
     assert "极度恐慌" in html
     assert "极度贪婪" in html
+    assert "数据覆盖" not in html
+    assert "项沿用缓存" not in html
     assert html.count("▼") == 1
 
 

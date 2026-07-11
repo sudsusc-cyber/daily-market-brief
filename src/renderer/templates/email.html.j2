@@ -310,7 +310,6 @@
                       </td>
                       <td data-sentiment-label="true" align="right" valign="bottom" style="padding-bottom:2px; white-space:nowrap;">
                         <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ sentiment_gauge.active_color }}; letter-spacing:0.14em;">{{ sentiment_gauge.label }}</div>
-                        {% if sentiment_gauge.coverage %}<div style="margin-top:5px; font-family:{{ serif_body }}; font-size:10px; color:{{ color_muted }}; letter-spacing:0.04em;">数据覆盖 {{ sentiment_gauge.coverage.valid_metrics }}/{{ sentiment_gauge.coverage.total_metrics }}{% if sentiment_gauge.coverage.stale_metrics %} · {{ sentiment_gauge.coverage.stale_metrics }} 项沿用缓存{% endif %}</div>{% endif %}
                       </td>
                     </tr>
                   </table>
