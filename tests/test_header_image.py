@@ -59,13 +59,14 @@ def test_tier1_returns_cid_and_local_path(tmp_path):
     fake_path.write_bytes(b"fake-jpeg-bytes")
 
     with patch("src.collectors.header_image._CURATED_JSON", cfg), \
-         patch("src.collectors.header_image._download", return_value=fake_path):
+         patch("src.collectors.header_image._download", return_value=fake_path) as download:
         result = _tier1_pexels(date(2025, 1, 1))
 
     assert result["source"] == "pexels"
     assert result["url"] == f"cid:{_HEADER_CID}"
     assert result["id"] in ("111", "222")
     assert result["local_path"] == fake_path
+    assert download.call_args.args[1].name.endswith("_1280x640.jpg")
 
 
 def test_tier1_deterministic(tmp_path):

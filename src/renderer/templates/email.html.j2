@@ -90,7 +90,7 @@
         <tr>
           <td style="padding:0; line-height:0; font-size:0; border-bottom:2px solid {{ color_accent }};">
             <img src="{{ header_image_url }}"
-                 width="640" height="200"
+                 width="640" height="320"
                  alt="刊头图"
                  style="display:block; width:100%; max-width:640px; height:auto; border:0; line-height:0;" />
           </td>
@@ -300,25 +300,28 @@
             <table data-sentiment-gauge="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:0; border-collapse:collapse; background-color:{{ color_paper }};">
               <tr>
                 <td style="padding:18px 18px 14px 18px;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  {# 气泡主体在中段跟随指针，两端吸附边界；尾巴始终停在真实分数档位。 #}
+                  <table data-sentiment-score-track="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                     <tr>
-                      <td valign="bottom" style="font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1;">
-                        {# 邮件兼容的分数气泡：第二行同色三角作为右下角尾巴，指向下方温度计。 #}
-                        <table data-sentiment-score-bubble="true" role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
-                          <tr>
-                            <td style="padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; border-radius:6px; white-space:nowrap;">
+                      {% if sentiment_gauge.bubble_layout.left_width > 0 %}<td width="{{ sentiment_gauge.bubble_layout.left_width }}%" style="width:{{ sentiment_gauge.bubble_layout.left_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
+                      <td data-sentiment-score-position="{{ sentiment_gauge.pointer_index }}" width="{{ sentiment_gauge.bubble_layout.region_width }}%" height="49" align="{{ sentiment_gauge.bubble_layout.align }}" valign="bottom" style="width:{{ sentiment_gauge.bubble_layout.region_width }}%; height:49px; padding:0; font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1; white-space:nowrap;">
+                        <span data-sentiment-score-bubble="true" style="display:inline-block; vertical-align:bottom; white-space:nowrap; text-align:center;">
+                          <span style="display:block; padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; border-radius:6px; white-space:nowrap;">
                               <span style="font-size:30px; line-height:1; color:#FFFFFF; font-weight:500; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ sentiment_gauge.score_display }}</span>
                               <span style="font-family:{{ serif_body }}; font-size:11px; line-height:1; color:#FFFFFF; margin-left:4px; letter-spacing:0.08em;">/ 100</span>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td data-sentiment-score-tail="true" height="8" align="right" valign="top" style="height:8px; padding:0 10px 0 0; font-family:Arial,sans-serif; font-size:14px; line-height:8px; color:{{ sentiment_gauge.active_color }};">&#9660;</td>
-                          </tr>
-                        </table>
+                          </span>
+                        </span>
                       </td>
-                      <td data-sentiment-label="true" align="right" valign="bottom" style="padding-bottom:2px; white-space:nowrap;">
-                        <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ sentiment_gauge.active_color }}; letter-spacing:0.14em;">{{ sentiment_gauge.label }}</div>
-                      </td>
+                      {% if sentiment_gauge.bubble_layout.right_width > 0 %}<td width="{{ sentiment_gauge.bubble_layout.right_width }}%" style="width:{{ sentiment_gauge.bubble_layout.right_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
+                    </tr>
+                  </table>
+
+                  {# 尾巴独立使用真实指针格；边缘时在吸附后的气泡底部移动而非带框越界。 #}
+                  <table data-sentiment-score-tail-track="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
+                    <tr>
+                      {% for cell in sentiment_gauge.pointer_cells %}
+                      <td height="8" align="center" valign="top" style="height:8px; padding:0; font-family:Arial,sans-serif; font-size:14px; line-height:8px; color:{{ sentiment_gauge.active_color }};">{% if cell.active %}<span data-sentiment-score-tail="true">&#9660;</span>{% else %}&nbsp;{% endif %}</td>
+                      {% endfor %}
                     </tr>
                   </table>
 
@@ -326,7 +329,7 @@
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px; table-layout:fixed; border-collapse:collapse;">
                     <tr>
                       {% for cell in sentiment_gauge.pointer_cells %}
-                      <td height="12" align="center" valign="bottom" style="height:12px; padding:0; font-family:Arial,sans-serif; font-size:10px; line-height:10px; color:{{ color_ink }};">{% if cell.active %}▼{% else %}&nbsp;{% endif %}</td>
+                      <td{% if cell.active %} data-sentiment-pointer-position="{{ loop.index0 }}"{% endif %} height="12" align="center" valign="bottom" style="height:12px; padding:0; font-family:Arial,sans-serif; font-size:10px; line-height:10px; color:{{ color_ink }};">{% if cell.active %}▼{% else %}&nbsp;{% endif %}</td>
                       {% endfor %}
                     </tr>
                   </table>

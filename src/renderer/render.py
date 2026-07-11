@@ -74,6 +74,20 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
     )
     # 21 个位置（每 5 分一档）兼顾精度与邮件 HTML 体积；50 分仍严格居中。
     pointer_index = min(20, max(0, round(score / 5.0)))
+    pointer_percent = (pointer_index + 0.5) / 21.0 * 100.0
+    bubble_region_width = 20.0
+    # 气泡主体在两端吸附于色带边界，小尾巴仍留在真实 pointer_index。
+    # 前/后四档覆盖 640px 桌面邮件与约 320px 移动端的气泡固有宽度。
+    if pointer_index <= 3:
+        bubble_left = 0.0
+        bubble_align = "left"
+    elif pointer_index >= 17:
+        bubble_left = 100.0 - bubble_region_width
+        bubble_align = "right"
+    else:
+        bubble_left = pointer_percent - bubble_region_width / 2.0
+        bubble_align = "center"
+    bubble_right = 100.0 - bubble_left - bubble_region_width
     cells = []
     for index in range(20):
         cell_score = index * 5.0
@@ -93,6 +107,13 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
         "label": active_label,
         "active_color": _SENTIMENT_COLOR_BY_LABEL[active_label][1],
         "coverage": verdict.get("coverage") if isinstance(verdict.get("coverage"), dict) else None,
+        "pointer_index": pointer_index,
+        "bubble_layout": {
+            "left_width": bubble_left,
+            "region_width": bubble_region_width,
+            "right_width": bubble_right,
+            "align": bubble_align,
+        },
         "pointer_cells": [
             {"active": index == pointer_index}
             for index in range(21)

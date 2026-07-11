@@ -127,8 +127,8 @@ def _tier1_pexels(today: date) -> dict:
     entry = pool[today.toordinal() % len(pool)]
     sid = entry["id"]
     url = library["url_template"].replace("{id}", sid)
-    # 文件名含版式版本，避免沿用历史 1280×640 缓存。
-    local_path = _download(url, _CACHE_DIR / f"pexels_{sid}_1280x400.jpg")
+    # 文件名含版式版本，避免沿用历史 1280×400 窄幅裁切缓存。
+    local_path = _download(url, _CACHE_DIR / f"pexels_{sid}_1280x640.jpg")
     logger.info("header.pexels id=%s season=%s", sid, season)
     return {
         "url": f"cid:{_HEADER_CID}",

@@ -81,6 +81,18 @@ def test_render_email_decorative_logo_has_empty_alt() -> None:
     assert 'alt=""' in html
 
 
+def test_render_email_header_keeps_full_two_to_one_frame() -> None:
+    """刊头图恢复 640×320 的完整 2:1 展示，不再退回窄幅 640×200。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        header_image_url="cid:header_image",
+    )
+    assert 'width="640" height="320"' in html
+    assert 'width="640" height="200"' not in html
+    assert "width:100%; max-width:640px; height:auto" in html
+
+
 def test_render_email_no_logo_falls_back_to_text_box() -> None:
     """logo_cids 不含该 ticker 时,渲染 ticker 前 3 字符的文本块兜底。"""
     s = _one_signal()
@@ -120,12 +132,16 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert "background-color:#A96D4F" in html
     assert "background-color:#D97757" not in html
     assert "color:#FFFFFF" in html
+    assert 'data-sentiment-score-track="true"' in html
+    assert 'data-sentiment-score-position="14"' in html
+    assert 'data-sentiment-pointer-position="14"' in html
     assert 'data-sentiment-score-bubble="true"' in html
+    assert 'data-sentiment-score-tail-track="true"' in html
+    assert 'display:inline-block; vertical-align:bottom' in html
     assert 'data-sentiment-score-tail="true"' in html
     assert "&#9660;" in html
-    assert 'color:#A96D4F;">&#9660;' in html
-    assert 'data-sentiment-label="true"' in html
-    assert "font-size:14px; color:#A96D4F; letter-spacing" in html
+    assert 'color:#A96D4F;"><span data-sentiment-score-tail="true">' in html
+    assert 'data-sentiment-label="true"' not in html
     assert "极度恐慌" in html
     assert "极度贪婪" in html
     assert "数据覆盖" not in html
@@ -170,6 +186,23 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
     assert len(neutral["pointer_cells"]) == 21
     assert neutral["pointer_cells"][10]["active"] is True
     assert sum(cell["active"] for cell in neutral["pointer_cells"]) == 1
+    assert neutral["bubble_layout"] == {
+        "left_width": 40.0,
+        "region_width": 20.0,
+        "right_width": 40.0,
+        "align": "center",
+    }
+
+    extreme_fear = _build_sentiment_gauge({"score": 0.0, "verdict": "极度恐慌"})
+    extreme_greed = _build_sentiment_gauge({"score": 100.0, "verdict": "极度贪婪"})
+    assert extreme_fear is not None
+    assert extreme_greed is not None
+    assert extreme_fear["pointer_index"] == 0
+    assert extreme_fear["bubble_layout"]["left_width"] == 0.0
+    assert extreme_fear["bubble_layout"]["align"] == "left"
+    assert extreme_greed["pointer_index"] == 20
+    assert extreme_greed["bubble_layout"]["right_width"] == 0.0
+    assert extreme_greed["bubble_layout"]["align"] == "right"
 
 
 def test_sentiment_gauge_uses_judge_thresholds_at_boundaries() -> None:

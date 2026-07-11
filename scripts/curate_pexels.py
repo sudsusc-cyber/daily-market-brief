@@ -2,7 +2,7 @@
 M5 候选图策展处理:汇总 → 粗筛 → 并发 HEAD 验证 → 输出 JSON。
 图源:Pexels(Unsplash 反爬不可达,已切源)。
 CDN URL 模式:
-  https://images.pexels.com/photos/{id}/pexels-photo-{id}.jpeg?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop
+  https://images.pexels.com/photos/{id}/pexels-photo-{id}.jpeg?auto=compress&cs=tinysrgb&w=1280&h=640&fit=crop
 """
 from __future__ import annotations
 
@@ -360,7 +360,7 @@ def head_check(photo_id: str, timeout: int = 12, retries: int = 2) -> tuple[bool
     """返回 (ok, http_code, content_length)。带重试,处理 cloudflare 偶发 reset。"""
     url = (
         f"https://images.pexels.com/photos/{photo_id}/pexels-photo-{photo_id}.jpeg"
-        f"?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop"
+        f"?auto=compress&cs=tinysrgb&w=1280&h=640&fit=crop"
     )
     last_code = 0
     for _attempt in range(retries + 1):

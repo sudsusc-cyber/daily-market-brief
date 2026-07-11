@@ -102,7 +102,7 @@ def main() -> int:
         "updated_at": str(date.today()),
         "policy": "northern_hemisphere_meteorological",
         "source": "pexels",
-        "url_template": "https://images.pexels.com/photos/{id}/pexels-photo-{id}.jpeg?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop",
+        "url_template": "https://images.pexels.com/photos/{id}/pexels-photo-{id}.jpeg?auto=compress&cs=tinysrgb&w=1280&h=640&fit=crop",
         "preview_template": "https://www.pexels.com/photo/{slug}-{id}/",
         "seasons": by_season,
     }

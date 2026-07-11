@@ -142,7 +142,7 @@ def render_preview(*, inline_assets: bool = True) -> str:
     if header_url.startswith("cid:"):
         header_url = (
             "https://images.pexels.com/photos/691668/pexels-photo-691668.jpeg"
-            "?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop"
+            "?auto=compress&cs=tinysrgb&w=1280&h=640&fit=crop"
         )
 
     from src.renderer.render import render_email

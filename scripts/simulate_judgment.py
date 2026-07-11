@@ -177,7 +177,7 @@ def main():
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids={},
         header_image_url="https://images.pexels.com/photos/691668/pexels-photo-691668.jpeg"
-                         "?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop",
+                         "?auto=compress&cs=tinysrgb&w=1280&h=640&fit=crop",
         holdings_intro=None,
         sentiment=mock_sentiment,
         sentiment_verdict=None,
