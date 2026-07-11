@@ -23,6 +23,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 # ─────────────────────────  路径与 env  ───────────────────────────
@@ -145,6 +146,26 @@ def main() -> int:
         "你须弯腰才能拾起。市场如海,此刻退潮显露的礁石,正是耐心者早已凝视的方向。"
     )
 
+    # 情绪温度计 mock：专门用于验证 0-100 仪表、动态档位色和指标表。
+    # 67.5 落在“偏热”档，因此分数徽章和右侧档位文字都应使用偏热色。
+    sentiment = SimpleNamespace(metrics=[
+        SimpleNamespace(name="CNN Fear & Greed", unit="", stale_from=None, error=None,
+                        current=67.5, prior=64.0, delta=3.5),
+        SimpleNamespace(name="VIX", unit="", stale_from=None, error=None,
+                        current=16.8, prior=17.4, delta=-0.6),
+        SimpleNamespace(name="高收益债利差", unit="%", stale_from=None, error=None,
+                        current=3.1, prior=3.2, delta=-0.1),
+        SimpleNamespace(name="Shiller PE", unit="", stale_from=None, error=None,
+                        current=34.2, prior=34.1, delta=0.1),
+        SimpleNamespace(name="DXY", unit="", stale_from=None, error=None,
+                        current=99.4, prior=99.8, delta=-0.4),
+    ])
+    sentiment_verdict = {
+        "verdict": "今日情绪 · 偏热",
+        "argument": "风险偏好温和回升，VIX 回落且高收益债利差收窄。估值仍不便宜，暂缓追高，守住现金仓位。",
+        "score": 67.5,
+    }
+
     logger.info("render email")
     html = render_email(
         signals=signals,
@@ -152,7 +173,9 @@ def main() -> int:
         logo_cids=logo_cids,
         header_image_url=header["url"],   # cid:header_image
         holdings_intro=holdings_intro,
-        # 故意不传 sentiment / news / 13F:模板会优雅省略,只渲染头图 + 持仓信号 + footer
+        sentiment=sentiment,
+        sentiment_verdict=sentiment_verdict,
+        # 不传 news / 13F:模板会优雅省略，只渲染头图、持仓信号、情绪温度计和页脚。
     )
 
     # 调试:先把 HTML 写到 /tmp 备查
@@ -160,7 +183,7 @@ def main() -> int:
     debug_path.write_text(html, encoding="utf-8")
     logger.info("debug html bytes=%d path=%s", len(html.encode("utf-8")), debug_path)
 
-    subject = f"【完整测试】持仓表 + 头图 · {now_bj.strftime('%Y-%m-%d %H:%M')}"
+    subject = f"【样式预览】新版情绪温度计 · {now_bj.strftime('%Y-%m-%d %H:%M')}"
     logger.info("send to %s subject=%r inline_images=%d", recipient, subject, len(inline_images))
     send_html_email(
         sender=sender,

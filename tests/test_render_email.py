@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from src.collectors.buffett_13f import BuffettBundle, Filing13F
 from src.collectors.figures import FigureBundle
 from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
 from src.processors.thesis.renderer import JudgmentSection
-from src.renderer.render import render_email
+from src.renderer.render import _build_sentiment_gauge, render_email
 
 
 def _one_figure_bundle() -> FigureBundle:
@@ -89,6 +90,75 @@ def test_render_email_no_logo_falls_back_to_text_box() -> None:
         logo_cids={},  # 不传 logo
     )
     assert s.holding.ticker[:3] in html
+
+
+def test_render_email_renders_daily_sentiment_gauge() -> None:
+    """综合情绪有 score 时，渲染每天随分数变化的邮件原生仪表。"""
+    sentiment = SimpleNamespace(metrics=[SimpleNamespace(
+        name="CNN Fear & Greed", unit="", stale_from=None, error=None,
+        current=67.5, prior=64.0, delta=3.5,
+    )])
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        sentiment=sentiment,
+        sentiment_verdict={
+            "verdict": "今日情绪 · 偏热",
+            "argument": "风险偏好有所回升。",
+            "score": 67.5,
+        },
+    )
+
+    assert 'data-sentiment-gauge="true"' in html
+    assert ">67.5<" in html
+    assert "今日情绪" not in html
+    assert "background-color:#A96D4F" in html
+    assert "background-color:#D97757" not in html
+    assert "color:#FFFFFF" in html
+    assert 'data-sentiment-label="true"' in html
+    assert "font-size:14px; color:#A96D4F; letter-spacing" in html
+    assert "极度恐慌" in html
+    assert "极度贪婪" in html
+    assert html.count("▼") == 1
+
+
+def test_render_email_omits_gauge_when_score_is_missing() -> None:
+    """LLM 结论仍可显示；旧数据没有 score 时不渲染空仪表。"""
+    sentiment = SimpleNamespace(metrics=[SimpleNamespace(
+        name="VIX", unit="", stale_from=None, error=None,
+        current=18.0, prior=17.0, delta=1.0,
+    )])
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        sentiment=sentiment,
+        sentiment_verdict={"verdict": "今日情绪 · 中性", "argument": "方向仍待确认。"},
+    )
+
+    assert "今日情绪" not in html
+    assert 'data-sentiment-gauge="true"' not in html
+
+
+def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
+    """分数始终为白字，徽章底色由当天 0-100 分数所在色带决定。"""
+    cases = [
+        (10.0, "极度恐慌", "#4F6870"),
+        (30.0, "偏冷", "#7C8E91"),
+        (50.0, "中性", "#B8AD94"),
+        (67.5, "偏热", "#A96D4F"),
+        (90.0, "极度贪婪", "#7A1F2B"),
+    ]
+    for score, label, expected_color in cases:
+        gauge = _build_sentiment_gauge({"score": score, "verdict": f"今日情绪 · {label}"})
+        assert gauge is not None
+        assert gauge["label"] == label
+        assert gauge["active_color"] == expected_color
+
+    neutral = _build_sentiment_gauge({"score": 50.0, "verdict": "今日情绪 · 中性"})
+    assert neutral is not None
+    assert len(neutral["pointer_cells"]) == 41
+    assert neutral["pointer_cells"][20]["active"] is True
+    assert sum(cell["active"] for cell in neutral["pointer_cells"]) == 1
 
 
 # ─── 13F 区块重定位测试 ──────────────────────────────────────────────

@@ -294,10 +294,53 @@
         {% if sentiment_verdict %}
         <tr>
           <td style="padding:24px 24px 0 24px;">
-            <div style="font-family:{{ serif_display }}; font-size:18px; color:{{ color_ink }}; letter-spacing:0.06em; line-height:1.4;">
-              {{ sentiment_verdict.verdict | cjk_spaced }}
-            </div>
-            <div style="margin-top:12px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
+            {# 邮件原生静态仪表：每天随 0-100 综合分数改变指针位置。
+               使用 table 而非 CSS position / SVG，兼容 QQ、Outlook 与移动端。 #}
+            {% if sentiment_gauge %}
+            <table data-sentiment-gauge="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:0; border-collapse:collapse; background-color:{{ color_paper }};">
+              <tr>
+                <td style="padding:18px 18px 14px 18px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td valign="bottom" style="font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1;">
+                        <span style="display:inline-block; padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; border-radius:6px; white-space:nowrap;">
+                          <span style="font-size:30px; line-height:1; color:#FFFFFF; font-weight:500; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ sentiment_gauge.score_display }}</span>
+                          <span style="font-family:{{ serif_body }}; font-size:11px; line-height:1; color:#FCEDE7; margin-left:4px; letter-spacing:0.08em;">/ 100</span>
+                        </span>
+                      </td>
+                      <td data-sentiment-label="true" align="right" valign="bottom" style="font-family:{{ serif_display }}; font-size:14px; color:{{ sentiment_gauge.active_color }}; letter-spacing:0.14em; padding-bottom:2px; white-space:nowrap;">{{ sentiment_gauge.label }}</td>
+                    </tr>
+                  </table>
+
+                  {# 指针行：41 个等宽位置对应每 2.5 分；50 分恰好落在正中央。 #}
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px; table-layout:fixed; border-collapse:collapse;">
+                    <tr>
+                      {% for cell in sentiment_gauge.pointer_cells %}
+                      <td height="12" align="center" valign="bottom" style="height:12px; padding:0; font-family:Arial,sans-serif; font-size:10px; line-height:10px; color:{{ color_ink }};">{% if cell.active %}▼{% else %}&nbsp;{% endif %}</td>
+                      {% endfor %}
+                    </tr>
+                  </table>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
+                    <tr>
+                      {% for cell in sentiment_gauge.cells %}
+                      <td width="5%" height="9" style="width:5%; height:9px; padding:0; line-height:9px; font-size:0; background-color:{{ cell.color }}; border-right:{% if not loop.last %}2px solid {{ color_paper }}{% else %}0{% endif %};">&nbsp;</td>
+                      {% endfor %}
+                    </tr>
+                  </table>
+
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px; table-layout:fixed; border-collapse:collapse;">
+                    <tr>
+                      {% for segment in sentiment_gauge.segments %}
+                      <td width="20%" align="{% if loop.first %}left{% elif loop.last %}right{% else %}center{% endif %}" style="width:20%; padding:0; font-family:{{ serif_body }}; font-size:9px; line-height:1.4; color:{{ color_muted }}; white-space:nowrap;">{{ segment.label }}</td>
+                      {% endfor %}
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            {% endif %}
+
+            <div style="margin-top:18px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
               {{ sentiment_verdict.argument | cjk_spaced }}
             </div>
           </td>

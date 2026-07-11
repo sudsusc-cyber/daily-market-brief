@@ -28,6 +28,15 @@ from src.utils.dates import to_beijing
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
+_SENTIMENT_GAUGE_SEGMENTS = (
+    # (档位, 色带颜色, 徽章/档位文字颜色)。
+    ("极度恐慌", "#4F6870", "#4F6870"),
+    ("偏冷", "#7C8E91", "#7C8E91"),
+    ("中性", "#B8AD94", "#B8AD94"),
+    ("偏热", "#A96D4F", "#A96D4F"),
+    ("极度贪婪", "#7A1F2B", "#7A1F2B"),
+)
+
 
 def _finite_number(value: float | None) -> float | None:
     if value is None:
@@ -37,6 +46,53 @@ def _finite_number(value: float | None) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
+    """把 0-100 情绪分数转换成邮件兼容的 20 格静态仪表。
+
+    不使用 CSS 定位或远程图片：表格单元格在 QQ、Outlook 和移动端邮件
+    客户端中的表现更稳定。20 格对应每格 5 分，正文仍显示精确分数。
+    """
+    if not isinstance(verdict, dict):
+        return None
+    score = _finite_number(verdict.get("score"))
+    if score is None:
+        return None
+
+    score = max(0.0, min(100.0, score))
+    active_index = min(19, int(score / 5.0))
+    active_segment_index = min(4, active_index // 4)
+    # 指针独立使用 41 个等宽位置（每 2.5 分一档）。奇数列数量保证
+    # 50 分对应第 21 列，其中心恰好位于整条色带的 50%。
+    pointer_index = min(40, max(0, round(score / 2.5)))
+    raw_label = str(verdict.get("verdict") or "").strip()
+    label = raw_label.rsplit("·", 1)[-1].strip() if raw_label else ""
+
+    cells = []
+    for index in range(20):
+        segment_index = min(4, index // 4)
+        cells.append({
+            "color": _SENTIMENT_GAUGE_SEGMENTS[segment_index][1],
+            "active": index == active_index,
+        })
+
+    score_display = f"{score:.1f}".rstrip("0").rstrip(".")
+    return {
+        "score": score,
+        "score_display": score_display,
+        "label": label,
+        "active_color": _SENTIMENT_GAUGE_SEGMENTS[active_segment_index][2],
+        "pointer_cells": [
+            {"active": index == pointer_index}
+            for index in range(41)
+        ],
+        "cells": cells,
+        "segments": [
+            {"label": segment_label, "color": color}
+            for segment_label, color, _accent_color in _SENTIMENT_GAUGE_SEGMENTS
+        ],
+    }
 
 
 def _filter_price(value: float | None) -> str:
@@ -197,6 +253,7 @@ def render_email(
     """
     env = _build_env()
     template = env.get_template("email.html.j2")
+    sentiment_gauge = _build_sentiment_gauge(sentiment_verdict)
     return template.render(
         signals=signals,
         generated_at=generated_at,
@@ -205,6 +262,7 @@ def render_email(
         holdings_intro=holdings_intro,
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
+        sentiment_gauge=sentiment_gauge,
         company_news=company_news,
         company_news_summary=company_news_summary,
         figures=figures,
