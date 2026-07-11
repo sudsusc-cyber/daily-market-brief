@@ -154,6 +154,12 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
         assert gauge["label"] == label
         assert gauge["active_color"] == expected_color
 
+    neutral = _build_sentiment_gauge({"score": 50.0, "verdict": "今日情绪 · 中性"})
+    assert neutral is not None
+    assert len(neutral["pointer_cells"]) == 41
+    assert neutral["pointer_cells"][20]["active"] is True
+    assert sum(cell["active"] for cell in neutral["pointer_cells"]) == 1
+
 
 # ─── 13F 区块重定位测试 ──────────────────────────────────────────────
 

@@ -29,11 +29,12 @@ from src.utils.dates import to_beijing
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 _SENTIMENT_GAUGE_SEGMENTS = (
-    ("极度恐慌", "#4F6870"),
-    ("偏冷", "#7C8E91"),
-    ("中性", "#B8AD94"),
-    ("偏热", "#A96D4F"),
-    ("极度贪婪", "#7A1F2B"),
+    # (档位, 色带颜色, 徽章/档位文字颜色)。
+    ("极度恐慌", "#4F6870", "#4F6870"),
+    ("偏冷", "#7C8E91", "#7C8E91"),
+    ("中性", "#B8AD94", "#B8AD94"),
+    ("偏热", "#A96D4F", "#A96D4F"),
+    ("极度贪婪", "#7A1F2B", "#7A1F2B"),
 )
 
 
@@ -62,6 +63,9 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
     score = max(0.0, min(100.0, score))
     active_index = min(19, int(score / 5.0))
     active_segment_index = min(4, active_index // 4)
+    # 指针独立使用 41 个等宽位置（每 2.5 分一档）。奇数列数量保证
+    # 50 分对应第 21 列，其中心恰好位于整条色带的 50%。
+    pointer_index = min(40, max(0, round(score / 2.5)))
     raw_label = str(verdict.get("verdict") or "").strip()
     label = raw_label.rsplit("·", 1)[-1].strip() if raw_label else ""
 
@@ -78,11 +82,15 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
         "score": score,
         "score_display": score_display,
         "label": label,
-        "active_color": _SENTIMENT_GAUGE_SEGMENTS[active_segment_index][1],
+        "active_color": _SENTIMENT_GAUGE_SEGMENTS[active_segment_index][2],
+        "pointer_cells": [
+            {"active": index == pointer_index}
+            for index in range(41)
+        ],
         "cells": cells,
         "segments": [
             {"label": segment_label, "color": color}
-            for segment_label, color in _SENTIMENT_GAUGE_SEGMENTS
+            for segment_label, color, _accent_color in _SENTIMENT_GAUGE_SEGMENTS
         ],
     }
 

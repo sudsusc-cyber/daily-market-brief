@@ -150,20 +150,20 @@ def render_preview() -> str:
 
     mock_sentiment = SimpleNamespace(metrics=[
         SimpleNamespace(name="CNN Fear & Greed", unit="", stale_from=None, error=None,
-                        current=67.5, prior=64.0, delta=3.5),
+                        current=50.0, prior=48.0, delta=2.0),
         SimpleNamespace(name="VIX", unit="", stale_from=None, error=None,
-                        current=16.8, prior=17.4, delta=-0.6),
+                        current=20.0, prior=20.4, delta=-0.4),
         SimpleNamespace(name="高收益债利差", unit="%", stale_from=None, error=None,
-                        current=3.1, prior=3.2, delta=-0.1),
+                        current=4.0, prior=4.1, delta=-0.1),
         SimpleNamespace(name="Shiller PE", unit="", stale_from=None, error=None,
-                        current=34.2, prior=34.1, delta=0.1),
+                        current=25.0, prior=25.0, delta=0.0),
         SimpleNamespace(name="DXY", unit="", stale_from=None, error=None,
-                        current=99.4, prior=99.8, delta=-0.4),
+                        current=100.0, prior=100.2, delta=-0.2),
     ])
     mock_sentiment_verdict = {
-        "verdict": "今日情绪 · 偏热",
-        "argument": "风险偏好温和回升，VIX 回落且高收益债利差收窄。估值仍不便宜，暂缓追高，守住现金仓位。",
-        "score": 67.5,
+        "verdict": "今日情绪 · 中性",
+        "argument": "风险偏好处于均衡区间，波动率与信用利差暂无明显极端信号。保持既定节奏，继续观察方向变化。",
+        "score": 50.0,
     }
 
     # mock 昨日动态:用 news_summarizer 的真实渲染逻辑跑一段

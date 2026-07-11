@@ -312,13 +312,15 @@
                     </tr>
                   </table>
 
-                  {# 指针行：20 格对应 5 分，精确值由上方数字保留。 #}
+                  {# 指针行：41 个等宽位置对应每 2.5 分；50 分恰好落在正中央。 #}
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px; table-layout:fixed; border-collapse:collapse;">
                     <tr>
-                      {% for cell in sentiment_gauge.cells %}
-                      <td width="5%" height="12" align="center" valign="bottom" style="width:5%; height:12px; padding:0; font-family:Arial,sans-serif; font-size:10px; line-height:10px; color:{{ color_ink }};">{% if cell.active %}▼{% else %}&nbsp;{% endif %}</td>
+                      {% for cell in sentiment_gauge.pointer_cells %}
+                      <td height="12" align="center" valign="bottom" style="height:12px; padding:0; font-family:Arial,sans-serif; font-size:10px; line-height:10px; color:{{ color_ink }};">{% if cell.active %}▼{% else %}&nbsp;{% endif %}</td>
                       {% endfor %}
                     </tr>
+                  </table>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                     <tr>
                       {% for cell in sentiment_gauge.cells %}
                       <td width="5%" height="9" style="width:5%; height:9px; padding:0; line-height:9px; font-size:0; background-color:{{ cell.color }}; border-right:{% if not loop.last %}2px solid {{ color_paper }}{% else %}0{% endif %};">&nbsp;</td>
