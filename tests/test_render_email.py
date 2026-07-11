@@ -120,6 +120,10 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert "background-color:#A96D4F" in html
     assert "background-color:#D97757" not in html
     assert "color:#FFFFFF" in html
+    assert 'data-sentiment-score-bubble="true"' in html
+    assert 'data-sentiment-score-tail="true"' in html
+    assert "&#9660;" in html
+    assert 'color:#A96D4F;">&#9660;' in html
     assert 'data-sentiment-label="true"' in html
     assert "font-size:14px; color:#A96D4F; letter-spacing" in html
     assert "极度恐慌" in html
