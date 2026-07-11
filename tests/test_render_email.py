@@ -161,6 +161,30 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
     assert sum(cell["active"] for cell in neutral["pointer_cells"]) == 1
 
 
+def test_sentiment_gauge_uses_judge_thresholds_at_boundaries() -> None:
+    """颜色边界必须与 sentiment_judge 的 25/40/60/75 档位完全一致。"""
+    cases = [
+        (20.0, "极度恐慌", "#4F6870"),
+        (24.9, "极度恐慌", "#4F6870"),
+        (25.0, "偏冷", "#7C8E91"),
+        (39.9, "偏冷", "#7C8E91"),
+        (40.0, "中性", "#B8AD94"),
+        (59.9, "中性", "#B8AD94"),
+        (60.0, "偏热", "#A96D4F"),
+        (74.9, "偏热", "#A96D4F"),
+        (75.0, "极度贪婪", "#7A1F2B"),
+        (79.9, "极度贪婪", "#7A1F2B"),
+    ]
+    for score, label, color in cases:
+        gauge = _build_sentiment_gauge({"score": score, "verdict": label})
+        assert gauge is not None
+        assert gauge["active_color"] == color
+
+    gauge = _build_sentiment_gauge({"score": 50.0, "verdict": "中性"})
+    assert gauge is not None
+    assert [segment["width"] for segment in gauge["segments"]] == [25, 15, 20, 15, 25]
+
+
 # ─── 13F 区块重定位测试 ──────────────────────────────────────────────
 
 _MOCK_JUDGMENT = JudgmentSection(

@@ -1,11 +1,11 @@
 """
-监控脚本:检查今天 daily.yml 是否有"成功 OR 正在跑"的 run。
-都没有 → 发告警邮件给收件人。
+监控脚本:检查今天 daily.yml 是否有明确的 SMTP 送达确认步骤。
+没有送达确认 → 发告警邮件给收件人。
 
 被 .github/workflows/monitor.yml 调用。
 
-为何也算 in_progress / queued:监控可能在 daily.yml 还没跑完时执行(GH 延迟
-极端情况),不应误报。
+监控在主发送窗口约两小时后运行；届时仍处于 in_progress / queued 且没有送达确认，
+也属于需要告警的异常状态。
 
 为何用 GITHUB_TOKEN 而非 PAT:监控自身用 GH Actions 内置 token,与外部 PAT
 解耦,即使 PAT 过期监控仍工作。
@@ -30,8 +30,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.sender.smtp_sender import send_html_email
-from src.settings import load_settings
+from src.settings import load_email_settings
 from src.utils.dates import BEIJING
+from src.utils.holidays import should_send_today
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +52,41 @@ def _bjt_date_of_iso(iso_str: str) -> str | None:
     return dt.astimezone(BEIJING).date().isoformat()
 
 
+def _github_json(url: str, token: str) -> dict:
+    """调用 GitHub REST API 并返回 JSON。"""
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.load(resp)
+
+
+def _run_has_delivery_confirmation(*, repo: str, token: str, run_id: int) -> bool:
+    """Jobs API 中存在成功的 Confirm email delivery 步骤才算实际送达。"""
+    url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
+    data = _github_json(url, token)
+    return any(
+        step.get("name") == "Confirm email delivery" and step.get("conclusion") == "success"
+        for job in (data.get("jobs", []) or [])
+        for step in (job.get("steps", []) or [])
+    )
+
+
 def check_today_status() -> tuple[bool, str]:
     """
     返回 (今日 OK?, 描述)。
-    OK = 今天(BJT)有 daily.yml run 处于 success / in_progress / queued 之一。
+    OK = 今日无需发送（美股休市），或 daily.yml 有明确的邮件送达确认步骤。
 
     必须用 BJT date 比对(与 idempotency.already_sent_today 同口径):
       cron 在 BJT 06:30 触发 = UTC 22:30(前一日)。monitor 在 BJT 08:30
       = UTC 00:30 检查时,daily 的 created_at 是前一日 UTC string。用 UTC
       比对会判"今日无 run"误报告警。
     """
+    send_expected, market_reason = should_send_today(datetime.now(BEIJING).date())
+    if not send_expected:
+        return True, f"今日无需发送: {market_reason}"
+
     token = os.environ.get("GH_TOKEN", "")
     repo = os.environ.get("GH_REPO", "")
     if not token or not repo:
@@ -71,14 +97,8 @@ def check_today_status() -> tuple[bool, str]:
         f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
         f"?per_page=30"
     )
-    req = urllib.request.Request(url)
-    req.add_header("Authorization", f"Bearer {token}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.load(resp)
+        data = _github_json(url, token)
     except Exception as exc:  # noqa: BLE001
         return False, f"GH API 调用失败: {exc!r}"
 
@@ -88,21 +108,31 @@ def check_today_status() -> tuple[bool, str]:
     if not today_runs:
         return False, f"今日({today} BJT)无 daily.yml run 记录"
 
-    for r in today_runs:
-        if r.get("conclusion") == "success":
-            return True, (
-                f"今日已成功 run_id={r.get('id')} "
-                f"created_at={r.get('created_at')}"
-            )
-        if r.get("status") in ("queued", "in_progress"):
-            return True, (
-                f"今日有 run 进行中 run_id={r.get('id')} "
-                f"status={r.get('status')}"
-            )
+    job_lookup_errors: list[str] = []
+    for run in today_runs:
+        run_id = run.get("id")
+        if not isinstance(run_id, int):
+            continue
+        try:
+            if _run_has_delivery_confirmation(repo=repo, token=token, run_id=run_id):
+                return True, (
+                    f"今日邮件已确认送达 run_id={run_id} "
+                    f"created_at={run.get('created_at')}"
+                )
+        except Exception as exc:  # noqa: BLE001
+            job_lookup_errors.append(f"run_id={run_id}: {type(exc).__name__}: {exc}")
 
-    # 今日有 run,但全是 failure / cancelled
-    failed_ids = [r.get("id") for r in today_runs]
-    return False, f"今日所有 run 都失败/取消: ids={failed_ids}"
+    if job_lookup_errors:
+        return False, f"无法核验邮件送达步骤: {'; '.join(job_lookup_errors)}"
+
+    active_ids = [
+        r.get("id") for r in today_runs if r.get("status") in ("queued", "in_progress")
+    ]
+    if active_ids:
+        return False, f"今日 run 仍未完成且无送达确认: ids={active_ids}"
+
+    run_ids = [r.get("id") for r in today_runs]
+    return False, f"今日 run 均无邮件送达确认: ids={run_ids}"
 
 
 def send_alert(reason: str) -> None:
@@ -113,7 +143,7 @@ def send_alert(reason: str) -> None:
     """
     import html as _html
 
-    settings = load_settings()
+    settings = load_email_settings()
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
     repo = os.environ.get("GH_REPO", "")
     actions_url = (
@@ -176,22 +206,9 @@ def main() -> int:
         return 0
 
     logger.warning("monitor.alert reason=%s", reason)
-    # send_alert 失败(SMTP 授权码过期 / 邮箱被封 / 网络抖)时,这里若抛会让 monitor.yml
-    # 的 run 报 failure。GH 默认只对 repo owner 发"workflow 失败"邮件,而本系统的
-    # 真实收件人不一定是 owner — 用户可能完全不知道告警没送出。包 try-except 让
-    # monitor 始终 exit 0,告警失败的痕迹保留在 stderr / GH Actions 日志,owner 仍能
-    # 通过 Actions 列表里的 stderr 行看到。
-    try:
-        send_alert(reason)
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "monitor.alert_send_failed exc_type=%s msg=%.200s reason=%s",
-            type(exc).__name__, str(exc), reason,
-        )
-        # 关键事件落地一份本地痕迹,即便后续 GH cache 不上传也能在 actions 日志里看到
-        return 0
+    # 发送失败必须向上抛，让 GitHub Actions 以 failure 作为独立备用告警通道。
+    send_alert(reason)
     logger.info("monitor.alert_sent")
-    # 监控触发告警时,本 run 仍以 success 退出(避免 GH 重复告警)
     return 0
 
 

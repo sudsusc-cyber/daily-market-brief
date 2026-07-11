@@ -2,6 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
+.delivery-receipt.json
 
 # C extensions
 *.so
@@ -247,4 +248,3 @@ sharp-meninsky-e43ea3/
 
 # Claude Code session instructions (not project source)
 CLAUDE.md
-

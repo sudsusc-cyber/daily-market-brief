@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.settings import Settings
+from src.settings import EmailSettings, Settings
 
 
 def _env(monkeypatch, **overrides) -> None:
@@ -66,3 +66,10 @@ def test_single_recipient_passes(monkeypatch) -> None:
     _env(monkeypatch, email_recipient="only@example.com")
     s = Settings()
     assert s.email_recipient == "only@example.com"
+
+
+def test_email_settings_does_not_require_data_api_keys(monkeypatch) -> None:
+    _env(monkeypatch, finnhub_api_key=None, fred_api_key=None, deepseek_api_key=None)
+    settings = EmailSettings()
+    assert settings.qq_email_address == "test@qq.com"
+    assert settings.email_recipient == "a@example.com,b@example.com"

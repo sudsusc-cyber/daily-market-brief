@@ -11,8 +11,8 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
-    """全部环境变量集中读取。命名与 GitHub Secrets / .env 大小写不敏感对应。"""
+class EmailSettings(BaseSettings):
+    """仅邮件发送所需配置，供主流程与独立监控复用。"""
 
     # M2:邮件发送
     qq_email_address: str = Field(..., description="QQ 邮箱地址,作为 SMTP 发件方")
@@ -37,6 +37,17 @@ class Settings(BaseSettings):
             raise ValueError(f"{info.field_name} 必须配置非空值")
         return v
 
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+
+class Settings(EmailSettings):
+    """主流程全部配置。命名与 GitHub Secrets / .env 大小写不敏感对应。"""
+
     # M3:数据采集层
     finnhub_api_key: str = Field(..., description="Finnhub 免费 API Key,用于持仓公司新闻")
     fred_api_key: str = Field(..., description="FRED 免费 API Key,用于宏观情绪指标")
@@ -55,3 +66,8 @@ class Settings(BaseSettings):
 def load_settings() -> Settings:
     """从环境读取并构造 Settings;失败将抛 ValidationError,启动即可见错。"""
     return Settings()  # type: ignore[call-arg]
+
+
+def load_email_settings() -> EmailSettings:
+    """只读取告警邮件需要的环境变量，不要求行情或 LLM API 密钥。"""
+    return EmailSettings()  # type: ignore[call-arg]

@@ -57,6 +57,7 @@ from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
 from src.utils.dates import now_beijing
+from src.utils.delivery import clear_delivery_receipt, write_delivery_receipt
 from src.utils.holidays import should_send_today
 from src.utils.idempotency import already_sent_today
 from src.utils.secrets import mask_emails
@@ -151,6 +152,7 @@ def main() -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
+    clear_delivery_receipt()
     settings = load_settings()
     now_bj = now_beijing()
 
@@ -386,6 +388,7 @@ def main() -> int:
         html_body=html,
         inline_images=inline_images,
     )
+    write_delivery_receipt(sent_at=now_bj, run_id=os.environ.get("GH_RUN_ID"))
 
     # 邮件发送成功后才提交 figures 7 天去重 state — 失败时下次 run
     # 仍能重新评估同批候选,避免"LLM 失败 + state 已写"导致永久遗漏。

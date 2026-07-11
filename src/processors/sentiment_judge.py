@@ -84,17 +84,17 @@ def _score_metric(name: str, value: float) -> float | None:
     return None
 
 
-_VERDICT_THRESHOLDS = [
+VERDICT_THRESHOLDS = (
     (25.0, "极度恐慌"),
     (40.0, "偏冷"),
     (60.0, "中性"),
     (75.0, "偏热"),
     (100.1, "极度贪婪"),
-]
+)
 
 
 def _verdict_from_score(score: float) -> str:
-    for upper, label in _VERDICT_THRESHOLDS:
+    for upper, label in VERDICT_THRESHOLDS:
         if score < upper:
             return label
     return "极度贪婪"

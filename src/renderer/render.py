@@ -23,6 +23,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.collectors.stocks import StockSignal
 from src.processors.html_safe import is_safe_url
+from src.processors.sentiment_judge import VERDICT_THRESHOLDS
 from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 
@@ -36,6 +37,11 @@ _SENTIMENT_GAUGE_SEGMENTS = (
     ("偏热", "#A96D4F", "#A96D4F"),
     ("极度贪婪", "#7A1F2B", "#7A1F2B"),
 )
+
+_SENTIMENT_COLOR_BY_LABEL = {
+    label: (bar_color, accent_color)
+    for label, bar_color, accent_color in _SENTIMENT_GAUGE_SEGMENTS
+}
 
 
 def _finite_number(value: float | None) -> float | None:
@@ -62,7 +68,9 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
 
     score = max(0.0, min(100.0, score))
     active_index = min(19, int(score / 5.0))
-    active_segment_index = min(4, active_index // 4)
+    active_label = next(
+        label for upper, label in VERDICT_THRESHOLDS if score < upper
+    )
     # 指针独立使用 41 个等宽位置（每 2.5 分一档）。奇数列数量保证
     # 50 分对应第 21 列，其中心恰好位于整条色带的 50%。
     pointer_index = min(40, max(0, round(score / 2.5)))
@@ -71,9 +79,12 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
 
     cells = []
     for index in range(20):
-        segment_index = min(4, index // 4)
+        cell_score = index * 5.0
+        cell_label = next(
+            label for upper, label in VERDICT_THRESHOLDS if cell_score < upper
+        )
         cells.append({
-            "color": _SENTIMENT_GAUGE_SEGMENTS[segment_index][1],
+            "color": _SENTIMENT_COLOR_BY_LABEL[cell_label][0],
             "active": index == active_index,
         })
 
@@ -82,15 +93,23 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
         "score": score,
         "score_display": score_display,
         "label": label,
-        "active_color": _SENTIMENT_GAUGE_SEGMENTS[active_segment_index][2],
+        "active_color": _SENTIMENT_COLOR_BY_LABEL[active_label][1],
         "pointer_cells": [
             {"active": index == pointer_index}
             for index in range(41)
         ],
         "cells": cells,
         "segments": [
-            {"label": segment_label, "color": color}
-            for segment_label, color, _accent_color in _SENTIMENT_GAUGE_SEGMENTS
+            {
+                "label": segment_label,
+                "color": color,
+                "width": min(100.0, upper) - lower,
+            }
+            for (lower, (upper, segment_label)), (_, color, _accent_color) in zip(
+                zip((0.0, 25.0, 40.0, 60.0, 75.0), VERDICT_THRESHOLDS, strict=True),
+                _SENTIMENT_GAUGE_SEGMENTS,
+                strict=True,
+            )
         ],
     }
 
