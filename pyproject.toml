@@ -44,7 +44,7 @@ dev = [
     "ruff>=0.6.0",
     "black>=24.0.0",
     "pytest>=9.0.3",
-    "pillow>=12.2.0",  # tests/test_header_image.py 验证图像写入需要
+    "pillow>=12.3.0",  # tests/test_header_image.py 验证图像写入需要
 ]
 
 [tool.hatch.build.targets.wheel]
