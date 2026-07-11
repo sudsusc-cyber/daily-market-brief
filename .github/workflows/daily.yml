@@ -47,6 +47,7 @@ jobs:
       GH_REPO:            ${{ github.repository }}
       GH_RUN_ID:          ${{ github.run_id }}
       GH_EVENT_NAME:      ${{ github.event_name }}
+      DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
 
     steps:
       - uses: actions/checkout@v5
@@ -54,6 +55,7 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
         with:
+          version: "0.11.28"
           enable-cache: true
 
       - name: Install dependencies
@@ -79,6 +81,11 @@ jobs:
 
       - name: Send daily market brief
         run: uv run python src/main.py
+
+      # 只有 SMTP 成功后 main.py 才创建凭证；monitor.yml 通过 Jobs API 读取此步骤。
+      - name: Confirm email delivery
+        if: ${{ hashFiles('.delivery-receipt.json') != '' }}
+        run: test -s .delivery-receipt.json
 
       # 仅发送成功时保存 state,避免失败 run 也记录"已处理"导致未送达内容被跳过。
       # 注意:actions/cache/save 的 key 每天唯一,下一次 restore 回退到最近一次成功的 state。

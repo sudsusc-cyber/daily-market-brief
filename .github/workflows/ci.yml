@@ -20,6 +20,7 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
         with:
+          version: "0.11.28"
           enable-cache: true
 
       - name: Install dependencies (含 dev group:ruff/black/pytest/pillow)
@@ -40,6 +41,7 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
         with:
+          version: "0.11.28"
           enable-cache: true
           python-version: "3.11"
 

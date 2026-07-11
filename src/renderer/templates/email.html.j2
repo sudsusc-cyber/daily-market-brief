@@ -331,7 +331,7 @@
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px; table-layout:fixed; border-collapse:collapse;">
                     <tr>
                       {% for segment in sentiment_gauge.segments %}
-                      <td width="20%" align="{% if loop.first %}left{% elif loop.last %}right{% else %}center{% endif %}" style="width:20%; padding:0; font-family:{{ serif_body }}; font-size:9px; line-height:1.4; color:{{ color_muted }}; white-space:nowrap;">{{ segment.label }}</td>
+                      <td width="{{ segment.width }}%" align="{% if loop.first %}left{% elif loop.last %}right{% else %}center{% endif %}" style="width:{{ segment.width }}%; padding:0; font-family:{{ serif_body }}; font-size:9px; line-height:1.4; color:{{ color_muted }}; white-space:nowrap;">{{ segment.label }}</td>
                       {% endfor %}
                     </tr>
                   </table>

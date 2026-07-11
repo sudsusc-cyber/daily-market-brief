@@ -97,7 +97,10 @@ def is_us_market_open(d: date) -> bool:
     """美股该日是否开盘:工作日 + 非 NYSE 节假日。"""
     if d.weekday() >= 5:  # 周六(5) / 周日(6)
         return False
-    return d not in compute_us_holidays(d.year)
+    # 次年元旦若落在周六，观察日会前移到本年 12 月 31 日；只计算 d.year
+    # 会漏掉这个跨年休市日（如 2021-12-31、2027-12-31）。
+    holidays = compute_us_holidays(d.year) | compute_us_holidays(d.year + 1)
+    return d not in holidays
 
 
 def should_send_today(today_bj: date) -> tuple[bool, str]:

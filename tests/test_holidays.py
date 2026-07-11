@@ -39,6 +39,12 @@ class TestIsUsMarketOpen:
         # 11/27 周五是半日交易,M6 仍当作开盘日(只跳全休)
         assert is_us_market_open(date(2026, 11, 27)) is True
 
+    def test_next_year_new_year_observed_on_current_year_december_31(self) -> None:
+        """次年元旦为周六时，NYSE 在本年最后一个周五休市。"""
+        assert is_us_market_open(date(2021, 12, 31)) is False
+        assert is_us_market_open(date(2027, 12, 31)) is False
+        assert is_us_market_open(date(2032, 12, 31)) is False
+
 
 class TestShouldSendToday:
     def test_send_after_normal_trading_day(self) -> None:
