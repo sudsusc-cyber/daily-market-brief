@@ -185,7 +185,7 @@ def _valid_item(**overrides):
         "source_section": "company_news",
         "source_name": "Reuters",
         "url": None,
-        "related_tickers": ["TEST"],
+        "related_tickers": ["MSFT"],
         "theme": "test-theme",
         "direction": "support",
         "strength": 4,
@@ -213,6 +213,29 @@ def test_strength_below_3_filtered():
 def test_strength_3_accepted():
     result = validate_and_build([_valid_item(strength=3)], "2026-05-04")
     assert len(result) == 1
+
+
+def test_strength_above_5_filtered():
+    assert validate_and_build([_valid_item(strength=99)], "2026-05-04") == []
+
+
+def test_empty_theme_filtered():
+    assert validate_and_build([_valid_item(theme="")], "2026-05-04") == []
+
+
+def test_unknown_source_section_filtered():
+    item = _valid_item(source_section="invented_authority")
+    assert validate_and_build([item], "2026-05-04") == []
+
+
+def test_unknown_tickers_filtered():
+    item = _valid_item(related_tickers=["FAKE"])
+    assert validate_and_build([item], "2026-05-04") == []
+
+
+def test_unsafe_url_filtered():
+    item = _valid_item(url="javascript:alert(1)")
+    assert validate_and_build([item], "2026-05-04") == []
 
 
 def test_missing_required_field_filtered():

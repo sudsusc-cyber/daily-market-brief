@@ -48,7 +48,7 @@
 {%- set color_ink = '#1A1A1A' -%}
 {%- set color_ink_soft = '#2B2B2B' -%}
 {%- set color_muted = '#6B6B6B' -%}
-{%- set color_faint = '#A09887' -%}
+{%- set color_faint = '#6F685C' -%}
 {%- set color_rule = '#1A1A1A' -%}
 {%- set color_hairline = '#D9D2BE' -%}
 {%- set color_accent = '#7A1F2B' -%}
@@ -90,7 +90,7 @@
         <tr>
           <td style="padding:0; line-height:0; font-size:0; border-bottom:2px solid {{ color_accent }};">
             <img src="{{ header_image_url }}"
-                 width="640" height="320"
+                 width="640" height="200"
                  alt="刊头图"
                  style="display:block; width:100%; max-width:640px; height:auto; border:0; line-height:0;" />
           </td>
@@ -141,7 +141,7 @@
                   {%- if holdings_intro %}
                   {{ holdings_intro }}
                   {%- else %}
-                  当前持仓十四只——美股十二只,港股两只。下表展示各只标的现价相对 120 周与 200 周均线的位置。
+                  当前持仓{{ holdings_counts.total }}只——美股{{ holdings_counts.us }}只,港股{{ holdings_counts.hk }}只。下表展示各只标的现价相对 120 周与 200 周均线的位置。
                   现价跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">120 周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;DCA</span>,
                   跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">200 周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;Lump-sum</span>;
                   无信号则记录至最近均线的距离。
@@ -211,7 +211,7 @@
                       <tr>
                         <td valign="middle" width="36" style="padding-right:12px;">
                           {% if has_logo %}
-                          <img src="cid:{{ logo_cids[s.holding.ticker] }}" width="28" height="28" alt="{{ s.holding.ticker }}" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
+                          <img src="cid:{{ logo_cids[s.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
                           {% else %}
                           <div style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ s.holding.ticker[:3] }}</div>
                           {% endif %}
@@ -305,14 +305,17 @@
                       <td valign="bottom" style="font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1;">
                         <span style="display:inline-block; padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; border-radius:6px; white-space:nowrap;">
                           <span style="font-size:30px; line-height:1; color:#FFFFFF; font-weight:500; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ sentiment_gauge.score_display }}</span>
-                          <span style="font-family:{{ serif_body }}; font-size:11px; line-height:1; color:#FCEDE7; margin-left:4px; letter-spacing:0.08em;">/ 100</span>
+                          <span style="font-family:{{ serif_body }}; font-size:11px; line-height:1; color:#FFFFFF; margin-left:4px; letter-spacing:0.08em;">/ 100</span>
                         </span>
                       </td>
-                      <td data-sentiment-label="true" align="right" valign="bottom" style="font-family:{{ serif_display }}; font-size:14px; color:{{ sentiment_gauge.active_color }}; letter-spacing:0.14em; padding-bottom:2px; white-space:nowrap;">{{ sentiment_gauge.label }}</td>
+                      <td data-sentiment-label="true" align="right" valign="bottom" style="padding-bottom:2px; white-space:nowrap;">
+                        <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ sentiment_gauge.active_color }}; letter-spacing:0.14em;">{{ sentiment_gauge.label }}</div>
+                        {% if sentiment_gauge.coverage %}<div style="margin-top:5px; font-family:{{ serif_body }}; font-size:10px; color:{{ color_muted }}; letter-spacing:0.04em;">数据覆盖 {{ sentiment_gauge.coverage.valid_metrics }}/{{ sentiment_gauge.coverage.total_metrics }}{% if sentiment_gauge.coverage.stale_metrics %} · {{ sentiment_gauge.coverage.stale_metrics }} 项沿用缓存{% endif %}</div>{% endif %}
+                      </td>
                     </tr>
                   </table>
 
-                  {# 指针行：41 个等宽位置对应每 2.5 分；50 分恰好落在正中央。 #}
+                  {# 指针行：21 个等宽位置对应每 5 分；50 分恰好落在正中央。 #}
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px; table-layout:fixed; border-collapse:collapse;">
                     <tr>
                       {% for cell in sentiment_gauge.pointer_cells %}
@@ -434,7 +437,7 @@
               <tr>
                 <td valign="middle" width="36" style="padding-right:12px;">
                   {% if has_logo %}
-                  <img src="cid:{{ logo_cids[bundle.holding.ticker] }}" width="28" height="28" alt="{{ bundle.holding.ticker }}" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
+                  <img src="cid:{{ logo_cids[bundle.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
                   {% else %}
                   <div style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ bundle.holding.ticker[:3] }}</div>
                   {% endif %}
@@ -673,7 +676,7 @@
               本邮件由开源的私人晨报系统发送
             </div>
             <div style="margin-top:6px; font-family:Charter,Georgia,serif; font-size:10.5px; color:{{ color_faint }}; letter-spacing:0.18em; text-transform:uppercase;">
-              刊发时间&nbsp;·&nbsp;{{ generated_at.strftime('%Y-%m-%d %H:%M') }}&nbsp;CST
+              刊发时间&nbsp;·&nbsp;{{ generated_at.strftime('%Y-%m-%d %H:%M') }}&nbsp;UTC+8
             </div>
           </td>
         </tr>

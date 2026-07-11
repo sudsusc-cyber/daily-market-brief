@@ -14,6 +14,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_proxy_dns(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.sender.smtp_sender._system_dns_is_proxy_virtual",
+        lambda _host: False,
+    )
+
+
 def _setup_smtp_mocks(refused_recipients: dict, server_factory_path: str):
     """构造一个会抛 SMTPRecipientsRefused 的 SMTP server mock。"""
     mock_server = MagicMock()
@@ -37,7 +45,7 @@ def test_partial_refusal_does_not_raise(monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(smtp_sender, "_resolve_via_dns", lambda *a, **k: None)
 
         # 不抛异常
-        smtp_sender.send_html_email(
+        result = smtp_sender.send_html_email(
             sender="me@qq.com",
             auth_code="x",
             recipient=["a@ok.com", "blocked@example.com", "b@ok.com"],
@@ -47,6 +55,8 @@ def test_partial_refusal_does_not_raise(monkeypatch, tmp_path) -> None:
 
     # sendmail 被调用过(说明真的尝试了)
     assert mock_server.sendmail.called
+    assert result.accepted == ("a@ok.com", "b@ok.com")
+    assert list(result.refused) == ["blocked@example.com"]
 
 
 def test_all_refused_raises(monkeypatch, tmp_path) -> None:
@@ -84,7 +94,7 @@ def test_partial_refusal_via_return_dict_does_not_raise(monkeypatch) -> None:
     with patch("smtplib.SMTP_SSL", return_value=mock_server):
         monkeypatch.setattr(smtp_sender, "_resolve_via_dns", lambda *a, **k: None)
         # 不抛异常
-        smtp_sender.send_html_email(
+        result = smtp_sender.send_html_email(
             sender="me@qq.com",
             auth_code="x",
             recipient=["a@ok.com", "blocked@example.com", "b@ok.com"],
@@ -92,6 +102,7 @@ def test_partial_refusal_via_return_dict_does_not_raise(monkeypatch) -> None:
             html_body="<p>t</p>",
         )
     assert mock_server.sendmail.called
+    assert result.status == "partial"
 
 
 def test_all_refused_via_return_dict_raises(monkeypatch) -> None:
@@ -126,7 +137,7 @@ def test_empty_return_dict_succeeds(monkeypatch) -> None:
 
     with patch("smtplib.SMTP_SSL", return_value=mock_server):
         monkeypatch.setattr(smtp_sender, "_resolve_via_dns", lambda *a, **k: None)
-        smtp_sender.send_html_email(
+        result = smtp_sender.send_html_email(
             sender="me@qq.com",
             auth_code="x",
             recipient=["a@ok.com", "b@ok.com"],
@@ -134,6 +145,35 @@ def test_empty_return_dict_succeeds(monkeypatch) -> None:
             html_body="<p>t</p>",
         )
     assert mock_server.sendmail.called
+    assert result.status == "full"
+
+
+def test_tls_context_plain_alternative_and_hidden_recipients() -> None:
+    """SMTP 必须校验证书，MIME 含纯文本，且 To 头不泄露收件地址。"""
+    import ssl
+    from email import message_from_string
+
+    from src.sender.smtp_sender import send_html_email
+
+    server = MagicMock()
+    server.sendmail.return_value = {}
+    with patch("src.sender.smtp_sender.smtplib.SMTP_SSL", return_value=server) as factory:
+        send_html_email(
+            sender="me@qq.com",
+            auth_code="x",
+            recipient=["a@example.com", "b@example.com"],
+            subject="测试",
+            html_body="<p>正文</p>",
+        )
+
+    context = factory.call_args.kwargs["context"]
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+    payload = server.sendmail.call_args.args[2]
+    message = message_from_string(payload)
+    assert message["To"] == "undisclosed-recipients:;"
+    content_types = {part.get_content_type() for part in message.walk()}
+    assert {"text/plain", "text/html"} <= content_types
 
 
 def test_empty_recipient_raises_immediately(monkeypatch) -> None:
@@ -182,3 +222,22 @@ def test_string_recipient_with_whitespace_trimmed(monkeypatch) -> None:
     args = fake_server.sendmail.call_args[0]
     # 第二个 positional arg = recipients list,应该 ['good@x.com']
     assert args[1] == ["good@x.com"]
+
+
+def test_duplicate_recipients_are_sent_once() -> None:
+    """配置重复地址时去重，避免同一邮箱收到两封相同晨报。"""
+    from src.sender.smtp_sender import send_html_email
+
+    server = MagicMock()
+    server.sendmail.return_value = {}
+    with patch("src.sender.smtp_sender.smtplib.SMTP_SSL", return_value=server):
+        result = send_html_email(
+            sender="x@x.com",
+            auth_code="x",
+            recipient=["same@example.com", " same@example.com "],
+            subject="x",
+            html_body="<p>x</p>",
+        )
+
+    assert server.sendmail.call_args.args[1] == ["same@example.com"]
+    assert result.accepted == ("same@example.com",)

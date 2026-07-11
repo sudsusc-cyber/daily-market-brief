@@ -44,8 +44,8 @@ try:
     from dotenv import load_dotenv
 
     load_dotenv(PROJECT_ROOT / ".env")
-except Exception:
-    pass
+except Exception as exc:  # noqa: BLE001 - 此诊断脚本允许无 dotenv 运行
+    print(f"warning: dotenv unavailable ({type(exc).__name__})", file=sys.stderr)
 
 
 # ---------- 状态枚举 ----------

@@ -266,7 +266,7 @@ def filter_one(
         resp = client.chat(
             payload,
             task_extra=_TASK_INSTRUCTION,
-            max_tokens=2400,
+            max_tokens=6000,
             temperature=0.2,
         )
     except Exception as exc:  # noqa: BLE001

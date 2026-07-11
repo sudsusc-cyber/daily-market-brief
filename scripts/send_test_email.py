@@ -21,6 +21,7 @@ import hashlib
 import logging
 import os
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,6 +52,7 @@ from src.collectors.stocks import StockSignal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
 from src.renderer.render import render_email  # noqa: E402
 from src.sender.smtp_sender import InlineImage, send_html_email  # noqa: E402
+from src.utils.secrets import mask_email  # noqa: E402
 
 _LOGOS_DIR = _WORKTREE_ROOT / "assets" / "logos"
 
@@ -78,7 +80,8 @@ def _build_mock_signals() -> list[StockSignal]:
         if err:
             signals.append(StockSignal(h, None, None, None, None, None, "NONE", error=err))
             continue
-        assert last and s120 and s200
+        if last is None or s120 is None or s200 is None:
+            raise ValueError(f"invalid preview fixture for {h.ticker}")
         d120 = (last - s120) / s120
         d200 = (last - s200) / s200
         sig = "LUMP_SUM" if last <= s200 else ("DCA" if last <= s120 else "NONE")
@@ -102,7 +105,7 @@ def _build_logos() -> tuple[dict[str, str], list[InlineImage]]:
         p = _logo_path(h)
         if p is None:
             continue
-        sha8 = hashlib.sha1(p.read_bytes()).hexdigest()[:8]
+        sha8 = hashlib.sha1(p.read_bytes(), usedforsecurity=False).hexdigest()[:8]
         cid = f"{h.logo_cid}_{sha8}"
         cids[h.ticker] = cid
         images.append(InlineImage(cid=cid, path=p, subtype=None))
@@ -179,12 +182,15 @@ def main() -> int:
     )
 
     # 调试:先把 HTML 写到 /tmp 备查
-    debug_path = Path("/tmp/send_test_email.html")
+    debug_path = Path(tempfile.gettempdir()) / "send_test_email.html"
     debug_path.write_text(html, encoding="utf-8")
     logger.info("debug html bytes=%d path=%s", len(html.encode("utf-8")), debug_path)
 
     subject = f"【样式预览】新版情绪温度计 · {now_bj.strftime('%Y-%m-%d %H:%M')}"
-    logger.info("send to %s subject=%r inline_images=%d", recipient, subject, len(inline_images))
+    logger.info(
+        "send to %s subject=%r inline_images=%d",
+        mask_email(recipient), subject, len(inline_images),
+    )
     send_html_email(
         sender=sender,
         sender_display_name="渲染测试",

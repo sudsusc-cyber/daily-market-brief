@@ -255,6 +255,18 @@ class TestScoreSentiment:
         # CNN F&G(70 → ~70 score, w=0.25)+ VIX(14 → ~80 score, w=0.25)归一化后 ≈ 75
         assert out["score"] > 60
 
+    def test_single_slow_metric_is_insufficient_coverage(self) -> None:
+        b = self._bundle(fg=None, vix=None, hy=None, pe=38, dxy=None)
+        assert score_sentiment(b) is None
+
+    def test_stale_metrics_are_downweighted_and_reported(self) -> None:
+        b = self._bundle(fg=50, vix=20, hy=4, pe=25, dxy=100)
+        b.metrics[0].stale_from = "2026-04-29"
+        out = score_sentiment(b)
+        assert out is not None
+        assert out["coverage"]["stale_metrics"] == 1
+        assert out["coverage"]["effective_weight_pct"] < 100
+
     def test_nonfinite_current_is_ignored(self) -> None:
         b = SentimentBundle(metrics=[
             SentimentMetric(name="VIX", current=float("nan"), prior=None, rating=None),

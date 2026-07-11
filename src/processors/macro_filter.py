@@ -103,7 +103,7 @@ def generate_silence_note(client: LLMClient) -> str | None:
     resp = client.chat(
         "请写一句替代'宏观视野'章节的占位语",
         task_extra=_SILENCE_INSTRUCTION,
-        max_tokens=1500,
+        max_tokens=4000,
         temperature=0.85,
     )
     text = (resp.text or "").strip().strip("\"'“”「」 ")
@@ -224,6 +224,10 @@ def _rebuild_safe_html(
     # 重建 HTML:每段一个 <p>,主题词加粗 oxblood
     parts: list[str] = []
     for para in paragraphs_raw:
+        cited_indexes = {footnote_idx(match) for match in FOOTNOTE_RE.finditer(para)}
+        if not any(index in rewrite for index in cited_indexes):
+            logger.warning("macro_filter.paragraph_dropped_without_valid_source")
+            continue
         m = _THEME_SPLIT_RE.match(para)
         if m:
             theme_text = m.group(1).strip()
@@ -269,5 +273,8 @@ def summarize(
         logger.warning("macro_filter.failed reason=%s", resp.error)
         return None
     body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items)
+    if not body_html:
+        logger.warning("macro_filter.all_paragraphs_dropped_without_valid_sources")
+        return None
     logger.info("macro_filter.ok footnotes=%d (sanitized)", len(footnotes))
     return MacroNewsSummary(summary_html=body_html, footnotes=footnotes)

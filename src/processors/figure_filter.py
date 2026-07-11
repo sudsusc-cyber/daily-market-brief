@@ -305,7 +305,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION.format(PERSON=bundle.person),
-        max_tokens=3200,
+        max_tokens=5000,
         temperature=0.2,
     )
     if not resp.text:
@@ -436,7 +436,7 @@ def generate_silence_note(client: LLMClient) -> str | None:
         "请写一句替代'关键发言'章节的占位语",
         task_extra=_SILENCE_INSTRUCTION,
         # V4-Flash reasoning 容易吃 300+ token,余量给最终输出
-        max_tokens=1500,
+        max_tokens=4000,
         temperature=0.85,
     )
     text = (resp.text or "").strip().strip("\"'“”「」 ")

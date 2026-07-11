@@ -18,11 +18,13 @@ from __future__ import annotations
 import contextlib
 import shutil
 import struct
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
 import requests
+
+# subprocess 固定 argv、shell=False，且可执行文件由 shutil.which 解析为绝对路径。
 
 # 微信内嵌 webview 对带某些"装饰" PNG chunks(eXIf/gAMA/cHRM/sRGB 等)
 # 在密集表格 layout 中不渲染。strip 后只保留 IHDR/PLTE/tRNS/IDAT/IEND 即可
@@ -101,10 +103,11 @@ def fetch_one(domain: str, dest: Path, override_url: str | None = None) -> tuple
     dest.write_bytes(resp.content)
 
     # 归一化尺寸:用系统 sips 缩到最长边 ≤ SIZE(128)
-    if shutil.which("sips"):
+    sips = shutil.which("sips")
+    if sips:
         with contextlib.suppress(Exception):
-            subprocess.run(
-                ["sips", "-Z", str(SIZE), str(dest)],
+            subprocess.run(  # nosec B603
+                [sips, "-Z", str(SIZE), str(dest)],
                 check=False, capture_output=True, timeout=10,
             )
 

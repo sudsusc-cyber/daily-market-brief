@@ -16,6 +16,8 @@ import re
 from datetime import date
 from typing import Any
 
+from src.config import HOLDINGS
+from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
 
 from .models import ThesisEvidence
@@ -25,6 +27,9 @@ logger = logging.getLogger("thesis.extractor")
 
 _VALID_DIRECTIONS = {"support", "risk", "neutral", "new_variable"}
 _VALID_HORIZONS = {"quarterly", "multi_year", "structural"}
+_VALID_SOURCE_SECTIONS = {"company_news", "macro", "voices", "berkshire", "frontier_labs"}
+_VALID_TICKERS = {holding.ticker for holding in HOLDINGS} | {"AMD"}
+_TICKER_ALIASES = {"GOOGL": "GOOG", "BRK-B": "BRK.B"}
 _REQUIRED_FIELDS = {
     "source_section", "source_name", "related_tickers", "theme",
     "direction", "strength", "horizon", "text", "why_it_matters",
@@ -73,7 +78,9 @@ def make_evidence_id(ev: ThesisEvidence) -> str:
         ev.theme,
         normalize_text(ev.text),
     ]
-    return hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha1(
+        "|".join(parts).encode("utf-8"), usedforsecurity=False,
+    ).hexdigest()[:16]
 
 
 # ─── JSON parsing ─────────────────────────────────────────────────
@@ -145,6 +152,9 @@ def validate_and_build(
         if strength < 3:
             logger.info("extractor.skip_weak index=%d strength=%d", i, strength)
             continue
+        if strength > 5:
+            logger.warning("extractor.skip_bad_strength index=%d strength=%d", i, strength)
+            continue
 
         direction = obj.get("direction", "")
         if direction not in _VALID_DIRECTIONS:
@@ -159,23 +169,50 @@ def validate_and_build(
         tickers = obj.get("related_tickers", [])
         if not isinstance(tickers, list):
             tickers = []
+        normalized_tickers: list[str] = []
+        for raw_ticker in tickers:
+            ticker = _TICKER_ALIASES.get(str(raw_ticker).strip().upper(), str(raw_ticker).strip().upper())
+            if ticker in _VALID_TICKERS and ticker not in normalized_tickers:
+                normalized_tickers.append(ticker)
+        if not normalized_tickers:
+            logger.warning("extractor.skip_no_valid_tickers index=%d", i)
+            continue
 
         # canonicalize theme
         theme = canonicalize_theme(str(obj.get("theme", "")))
+        if not theme or len(theme) > 80 or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", theme):
+            logger.warning("extractor.skip_bad_theme index=%d val=%r", i, theme)
+            continue
+
+        source_section = str(obj.get("source_section", "")).strip()
+        if source_section not in _VALID_SOURCE_SECTIONS:
+            logger.warning("extractor.skip_bad_source_section index=%d val=%r", i, source_section)
+            continue
+        source_name = str(obj.get("source_name", "")).strip()[:120]
+        text = str(obj.get("text", "")).strip()[:500]
+        why_it_matters = str(obj.get("why_it_matters", "")).strip()[:500]
+        if not source_name or not text or not why_it_matters:
+            logger.warning("extractor.skip_empty_content index=%d", i)
+            continue
+        raw_url = obj.get("url")
+        url = str(raw_url).strip() if raw_url else None
+        if url and not is_safe_url(url):
+            logger.warning("extractor.skip_unsafe_url index=%d", i)
+            continue
 
         ev = ThesisEvidence(
             evidence_id="",  # 下面填入
             date=today_str,
-            source_section=str(obj.get("source_section", "")),
-            source_name=str(obj.get("source_name", "")),
-            url=obj.get("url") if obj.get("url") else None,
-            related_tickers=tickers,
+            source_section=source_section,
+            source_name=source_name,
+            url=url,
+            related_tickers=normalized_tickers,
             theme=theme,
             direction=direction,  # type: ignore[arg-type]
             strength=strength,
             horizon=horizon,  # type: ignore[arg-type]
-            text=str(obj.get("text", "")),
-            why_it_matters=str(obj.get("why_it_matters", "")),
+            text=text,
+            why_it_matters=why_it_matters,
         )
         ev.evidence_id = make_evidence_id(ev)
         result.append(ev)
@@ -225,7 +262,7 @@ def extract(
     resp = client.chat(
         user_prompt=user_prompt,
         task_extra=SYSTEM_EXTRA,
-        max_tokens=2048,
+        max_tokens=6000,
         temperature=0.2,
     )
 

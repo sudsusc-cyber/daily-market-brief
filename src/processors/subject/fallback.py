@@ -14,6 +14,8 @@ from __future__ import annotations
 import hashlib
 
 from src.processors.subject.extractor import SubjectData
+from src.processors.subject.solar_terms import season_of
+from src.processors.subject.validator import validate
 
 # ──────────────  后 4 字兜底库(每种情境 6-8 个变体)  ──────────────
 
@@ -73,9 +75,26 @@ NEUTRAL_VARIANTS = [  # 中性 + 全静默(去掉"持仓 X"、"守仓 X"白话)
 def _pick(variants: list[str], seed_key: str) -> str:
     """按 seed_key(通常是 today_iso + 情境名)选取 variants 里的一个。
     SHA1 hash 保证同 seed → 同输出(缓存友好),跨日期 → 不同输出。"""
-    h = hashlib.sha1(seed_key.encode("utf-8")).digest()
+    h = hashlib.sha1(seed_key.encode("utf-8"), usedforsecurity=False).digest()
     idx = int.from_bytes(h[:4], "big") % len(variants)
     return variants[idx]
+
+
+def _pick_valid(
+    *, phrase: str, variants: list[str], seed_key: str, season: str | None,
+) -> str:
+    """从 hash 起点循环，确定性选择首个通过禁词和季节校验的变体。"""
+    h = hashlib.sha1(seed_key.encode("utf-8"), usedforsecurity=False).digest()
+    start = int.from_bytes(h[:4], "big") % len(variants)
+    for offset in range(len(variants)):
+        candidate = f"{phrase}　{variants[(start + offset) % len(variants)]}"
+        if validate(candidate, season=season)[0]:
+            return candidate
+    # 所有词库候选都被未来规则禁用时仍保证邮件可发；该句无季节冲突和禁词。
+    candidate = f"{phrase}　静水流深"
+    if validate(candidate, season=season)[0]:
+        return candidate
+    raise ValueError(f"no valid static subject for phrase={phrase!r} season={season!r}")
 
 
 def static_fallback(data: SubjectData) -> str:
@@ -91,6 +110,7 @@ def static_fallback(data: SubjectData) -> str:
     phrase = data.solar_term.phrase
     sig = data.signals
     mood = data.mood.label
+    season = season_of(data.solar_term.current)
     # seed 含节气起始日 + 进入第几天,确保同节气内每天 seed 不同 → 不同变体
     today_key = (
         f"{data.solar_term.current_date.isoformat()}-d{data.solar_term.days_into}"
@@ -98,19 +118,37 @@ def static_fallback(data: SubjectData) -> str:
 
     # 1. LUMP-SUM(罕见且重要,保留为最高优先级)
     if sig.lump_sum_count > 0:
-        return f"{phrase}　{_pick(LUMP_SUM_VARIANTS, today_key + 'LUMP')}"
+        return _pick_valid(
+            phrase=phrase, variants=LUMP_SUM_VARIANTS,
+            seed_key=today_key + "LUMP", season=season,
+        )
 
     # 2-5. 完全按市场情绪选择,跳过 DCA
     if mood == "极度贪婪":
-        return f"{phrase}　{_pick(EXTREME_GREED_VARIANTS, today_key + 'GREED')}"
+        return _pick_valid(
+            phrase=phrase, variants=EXTREME_GREED_VARIANTS,
+            seed_key=today_key + "GREED", season=season,
+        )
 
     if mood == "极度恐慌":
-        return f"{phrase}　{_pick(EXTREME_FEAR_VARIANTS, today_key + 'FEAR')}"
+        return _pick_valid(
+            phrase=phrase, variants=EXTREME_FEAR_VARIANTS,
+            seed_key=today_key + "FEAR", season=season,
+        )
 
     if mood == "偏热":
-        return f"{phrase}　{_pick(WARM_VARIANTS, today_key + 'WARM')}"
+        return _pick_valid(
+            phrase=phrase, variants=WARM_VARIANTS,
+            seed_key=today_key + "WARM", season=season,
+        )
 
     if mood == "偏冷":
-        return f"{phrase}　{_pick(COLD_VARIANTS, today_key + 'COLD')}"
+        return _pick_valid(
+            phrase=phrase, variants=COLD_VARIANTS,
+            seed_key=today_key + "COLD", season=season,
+        )
 
-    return f"{phrase}　{_pick(NEUTRAL_VARIANTS, today_key + 'NEUT')}"
+    return _pick_valid(
+        phrase=phrase, variants=NEUTRAL_VARIANTS,
+        seed_key=today_key + "NEUT", season=season,
+    )

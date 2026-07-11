@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pandas as pd
+
+from src.collectors import stocks
 from src.collectors.stocks import _judge_signal
+from src.config import HOLDINGS
 
 
 class TestJudgeSignal:
@@ -25,3 +31,16 @@ class TestJudgeSignal:
     def test_dca_when_at_120w_exact(self) -> None:
         # 等于 120w 临界值
         assert _judge_signal(last_close=140.0, sma_120=140.0, sma_200=120.0) == "DCA"
+
+
+def test_nonfinite_live_price_falls_back_to_weekly_close(monkeypatch) -> None:
+    closes = pd.Series([100.0 + i / 10 for i in range(220)])
+    history = pd.DataFrame({"Close": closes})
+    fake_ticker = SimpleNamespace(fast_info=SimpleNamespace(last_price=float("nan")))
+    monkeypatch.setattr(stocks.yf, "Ticker", lambda _symbol: fake_ticker)
+    monkeypatch.setattr(stocks, "_yf_history", lambda _ticker: history)
+
+    signal = stocks.fetch_one(HOLDINGS[0])
+
+    assert signal.error is None
+    assert signal.last_close == closes.iloc[-1]

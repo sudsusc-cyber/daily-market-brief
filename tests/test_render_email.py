@@ -70,15 +70,15 @@ def test_render_email_no_silence_note_uses_template_fallback() -> None:
     assert "群贤皆默" in html
 
 
-def test_render_email_logo_alt_uses_ticker_when_logo_present() -> None:
-    """logo CID 提供时,模板渲染的 <img alt> 应是 ticker(round-1 hardening)。"""
+def test_render_email_decorative_logo_has_empty_alt() -> None:
+    """相邻已有 ticker 文本，装饰性 logo 使用空 alt 避免屏幕阅读器重复朗读。"""
     s = _one_signal()
     html = render_email(
         signals=[s],
         generated_at=datetime.now(UTC),
         logo_cids={s.holding.ticker: "test_cid"},
     )
-    assert f'alt="{s.holding.ticker}"' in html
+    assert 'alt=""' in html
 
 
 def test_render_email_no_logo_falls_back_to_text_box() -> None:
@@ -156,8 +156,8 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
 
     neutral = _build_sentiment_gauge({"score": 50.0, "verdict": "今日情绪 · 中性"})
     assert neutral is not None
-    assert len(neutral["pointer_cells"]) == 41
-    assert neutral["pointer_cells"][20]["active"] is True
+    assert len(neutral["pointer_cells"]) == 21
+    assert neutral["pointer_cells"][10]["active"] is True
     assert sum(cell["active"] for cell in neutral["pointer_cells"]) == 1
 
 
@@ -183,6 +183,15 @@ def test_sentiment_gauge_uses_judge_thresholds_at_boundaries() -> None:
     gauge = _build_sentiment_gauge({"score": 50.0, "verdict": "中性"})
     assert gauge is not None
     assert [segment["width"] for segment in gauge["segments"]] == [25, 15, 20, 15, 25]
+
+
+def test_sentiment_gauge_label_is_derived_from_score() -> None:
+    """即使上游旧 label 漂移，文字与徽章颜色也必须由同一分数档位决定。"""
+    gauge = _build_sentiment_gauge({"score": 67.5, "verdict": "今日情绪 · 中性"})
+
+    assert gauge is not None
+    assert gauge["label"] == "偏热"
+    assert gauge["active_color"] == "#A96D4F"
 
 
 # ─── 13F 区块重定位测试 ──────────────────────────────────────────────

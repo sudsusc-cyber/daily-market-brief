@@ -39,7 +39,10 @@ def _load_cache() -> dict[str, str]:
     if not CACHE_PATH.exists():
         return {}
     try:
-        return json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise TypeError(f"expected object, got {type(data).__name__}")
+        return {str(k): str(v) for k, v in data.items() if isinstance(v, str)}
     except Exception as exc:  # noqa: BLE001
         logger.warning("subject.cache_read_failed err=%r", exc)
         return {}
@@ -153,7 +156,7 @@ def _call_deepseek(
         system_override=prompts.SYSTEM_PROMPT,
         # DeepSeek V4-Flash 是 reasoning model,reasoning_tokens 常占 500-2000
         # max_tokens 必须给 reasoning + 最终输出留足空间,虽然主题本身只 9 字符
-        max_tokens=2500,
+        max_tokens=4000,
         temperature=0.95,     # 用户要求更多样性(原 0.85 → 0.95)
         top_p=0.9,            # plan 要求
         timeout=timeout,

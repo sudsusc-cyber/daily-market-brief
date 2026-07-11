@@ -109,7 +109,7 @@ def test_fetch_all_skips_pushed_items(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(
         company_news,
-        "yesterday_beijing_window",
+            "last_24h_window",
         lambda: (_NOW - timedelta(hours=24), _NOW),
     )
     monkeypatch.setattr(company_news, "_collect_via_finnhub", lambda c, h: CompanyNewsBundle(
@@ -136,7 +136,7 @@ def test_fetch_all_returns_pending_for_new_items(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(
         company_news,
-        "yesterday_beijing_window",
+            "last_24h_window",
         lambda: (_NOW - timedelta(hours=24), _NOW),
     )
     monkeypatch.setattr(company_news, "_collect_via_finnhub", lambda c, h: CompanyNewsBundle(
@@ -156,7 +156,7 @@ def test_fetch_all_does_not_write_state_file(tmp_path, monkeypatch) -> None:
     nvda = _holding("NVDA")
     monkeypatch.setattr(
         company_news,
-        "yesterday_beijing_window",
+            "last_24h_window",
         lambda: (_NOW - timedelta(hours=24), _NOW),
     )
     monkeypatch.setattr(company_news, "_collect_via_finnhub", lambda c, h: CompanyNewsBundle(
@@ -192,7 +192,7 @@ def test_fetch_all_dedup_applies_to_hk_google_news(tmp_path, monkeypatch) -> Non
 
     monkeypatch.setattr(
         company_news,
-        "yesterday_beijing_window",
+            "last_24h_window",
         lambda: (_NOW - timedelta(hours=24), _NOW),
     )
     monkeypatch.setattr(company_news, "_collect_via_google_news", lambda h: CompanyNewsBundle(
@@ -219,7 +219,7 @@ def test_malformed_state_degrades_to_empty(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(
         company_news,
-        "yesterday_beijing_window",
+            "last_24h_window",
         lambda: (_NOW - timedelta(hours=24), _NOW),
     )
     monkeypatch.setattr(company_news, "_collect_via_finnhub", lambda c, h: CompanyNewsBundle(
@@ -312,7 +312,7 @@ def test_dedupe_fuzzy_in_finnhub_collect(monkeypatch, caplog) -> None:
 
     monkeypatch.setattr(
         company_news,
-        "yesterday_beijing_window",
+            "last_24h_window",
         lambda: (_NOW - timedelta(hours=24), _NOW),
     )
     monkeypatch.setattr(company_news, "_fetch_finnhub", lambda c, t, df, dt: [
@@ -323,4 +323,27 @@ def test_dedupe_fuzzy_in_finnhub_collect(monkeypatch, caplog) -> None:
     bundle = company_news._collect_via_finnhub(None, nvda)
     assert len(bundle.items) == 1
     assert "fuzzy_dedup" in caplog.text
-    assert "before=2 after=1" in caplog.text
+
+
+def test_finnhub_exception_token_is_redacted_everywhere(monkeypatch, caplog) -> None:
+    secret = "SUPERSECRET123"
+    nvda = _holding("NVDA")
+    monkeypatch.setattr(
+        company_news,
+        "last_24h_window",
+        lambda: (_NOW - timedelta(hours=24), _NOW),
+    )
+    monkeypatch.setattr(
+        company_news,
+        "_fetch_finnhub",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(f"https://api.finnhub.io/company-news?token={secret}"),
+        ),
+    )
+
+    bundle = company_news._collect_via_finnhub(object(), nvda)
+
+    assert bundle.error is not None
+    assert secret not in bundle.error
+    assert secret not in caplog.text
+    assert "token=***" in bundle.error

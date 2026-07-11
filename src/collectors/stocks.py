@@ -110,10 +110,12 @@ def fetch_one(holding: Holding) -> StockSignal:
         live_price: float | None = float(ticker.fast_info.last_price)
     except Exception:  # noqa: BLE001 — 取不到 live 价是已知降级路径
         live_price = None
-    if live_price is not None and live_price <= 0:
+    if live_price is not None and (not math.isfinite(live_price) or live_price <= 0):
         live_price = None
 
     weekly_close = float(valid_closes.iloc[-1])
+    if not math.isfinite(weekly_close) or weekly_close <= 0:
+        return _failed(holding, f"最新周线收盘价无效: {weekly_close}")
     last_close = live_price if live_price is not None else weekly_close
 
     delta_120 = (last_close - sma_120) / sma_120

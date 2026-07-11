@@ -31,32 +31,28 @@ permissions:
 jobs:
   send:
     name: collect + render + send
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      FINNHUB_API_KEY:  ${{ secrets.FINNHUB_API_KEY }}
-      FRED_API_KEY:     ${{ secrets.FRED_API_KEY }}
-      QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
-      QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
-      EMAIL_RECIPIENT:  ${{ secrets.EMAIL_RECIPIENT }}
       FORCE_SEND:       ${{ github.event.inputs.force_send || 'false' }}
       PYTHONPATH:       .
-      # GH 自动注入,用于双触发幂等性查询(已发过就跳过)
-      GH_TOKEN:           ${{ secrets.GITHUB_TOKEN }}
       GH_REPO:            ${{ github.repository }}
       GH_RUN_ID:          ${{ github.run_id }}
       GH_EVENT_NAME:      ${{ github.event_name }}
       DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: "0.11.28"
           enable-cache: true
+          python-version: "3.12"
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -70,7 +66,7 @@ jobs:
       # 用 actions/cache 把 state/ 跨 run 持久化。
       # cache key 用 run_id 唯一(每次 save 都成功),restore-keys 用前缀回退到最近一次。
       - name: Restore state from previous run
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: state-restore
         with:
           path: |
@@ -81,19 +77,30 @@ jobs:
 
       - name: Send daily market brief
         run: uv run python src/main.py
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
+          QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 只有 SMTP 成功后 main.py 才创建凭证；monitor.yml 通过 Jobs API 读取此步骤。
-      - name: Confirm email delivery
+      # main.py 仅在至少一位收件人被 SMTP 接受后创建凭证。
+      - name: Confirm SMTP acceptance
         if: ${{ hashFiles('.delivery-receipt.json') != '' }}
-        run: test -s .delivery-receipt.json
+        run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
 
-      # 仅发送成功时保存 state,避免失败 run 也记录"已处理"导致未送达内容被跳过。
-      # 注意:actions/cache/save 的 key 每天唯一,下一次 restore 回退到最近一次成功的 state。
-      # TODO(audit-2026-05-04 #B1): follower run 也会执行此步骤，leader 失败时可能用旧 state 覆盖。
-      # 修复方向：if: success() && env.LEADER == 'true'。当前 monitor 兜底，先观察不修。
+      # 部分拒收不能静默标绿；该步骤失败后 job 报红，monitor 也会告警。
+      # idempotency 会识别前一步已有 SMTP acceptance，避免兜底 run 重发给已收件人。
+      - name: Confirm full email delivery
+        if: ${{ hashFiles('.delivery-receipt.json') != '' }}
+        run: uv run python -m src.utils.delivery full .delivery-receipt.json
+
+      # 仅至少一位收件人被接受后保存 state；follower/节假日无 receipt，不再写冗余 cache。
       - name: Save state for next run
-        if: success()
-        uses: actions/cache/save@v4
+        if: ${{ always() && hashFiles('.delivery-receipt.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             state

@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.utils import idempotency
-from src.utils.idempotency import already_sent_today
+from src.utils.idempotency import IdempotencyUnavailableError, already_sent_today
 
 
 def _clean_env(monkeypatch) -> None:
@@ -42,19 +44,29 @@ def test_workflow_dispatch_also_dedups(monkeypatch) -> None:
     assert already_sent_today() is True
 
 
-def test_api_failure_returns_true_fail_close(monkeypatch) -> None:
-    """API 调用失败 → 返回 True(fail-close,保守跳过本次发送)。
-
-    取舍:GH API 抖动时,宁可漏发一次也不双发(漏发用户会察觉,双发更打扰)。
-    """
+def test_api_failure_fails_run_instead_of_poison_success(monkeypatch) -> None:
+    """API 调用失败必须让 run 失败，后续 follower 才能在恢复后重试。"""
     _clean_env(monkeypatch)
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "schedule")
     monkeypatch.setenv("GH_RUN_ID", "100")
 
-    with patch("urllib.request.urlopen", side_effect=Exception("network error")):
-        assert already_sent_today() is True
+    with (
+        patch("urllib.request.urlopen", side_effect=Exception("network error")),
+        pytest.raises(IdempotencyUnavailableError),
+    ):
+        already_sent_today()
+
+
+def test_invalid_repo_slug_fails_before_api_call(monkeypatch) -> None:
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "https://attacker.invalid/repo")
+    monkeypatch.setenv("GH_RUN_ID", "100")
+
+    with pytest.raises(IdempotencyUnavailableError, match="owner/repo"):
+        already_sent_today()
 
 
 def test_in_progress_run_counts(monkeypatch) -> None:
@@ -155,6 +167,39 @@ def test_failed_run_doesnt_count(monkeypatch) -> None:
     _mock_api_response(monkeypatch, [
         {"id": 100, "conclusion": "failure", "created_at": f"{today}T04:08:00Z"},
     ])
+    assert already_sent_today() is False
+
+
+def test_partial_delivery_failure_counts_as_sent_to_avoid_duplicates(monkeypatch) -> None:
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_RUN_ID", "999")
+    today = idempotency._today_beijing_iso()
+    _mock_api_response(monkeypatch, [{
+        "id": 100,
+        "conclusion": "failure",
+        "status": "completed",
+        "created_at": f"{today}T04:08:00Z",
+    }])
+    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_kwargs: True)
+
+    assert already_sent_today() is True
+
+
+def test_feature_branch_success_is_ignored(monkeypatch) -> None:
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_RUN_ID", "999")
+    today = idempotency._today_beijing_iso()
+    _mock_api_response(monkeypatch, [{
+        "id": 100,
+        "head_branch": "feature/test",
+        "conclusion": "success",
+        "created_at": f"{today}T04:08:00Z",
+    }])
+
     assert already_sent_today() is False
 
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
 
 import ephem  # 纯 Python 天文计算库,VSOP87 完整级数,精度约 1 秒
 
@@ -161,6 +162,7 @@ class SolarTermContext:
     phrase: str        # 推荐 4 字短语(供 prompt 参考,不强制使用)
 
 
+@lru_cache(maxsize=8)
 def _all_terms_for_year(year: int) -> list[tuple[str, date]]:
     """返回 year 年 24 个节气日期的有序列表。"""
     return [(TERMS[i][0], _term_date_beijing(year, i)) for i in range(24)]

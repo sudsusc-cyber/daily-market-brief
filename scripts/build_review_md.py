@@ -1,4 +1,4 @@
-"""读 config/curated_images.json + /tmp/dropped.json,生成 docs/curated_images_review.md。"""
+"""读配置与 state/curation/dropped.json，生成图片审阅文档。"""
 from __future__ import annotations
 
 import json
@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CFG = ROOT / "config" / "curated_images.json"
-DROPPED = Path("/tmp/dropped.json")
+DROPPED = ROOT / "state" / "curation" / "dropped.json"
 OUT = ROOT / "docs" / "curated_images_review.md"
 
 SEASON_LABELS = {"spring": "春", "summer": "夏", "autumn": "秋", "winter": "冬"}

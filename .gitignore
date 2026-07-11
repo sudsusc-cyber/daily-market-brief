@@ -239,6 +239,7 @@ state/pushed_frontier_labs.json
 state/pushed_macro_news.json
 state/thesis_evidence_*.jsonl
 state/thesis_state.json
+state/curation/
 
 # 运行时构建产物
 build/

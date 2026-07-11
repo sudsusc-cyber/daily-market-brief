@@ -166,14 +166,11 @@ def _bundle_with_https_url() -> CompanyNewsBundle:
 
 def test_news_summarizer_drops_javascript_url() -> None:
     """LLM 引用 [1],对应 NewsItem URL 是 javascript: → 该脚注被丢弃,
-    最终 HTML 不出现 javascript: 字符。"""
+    整行因没有可验证来源而回退原始列表。"""
     bundle = _bundle_with_xss_url()
     fake = _FakeLLM("<strong>微软</strong> —— 一些摘要[1]")
     summary = news_summarizer.summarize([bundle], client=fake)
-    assert summary is not None
-    assert "javascript" not in summary.summary_html
-    # 脚注列表也不应包含这个 URL
-    assert all("javascript" not in fn.url for fn in summary.footnotes)
+    assert summary is None
 
 
 def test_news_summarizer_keeps_safe_url() -> None:
@@ -256,13 +253,11 @@ def test_macro_filter_neutralizes_xss_paragraph() -> None:
 
 
 def test_macro_filter_drops_javascript_url() -> None:
-    """LLM 引用 [1],对应 MacroNewsItem URL 是 javascript: → 不生成链接。"""
+    """不安全引用导致整段回退，不能保留无来源的财经断言。"""
     bundle = _macro_bundle_javascript()
     fake = _FakeLLM('<p><strong>风险。</strong>某主题陈述[1]</p>')
     summary = macro_filter.summarize([bundle], client=fake)
-    assert summary is not None
-    assert "javascript" not in summary.summary_html
-    assert all("javascript" not in fn.url for fn in summary.footnotes)
+    assert summary is None
 
 
 def test_macro_filter_keeps_safe_https_link() -> None:
@@ -279,7 +274,7 @@ def test_macro_filter_strips_unknown_tags() -> None:
     bundle = _macro_bundle_https()
     fake = _FakeLLM(
         '<p><iframe src="evil.com"></iframe>'
-        '<div onclick="hack()">中国经济复苏</div></p>'
+        '<div onclick="hack()">中国经济复苏[1]</div></p>'
     )
     summary = macro_filter.summarize([bundle], client=fake)
     assert summary is not None

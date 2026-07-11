@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -71,12 +72,8 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
     active_label = next(
         label for upper, label in VERDICT_THRESHOLDS if score < upper
     )
-    # 指针独立使用 41 个等宽位置（每 2.5 分一档）。奇数列数量保证
-    # 50 分对应第 21 列，其中心恰好位于整条色带的 50%。
-    pointer_index = min(40, max(0, round(score / 2.5)))
-    raw_label = str(verdict.get("verdict") or "").strip()
-    label = raw_label.rsplit("·", 1)[-1].strip() if raw_label else ""
-
+    # 21 个位置（每 5 分一档）兼顾精度与邮件 HTML 体积；50 分仍严格居中。
+    pointer_index = min(20, max(0, round(score / 5.0)))
     cells = []
     for index in range(20):
         cell_score = index * 5.0
@@ -92,11 +89,13 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
     return {
         "score": score,
         "score_display": score_display,
-        "label": label,
+        # 展示文字与颜色都只信任确定性分数，避免上游 label 漂移后文字/色带矛盾。
+        "label": active_label,
         "active_color": _SENTIMENT_COLOR_BY_LABEL[active_label][1],
+        "coverage": verdict.get("coverage") if isinstance(verdict.get("coverage"), dict) else None,
         "pointer_cells": [
             {"active": index == pointer_index}
-            for index in range(41)
+            for index in range(21)
         ],
         "cells": cells,
         "segments": [
@@ -273,7 +272,12 @@ def render_email(
     env = _build_env()
     template = env.get_template("email.html.j2")
     sentiment_gauge = _build_sentiment_gauge(sentiment_verdict)
-    return template.render(
+    holdings_counts = {
+        "total": len(signals),
+        "us": sum(1 for signal in signals if not signal.holding.ticker.endswith(".HK")),
+        "hk": sum(1 for signal in signals if signal.holding.ticker.endswith(".HK")),
+    }
+    html = template.render(
         signals=signals,
         generated_at=generated_at,
         logo_cids=logo_cids or {},
@@ -282,6 +286,7 @@ def render_email(
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         sentiment_gauge=sentiment_gauge,
+        holdings_counts=holdings_counts,
         company_news=company_news,
         company_news_summary=company_news_summary,
         figures=figures,
@@ -296,3 +301,5 @@ def render_email(
         frontier_labs_items=frontier_labs_items or [],
         judgment_section=judgment_section,
     )
+    # 邮件客户端按解码后的 HTML 体积裁剪；只删除标签之间的排版空白，不碰正文。
+    return re.sub(r"(?<=>)\s+(?=<)", "", html).strip()

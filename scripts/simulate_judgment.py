@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -193,7 +194,7 @@ def main():
         judgment_section=section,
     )
 
-    out = Path("/tmp/email_preview_with_judgment.html")
+    out = Path(tempfile.gettempdir()) / "email_preview_with_judgment.html"
     out.write_text(html, encoding="utf-8")
     print(f"HTML 已写入 {out} ({len(html):,} bytes)")
     print(f"file://{out}")

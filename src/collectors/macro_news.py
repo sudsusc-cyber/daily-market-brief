@@ -120,7 +120,9 @@ def _content_hash(source: str, item: MacroNewsItem) -> str:
     title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
     title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
     title = title[:80]
-    h = hashlib.sha1(f"{source}|{title}".encode()).hexdigest()
+    h = hashlib.sha1(
+        f"{source}|{title}".encode(), usedforsecurity=False,
+    ).hexdigest()
     return h[:16]
 
 
@@ -129,7 +131,10 @@ def _load_pushed_macro(state_path: Path) -> dict[str, str]:
     if not state_path.exists():
         return {}
     try:
-        return json.loads(state_path.read_text(encoding="utf-8"))
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise TypeError(f"expected object, got {type(data).__name__}")
+        return {str(k): str(v) for k, v in data.items() if isinstance(v, str)}
     except Exception as exc:  # noqa: BLE001
         logger.warning("pushed_macro_news.parse_failed exc=%s; treating as empty", exc)
         return {}

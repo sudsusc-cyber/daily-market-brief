@@ -38,6 +38,10 @@ _WEIGHTS: dict[str, float] = {
     "DXY": 0.095,
 }
 
+_MIN_EFFECTIVE_WEIGHT = 0.50
+_MIN_VALID_METRICS = 2
+_STALE_WEIGHT_FACTOR = 0.50
+
 
 def _piecewise_linear(x: float, points: list[tuple[float, float]]) -> float:
     """分段线性插值:points 必须按 x 升序。x 超出端点时夹到端点 y。"""
@@ -112,6 +116,8 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
     breakdown: list[tuple[str, float, float]] = []
     weighted_sum = 0.0
     weight_total = 0.0
+    valid_count = 0
+    stale_count = 0
     for m in bundle.metrics:
         if m.error:
             continue
@@ -124,11 +130,18 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
         s = _score_metric(m.name, current)
         if s is None:
             continue
-        weighted_sum += s * w
-        weight_total += w
-        breakdown.append((m.name, round(s, 1), w))
+        effective_weight = w * (_STALE_WEIGHT_FACTOR if m.stale_from else 1.0)
+        weighted_sum += s * effective_weight
+        weight_total += effective_weight
+        valid_count += 1
+        stale_count += int(bool(m.stale_from))
+        breakdown.append((m.name, round(s, 1), effective_weight))
 
-    if weight_total == 0.0:
+    if valid_count < _MIN_VALID_METRICS or weight_total < _MIN_EFFECTIVE_WEIGHT:
+        logger.warning(
+            "sentiment.insufficient_coverage valid=%d effective_weight=%.3f stale=%d",
+            valid_count, weight_total, stale_count,
+        )
         return None
 
     score = weighted_sum / weight_total
@@ -136,6 +149,12 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
         "score": round(score, 1),
         "verdict": _verdict_from_score(score),
         "breakdown": breakdown,
+        "coverage": {
+            "valid_metrics": valid_count,
+            "total_metrics": len(_WEIGHTS),
+            "effective_weight_pct": round(weight_total * 100),
+            "stale_metrics": stale_count,
+        },
     }
 
 
@@ -233,7 +252,7 @@ def judge(
     resp = client.chat(
         payload,
         task_extra=_TASK_INSTRUCTION,
-        max_tokens=1500,
+        max_tokens=4000,
         temperature=0.2,
     )
     argument = ""
@@ -255,4 +274,5 @@ def judge(
         "argument": argument,
         "score": score,
         "breakdown": scored["breakdown"],
+        "coverage": scored["coverage"],
     }

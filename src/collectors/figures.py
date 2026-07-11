@@ -125,7 +125,9 @@ def _content_hash(person: str, item: FigureMention) -> str:
     title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
     # 截前 80 字符,避免过长 title 因尾部差异错过去重
     title = title[:80]
-    h = hashlib.sha1(f"{person}|{title}".encode()).hexdigest()
+    h = hashlib.sha1(
+        f"{person}|{title}".encode(), usedforsecurity=False,
+    ).hexdigest()
     return h[:16]
 
 
@@ -157,7 +159,10 @@ def _load_pushed(state_path: Path) -> dict[str, str]:
     if not state_path.exists():
         return {}
     try:
-        return json.loads(state_path.read_text(encoding="utf-8"))
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise TypeError(f"expected object, got {type(data).__name__}")
+        return {str(k): str(v) for k, v in data.items() if isinstance(v, str)}
     except Exception as exc:  # noqa: BLE001
         logger.warning("pushed_figures.parse_failed exc=%s; treating as empty", exc)
         return {}
@@ -185,7 +190,7 @@ def _purge_expired(pushed: dict[str, str], now: datetime, days: int = 7) -> dict
             ts = datetime.fromisoformat(v)
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=UTC)
-        except ValueError:
+        except (ValueError, TypeError):
             continue
         if ts >= cutoff:
             out[k] = v

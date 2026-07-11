@@ -5,7 +5,7 @@
   - 美股 + ADR(MSFT/COST/AAPL/NVDA/TSM/MCO/GOOG/BRK.B/KO/AXP/MA/LIN):Finnhub /company-news
   - 港股(0700.HK 腾讯 / 9992.HK 泡泡玛特):Finnhub 港股覆盖弱,降级到 Google News 中文搜索
 
-时间窗口:北京时间昨日 00:00 ~ 今日 00:00(用户视角的"昨日")。
+时间窗口:发送时点向前滚动 24 小时，覆盖目标美股交易日全天与盘后公告。
 
 两层去重:
   1. 跨天 7 天 hash 去重:已推送过的 (ticker, 归一化标题 hash) 不再出现,
@@ -35,7 +35,7 @@ from pathlib import Path
 import finnhub  # type: ignore[import-untyped]
 
 from src.config import Holding
-from src.utils.dates import to_beijing, yesterday_beijing_window
+from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
@@ -100,15 +100,20 @@ def _fetch_finnhub(client: finnhub.Client, ticker: str, date_from: str, date_to:
 
 
 def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNewsBundle:
-    start_utc, end_utc = yesterday_beijing_window()
+    # 发送发生在美股收盘后；滚动 24h 才能覆盖完整交易时段和盘后公告。
+    start_utc, end_utc = last_24h_window()
     date_from = start_utc.strftime("%Y-%m-%d")
     date_to = end_utc.strftime("%Y-%m-%d")
     try:
         raw = _fetch_finnhub(client, holding.ticker, date_from, date_to)
     except Exception as exc:  # noqa: BLE001 — 故障降级,不向上抛
-        logger.error("finnhub.fetch_failed ticker=%s exc_type=%s msg=%s", holding.ticker, type(exc).__name__, redact_secrets(str(exc))[:200])
+        safe_msg = redact_secrets(str(exc))[:200]
+        logger.error(
+            "finnhub.fetch_failed ticker=%s exc_type=%s msg=%s",
+            holding.ticker, type(exc).__name__, safe_msg,
+        )
         return CompanyNewsBundle(
-            holding=holding, error=f"Finnhub 异常: {type(exc).__name__}: {exc}",
+            holding=holding, error=f"Finnhub 异常: {type(exc).__name__}: {safe_msg}",
             data_source="finnhub",
         )
 
@@ -217,13 +222,17 @@ def _dedupe_fuzzy(items: list[NewsItem]) -> list[NewsItem]:
 
 def _collect_via_google_news(holding: Holding) -> CompanyNewsBundle:
     query = _HK_QUERY_FALLBACK.get(holding.ticker, holding.name)
-    start_utc, end_utc = yesterday_beijing_window()
+    start_utc, end_utc = last_24h_window()
     try:
         all_items = _fetch_google_news_zh(query)
     except Exception as exc:  # noqa: BLE001
-        logger.error("google_news.fetch_failed ticker=%s query=%s exc_type=%s msg=%s", holding.ticker, query, type(exc).__name__, redact_secrets(str(exc))[:200])
+        safe_msg = redact_secrets(str(exc))[:200]
+        logger.error(
+            "google_news.fetch_failed ticker=%s query=%s exc_type=%s msg=%s",
+            holding.ticker, query, type(exc).__name__, safe_msg,
+        )
         return CompanyNewsBundle(
-            holding=holding, error=f"Google News 异常: {type(exc).__name__}: {exc}",
+            holding=holding, error=f"Google News 异常: {type(exc).__name__}: {safe_msg}",
             data_source="google_news_cn",
         )
     items = [n for n in all_items if start_utc <= n.published_at < end_utc]
@@ -244,7 +253,9 @@ def _content_hash(ticker: str, item: NewsItem) -> str:
     title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
     title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
     title = title[:80]
-    h = hashlib.sha1(f"{ticker}|{title}".encode()).hexdigest()
+    h = hashlib.sha1(
+        f"{ticker}|{title}".encode(), usedforsecurity=False,
+    ).hexdigest()
     return h[:16]
 
 
@@ -253,7 +264,10 @@ def _load_pushed_news(state_path: Path) -> dict[str, str]:
     if not state_path.exists():
         return {}
     try:
-        return json.loads(state_path.read_text(encoding="utf-8"))
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise TypeError(f"expected object, got {type(data).__name__}")
+        return {str(k): str(v) for k, v in data.items() if isinstance(v, str)}
     except Exception as exc:  # noqa: BLE001
         logger.warning("pushed_company_news.parse_failed exc=%s; treating as empty", exc)
         return {}
@@ -320,7 +334,7 @@ def fetch_all(
       延后到邮件成功才提交,失败时下次 run 还能重新评估同批候选。
       与 figures.fetch_all 一致。
     """
-    _, end_utc = yesterday_beijing_window()
+    _, end_utc = last_24h_window()
     pushed = _purge_expired_news(_load_pushed_news(state_path), end_utc)
     new_pushed = dict(pushed)
 

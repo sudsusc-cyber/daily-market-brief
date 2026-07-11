@@ -158,7 +158,9 @@ def _normalize_url(url: str) -> str:
 
 def _content_hash(lab: str, item: FrontierItem) -> str:
     key = _normalize_title(item.title) or _normalize_url(item.url)
-    h = hashlib.sha1(f"{lab}|{key}".encode()).hexdigest()
+    h = hashlib.sha1(
+        f"{lab}|{key}".encode(), usedforsecurity=False,
+    ).hexdigest()
     return h[:16]
 
 

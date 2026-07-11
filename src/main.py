@@ -138,7 +138,7 @@ def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[Inl
         if path is None:
             logger.warning("logo.missing ticker=%s expected=%s/{png,jpg}", h.ticker, _LOGOS_DIR / h.slug)
             continue
-        sha8 = hashlib.sha1(path.read_bytes()).hexdigest()[:8]
+        sha8 = hashlib.sha1(path.read_bytes(), usedforsecurity=False).hexdigest()[:8]
         cid = f"{h.logo_cid}_{sha8}"
         cids[h.ticker] = cid
         images.append(InlineImage(cid=cid, path=path, subtype=None))
@@ -222,16 +222,21 @@ def main() -> int:
 
     logger.info("processors.news_summarizer")
     company_news_silence_note = None
-    if cn_bundles:
+    if any(bundle.items for bundle in cn_bundles):
         company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
+    elif any(bundle.error for bundle in cn_bundles):
+        # 数据源故障必须保留原始错误，不能粉饰成“今日无新闻”。
+        company_news_summary = None
     else:
         company_news_summary = None
         company_news_silence_note = news_summarizer.generate_silence_note(client=llm)
 
     logger.info("processors.macro_filter")
     macro_news_silence_note = None
-    if macro_bundles:
+    if any(bundle.items for bundle in macro_bundles):
         macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
+    elif any(bundle.error for bundle in macro_bundles):
+        macro_news_summary = None
     else:
         macro_news_summary = None
         macro_news_silence_note = macro_filter.generate_silence_note(client=llm)
@@ -379,7 +384,7 @@ def main() -> int:
     # 收件人邮箱不全写日志,用 mask_emails 只留首字母 + 域名,降低 PII 在日志被
     # actions/cache 持久化或外泄到第三方监控的风险(仓库虽 PRIVATE 但日志可能跨边界传递)
     logger.info("send recipients=%s subject=%r", mask_emails(recipients), subject)
-    send_html_email(
+    delivery = send_html_email(
         sender=settings.qq_email_address,
         sender_display_name="每日期刊",
         auth_code=settings.qq_email_auth_code,
@@ -388,7 +393,12 @@ def main() -> int:
         html_body=html,
         inline_images=inline_images,
     )
-    write_delivery_receipt(sent_at=now_bj, run_id=os.environ.get("GH_RUN_ID"))
+    write_delivery_receipt(
+        sent_at=now_bj,
+        accepted_count=len(delivery.accepted),
+        refused_count=len(delivery.refused),
+        run_id=os.environ.get("GH_RUN_ID"),
+    )
 
     # 邮件发送成功后才提交 figures 7 天去重 state — 失败时下次 run
     # 仍能重新评估同批候选,避免"LLM 失败 + state 已写"导致永久遗漏。

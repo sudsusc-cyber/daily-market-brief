@@ -53,6 +53,16 @@ def test_no_env_returns_not_ok(monkeypatch) -> None:
     assert "缺少" in reason
 
 
+def test_invalid_repo_slug_returns_not_ok(monkeypatch) -> None:
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "file:///tmp/not-a-repo")
+
+    ok, reason = monitor.check_today_status()
+
+    assert ok is False
+    assert "owner/repo" in reason
+
+
 def test_today_success_returns_ok(monkeypatch) -> None:
     """今天有 success run → OK
     BJT today 12:00 = UTC today 04:00,确保 created_at 转 BJT 后仍是 today。
@@ -192,3 +202,39 @@ def test_monitor_main_propagates_alert_send_failure(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="smtp down"):
         monitor.main()
+
+
+def test_duplicate_monitor_trigger_skips_second_alert(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "alert.txt"
+    path.write_text("未送达", encoding="utf-8")
+    monkeypatch.setenv("MONITOR_ALERT_PATH", str(path))
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("GH_REPO", "owner/repo")
+    monkeypatch.setenv("GH_RUN_ID", "200")
+
+    def fake_json(url: str, _token: str) -> dict:
+        if "/jobs" not in url:
+            return {"workflow_runs": [{
+                "id": 100,
+                "head_branch": "main",
+                "created_at": f"{_today()}T04:00:00Z",
+            }]}
+        return {"jobs": [{"steps": [{
+            "name": "Send monitor alert", "conclusion": "success",
+        }]}]}
+
+    monkeypatch.setattr(monitor, "_github_json", fake_json)
+    sent: list[str] = []
+    monkeypatch.setattr(monitor, "send_alert", lambda reason: sent.append(reason))
+
+    assert monitor.send_requested_alert() == 0
+    assert sent == []
+
+
+def test_check_only_writes_alert_request(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "alert.txt"
+    monkeypatch.setenv("MONITOR_ALERT_PATH", str(path))
+    monkeypatch.setattr(monitor, "check_today_status", lambda: (False, "缺少邮件"))
+
+    assert monitor.check_only() == 0
+    assert path.read_text(encoding="utf-8") == "缺少邮件"

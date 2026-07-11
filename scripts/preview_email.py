@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import sys
+import tempfile
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -70,7 +71,8 @@ def _build_mock_signals() -> list[StockSignal]:
         if err:
             signals.append(StockSignal(holding, None, None, None, None, None, "NONE", error=err))
             continue
-        assert last is not None and sma120 is not None and sma200 is not None
+        if last is None or sma120 is None or sma200 is None:
+            raise ValueError(f"invalid preview fixture for {holding.ticker}")
         delta_120 = (last - sma120) / sma120
         delta_200 = (last - sma200) / sma200
         if last <= sma200:
@@ -98,7 +100,7 @@ def _hashed_cid(h: Holding) -> str | None:
     p = _logo_path(h)
     if p is None:
         return None
-    sha8 = hashlib.sha1(p.read_bytes()).hexdigest()[:8]
+    sha8 = hashlib.sha1(p.read_bytes(), usedforsecurity=False).hexdigest()[:8]
     return f"{h.logo_cid}_{sha8}"
 
 
@@ -129,7 +131,7 @@ def _inline_logos_as_data_uri(html: str) -> str:
     return html
 
 
-def render_preview() -> str:
+def render_preview(*, inline_assets: bool = True) -> str:
     import datetime as dt
     from types import SimpleNamespace
 
@@ -143,10 +145,7 @@ def render_preview() -> str:
             "?auto=compress&cs=tinysrgb&w=1280&h=400&fit=crop"
         )
 
-    # 复用 render.py 的 Environment(已注册全部 filter:price/pct/metric_*/bj_time/cjk_spaced)
-    from src.renderer.render import _build_env, _build_sentiment_gauge
-    env = _build_env()
-    template = env.get_template("email.html.j2")
+    from src.renderer.render import render_email
 
     mock_sentiment = SimpleNamespace(metrics=[
         SimpleNamespace(name="CNN Fear & Greed", unit="", stale_from=None, error=None,
@@ -200,7 +199,7 @@ def render_preview() -> str:
                    Footnote(index=2, url='https://example.com/2', source='Reuters')],
     )
 
-    html = template.render(
+    html = render_email(
         signals=_build_mock_signals(),
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids=_build_logo_cids(),
@@ -208,20 +207,23 @@ def render_preview() -> str:
         # company_news 只需 truthy(jinja2 if 检查),company_news_summary 提供真实 mock
         sentiment=mock_sentiment,
         sentiment_verdict=mock_sentiment_verdict,
-        sentiment_gauge=_build_sentiment_gauge(mock_sentiment_verdict),
         company_news=[1], company_news_summary=mock_summary,
         figures=None, figure_summaries=None,
         macro_news=None, macro_news_summary=None,
         buffett_13f=None,
     )
-    return _inline_logos_as_data_uri(html)
+    return _inline_logos_as_data_uri(html) if inline_assets else html
 
 
 def main() -> int:
-    html = render_preview()
-    out = Path("/tmp/email_preview.html")
+    raw_html = render_preview(inline_assets=False)
+    html = render_preview(inline_assets=True)
+    out = Path(tempfile.gettempdir()) / "email_preview.html"
     out.write_text(html, encoding="utf-8")
-    print(f"已写入 {out} ({len(html):,} bytes)")
+    print(
+        f"已写入 {out} (真实邮件 HTML {len(raw_html.encode('utf-8')):,} bytes; "
+        f"浏览器内嵌资源后 {len(html.encode('utf-8')):,} bytes)"
+    )
     print(f"file://{out}")
     try:
         webbrowser.open(f"file://{out}")

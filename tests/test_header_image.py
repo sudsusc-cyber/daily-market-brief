@@ -259,7 +259,7 @@ def test_download_reuses_existing_cache(tmp_path):
     from src.collectors.header_image import _download
 
     cached = tmp_path / "cached.jpg"
-    cached.write_bytes(b"already-here")
+    cached.write_bytes(b"\xff\xd8\xff" + b"already-valid-jpeg-cache")
 
     # 不需要 mock urllib;若发生网络访问说明缓存命中失败
     with patch("src.collectors.header_image.urllib.request.build_opener") as mock_opener:
@@ -267,7 +267,7 @@ def test_download_reuses_existing_cache(tmp_path):
         assert mock_opener.call_count == 0  # 没访问网络
 
     assert result == cached
-    assert result.read_bytes() == b"already-here"
+    assert result.read_bytes() == b"\xff\xd8\xff" + b"already-valid-jpeg-cache"
 
 
 # 真实 JPEG magic bytes(FF D8 FF)+ 一些填充,用于满足新 _is_image_bytes 检查

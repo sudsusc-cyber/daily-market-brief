@@ -22,6 +22,8 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+_MAX_FEED_BYTES = 5 * 1024 * 1024
+
 # 部分站点对 feedparser 默认 UA 直接 RST/403,这里用 Safari UA
 _BROWSER_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 "
@@ -49,8 +51,32 @@ def fetch_rss(url: str, timeout: int = 20) -> Any:
             ),
         },
         timeout=(min(10, timeout), timeout),
+        stream=True,
     )
-    resp.raise_for_status()
-    feed = feedparser.parse(resp.content)
+    try:
+        resp.raise_for_status()
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        if "html" in content_type:
+            raise ValueError(f"RSS endpoint returned HTML Content-Type: {content_type}")
+
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > _MAX_FEED_BYTES:
+                raise ValueError(f"RSS response exceeds {_MAX_FEED_BYTES} bytes")
+            chunks.append(chunk)
+    finally:
+        resp.close()
+    content = b"".join(chunks)
+    head = content[:512].lstrip().lower()
+    if head.startswith((b"<!doctype html", b"<html")):
+        raise ValueError("RSS endpoint returned an HTML body")
+
+    feed = feedparser.parse(content)
+    if not getattr(feed, "version", "") and not (feed.entries or []):
+        raise ValueError("response is not a recognizable RSS/Atom feed")
     logger.debug("fetch_rss url=%s entries=%d", url, len(feed.entries or []))
     return feed

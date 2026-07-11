@@ -10,6 +10,8 @@ import requests
 from src.processors.llm_client import (
     DEFAULT_MODEL,
     INVESTMENT_FRAMEWORK,
+    LLMClient,
+    LLMUsage,
     _deepseek_flash_version_key,
     _select_latest_flash_model,
     build_system_prompt,
@@ -109,3 +111,24 @@ class TestDeepSeekModelResolver:
         monkeypatch.setattr("src.processors.llm_client.requests.get", fake_get)
 
         assert resolve_latest_flash_model("secret-key") == DEFAULT_MODEL
+
+
+def test_client_disables_sdk_hidden_retries(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", FakeOpenAI)
+    LLMClient(api_key="secret")
+
+    assert calls[0]["max_retries"] == 0
+
+
+def test_cost_does_not_double_count_reasoning(monkeypatch) -> None:
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", lambda **_kwargs: object())
+    client = LLMClient(api_key="secret")
+    client.cumulative = LLMUsage(output_tokens=2048, reasoning_tokens=2048)
+
+    assert client.estimate_cost_cny() == 2048 * 4.0e-6

@@ -41,8 +41,8 @@ Leader election(防双 fail):
 幂等性策略:
 - 所有触发类型(schedule / workflow_dispatch / repository_dispatch)统一参与幂等
 - 状态判断:conclusion=success(已完成)OR status in (queued, in_progress)
-- API 调用失败 → fail-close(返回 True,跳过本次发送)
-  设计取舍:GH API 偶发抖动时,宁可漏发不重发(漏发用户会察觉,重发更打扰)
+  - API 调用失败 → 抛 IdempotencyUnavailableError,让 run 失败
+    后续串行 follower 在 API 恢复后可自动重试,避免 poison success。
 - FORCE_SEND=true 或 FORCE_SEND=1 在 main.py 层跳过本检查(人工强制重发)
 """
 
@@ -51,12 +51,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import urllib.request
 from datetime import datetime
 
 from src.utils.dates import BEIJING  # 统一时区源,避免每个 module 重复 ZoneInfo
 
 logger = logging.getLogger(__name__)
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+class IdempotencyUnavailableError(RuntimeError):
+    """无法可靠判断是否已经发送；必须让当前 run 失败而不是伪装成 success。"""
 
 
 def _today_beijing_iso() -> str:
@@ -78,12 +84,32 @@ def _bjt_date_of_iso(iso_str: str) -> str | None:
     return dt.astimezone(BEIJING).date().isoformat()
 
 
+def _run_has_successful_step(
+    *, repo: str, token: str, run_id: int, step_names: set[str],
+) -> bool:
+    """查询 Jobs API；用于识别部分送达后至少已有 SMTP acceptance 的失败 run。"""
+    url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    # URL 固定为 https://api.github.com，repo 已通过 slug 白名单。
+    with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
+        data = json.load(resp)
+    return any(
+        step.get("name") in step_names and step.get("conclusion") == "success"
+        for job in (data.get("jobs", []) or [])
+        for step in (job.get("steps", []) or [])
+    )
+
+
 def already_sent_today() -> bool:
     """
     True = 当日已有 run 在跑或已成功(排除当前 run)→ 应当跳过本次发送。
     False = 本地运行 / 确认今日无并发或成功 run → 允许发送。
 
-    永不抛异常。fail-close 默认:API 失败时返回 True(保守,宁可漏不重)。
+    GitHub API 或关键环境异常时抛 IdempotencyUnavailableError，让 workflow 失败；
+    后续串行触发可在外部状态恢复后自动重试。
     """
     token = os.environ.get("GH_TOKEN")
     repo = os.environ.get("GH_REPO")
@@ -92,6 +118,8 @@ def already_sent_today() -> bool:
     if not token or not repo:
         # 本地运行:不查询,允许发送
         return False
+    if not _REPO_SLUG_RE.fullmatch(repo):
+        raise IdempotencyUnavailableError("GH_REPO is not a valid owner/repo slug")
 
     try:
         cur_run_id = int(cur_run_id_str) if cur_run_id_str else None
@@ -106,7 +134,7 @@ def already_sent_today() -> bool:
     # 短时密集触发;20 太窄,真实 run 可能被挤出页面而误判为"未发"导致重发。
     url = (
         f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
-        f"?per_page=100"
+        f"?branch=main&per_page=100"
     )
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
@@ -114,19 +142,20 @@ def already_sent_today() -> bool:
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        # URL 固定为 https://api.github.com，repo 已通过 slug 白名单。
+        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
             data = json.load(resp)
     except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "idempotency.api_failed reason=%r fail-close → 跳过本次发送(保守)", exc,
-        )
-        return True  # fail-close:API 失败 → 保守跳过,避免 GH API 抖动时双发
+        logger.error("idempotency.api_failed reason=%r", exc)
+        raise IdempotencyUnavailableError("GitHub Actions API unavailable") from exc
 
     runs = data.get("workflow_runs", []) or []
 
     # 第一步:已经有成功的 run → 直接 skip,毫无歧义。
     for run in runs:
         if cur_run_id is not None and run.get("id") == cur_run_id:
+            continue
+        if run.get("head_branch", "main") != "main":
             continue
         if _bjt_date_of_iso(run.get("created_at") or "") != today:
             continue
@@ -136,6 +165,25 @@ def already_sent_today() -> bool:
                 run.get("id"), run.get("created_at"),
             )
             return True
+        # 部分送达会让 Confirm full email delivery 失败、run 结论为 failure；
+        # 但至少一位收件人已经收到，不能让后续兜底给他们重发。
+        if run.get("conclusion") == "failure" and isinstance(run.get("id"), int):
+            try:
+                accepted = _run_has_successful_step(
+                    repo=repo,
+                    token=token,
+                    run_id=run["id"],
+                    step_names={"Confirm SMTP acceptance"},
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error("idempotency.jobs_api_failed run_id=%s reason=%r", run["id"], exc)
+                raise IdempotencyUnavailableError("GitHub Jobs API unavailable") from exc
+            if accepted:
+                logger.warning(
+                    "idempotency.partial_delivery run_id=%s → skip duplicate resend",
+                    run["id"],
+                )
+                return True
 
     # 第二步:没有成功 run,但有其他 run 在 queued/in_progress —— 走 leader election。
     # 只有"自己的 run_id 是今日所有 active run 中最小(最早创建)" 才发,其他让位。
@@ -144,16 +192,18 @@ def already_sent_today() -> bool:
         # 异常:GH 环境通常有 GH_RUN_ID(由 daily.yml 显式注入)。能走到这里意味着
         # token / repo 都齐全但 GH_RUN_ID 缺失或非数字 — 多半是 daily.yml 改坏了。
         # 此时无法 leader election → 保守 skip(避免重发);monitor 会观察到漏发并告警。
-        logger.warning(
+        logger.error(
             "idempotency.no_run_id token+repo present but GH_RUN_ID missing/invalid — "
-            "fail-close to avoid double send; check daily.yml env wiring",
+            "cannot elect leader; check daily.yml env wiring",
         )
-        return True
+        raise IdempotencyUnavailableError("GH_RUN_ID missing or invalid")
 
     active_today_ids: list[int] = [cur_run_id]
     for run in runs:
         rid = run.get("id")
         if rid is None or rid == cur_run_id:
+            continue
+        if run.get("head_branch", "main") != "main":
             continue
         if _bjt_date_of_iso(run.get("created_at") or "") != today:
             continue

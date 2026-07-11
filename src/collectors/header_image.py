@@ -35,6 +35,7 @@ _FALLBACK_IMAGE = _PROJECT_ROOT / "assets" / "fallback_header.jpg"
 _CACHE_DIR = _PROJECT_ROOT / "state" / "header_cache"
 _HEADER_CID = "header_image"
 _TIMEOUT = 8
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024
 _BING_CACHE_KEEP_DAYS = 30  # bing_<date>.jpg 每天新增,超过 N 天删除以防 actions/cache 膨胀
 
 _SEASON_MAP = {
@@ -81,8 +82,16 @@ def _download(url: str, dest: Path) -> Path:
     原子写:.tmp + replace,避免半下载文件残留被下次 cache 命中。
     """
     if dest.exists() and dest.stat().st_size > 0:
-        logger.info("header.cache.hit path=%s size=%d", dest.name, dest.stat().st_size)
-        return dest
+        size = dest.stat().st_size
+        try:
+            valid_cache = size <= _MAX_IMAGE_BYTES and _is_image_bytes(dest.read_bytes()[:32])
+        except OSError:
+            valid_cache = False
+        if valid_cache:
+            logger.info("header.cache.hit path=%s size=%d", dest.name, size)
+            return dest
+        logger.warning("header.cache.invalid path=%s size=%d; redownloading", dest.name, size)
+        dest.unlink(missing_ok=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
     # ProxyHandler({}) 强制 bypass 系统代理(避免 Surge / ClashX 接管导致超时)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -92,9 +101,11 @@ def _download(url: str, dest: Path) -> Path:
     )
     with opener.open(req, timeout=_TIMEOUT) as resp:
         content_type = (resp.headers.get("Content-Type") or "").lower()
-        data = resp.read()
+        data = resp.read(_MAX_IMAGE_BYTES + 1)
     if not data:
         raise OSError("empty response")
+    if len(data) > _MAX_IMAGE_BYTES:
+        raise OSError(f"image exceeds {_MAX_IMAGE_BYTES} bytes")
     if not content_type.startswith("image/"):
         raise OSError(f"non-image Content-Type: {content_type!r} (HTML 拦截页?)")
     if not _is_image_bytes(data):
@@ -116,7 +127,8 @@ def _tier1_pexels(today: date) -> dict:
     entry = pool[today.toordinal() % len(pool)]
     sid = entry["id"]
     url = library["url_template"].replace("{id}", sid)
-    local_path = _download(url, _CACHE_DIR / f"pexels_{sid}.jpg")
+    # 文件名含版式版本，避免沿用历史 1280×640 缓存。
+    local_path = _download(url, _CACHE_DIR / f"pexels_{sid}_1280x400.jpg")
     logger.info("header.pexels id=%s season=%s", sid, season)
     return {
         "url": f"cid:{_HEADER_CID}",

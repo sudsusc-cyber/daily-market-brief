@@ -18,7 +18,7 @@ from src.processors.subject.fallback import (
     WARM_VARIANTS,
     static_fallback,
 )
-from src.processors.subject.solar_terms import get_solar_term_context
+from src.processors.subject.solar_terms import get_solar_term_context, season_of
 from src.processors.subject.validator import is_valid
 
 
@@ -109,6 +109,22 @@ class TestSeasonalPhrase:
         assert "夏至" in s
         suffix = s.split("　")[1]
         assert suffix in EXTREME_GREED_VARIANTS
+
+    def test_every_season_and_mood_passes_season_validation(self) -> None:
+        moods = ["极度恐慌", "偏冷", "中性", "偏热", "极度贪婪"]
+        representative_dates = [
+            date(2026, 1, 15),
+            date(2026, 4, 15),
+            date(2026, 7, 15),
+            date(2026, 10, 15),
+        ]
+        for current in representative_dates:
+            for mood in moods:
+                data = _data(today=current, mood_label=mood)
+                subject = static_fallback(data)
+                assert is_valid(
+                    subject, season=season_of(data.solar_term.current),
+                ), (current, mood, subject)
 
 
 class TestVariantDiversity:

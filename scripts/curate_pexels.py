@@ -14,6 +14,9 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+CURATE_RESULT = ROOT / "state" / "curation" / "curate_result.json"
+
 # 元数据粗筛黑名单(slug 中出现任一即淘汰)
 BLOCKLIST = {
     "sunset", "sunrise", "dawn", "dusk", "twilight",
@@ -441,8 +444,11 @@ def main() -> int:
     for entry, code in invalid:
         out["invalid"].append({"id": entry[0], "slug": entry[1], "season": entry[2], "code": code})
 
-    Path("/tmp/curate_result.json").write_text(json.dumps(out, ensure_ascii=False, indent=2))
-    print("\nwrote /tmp/curate_result.json")
+    CURATE_RESULT.parent.mkdir(parents=True, exist_ok=True)
+    CURATE_RESULT.write_text(
+        json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8",
+    )
+    print(f"\nwrote {CURATE_RESULT}")
     return 0
 
 

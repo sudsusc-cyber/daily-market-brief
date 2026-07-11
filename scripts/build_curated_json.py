@@ -1,4 +1,4 @@
-"""读 /tmp/curate_result.json,排除 12 张审美淘汰,生成 200 张 schema v2 JSON + review.md。"""
+"""读 state/curation/curate_result.json，生成 200 张 schema v2 JSON。"""
 from __future__ import annotations
 
 import json
@@ -6,6 +6,11 @@ import re
 import sys
 from datetime import date
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+CURATION_DIR = ROOT / "state" / "curation"
+CURATE_RESULT = CURATION_DIR / "curate_result.json"
+DROPPED_RESULT = CURATION_DIR / "dropped.json"
 
 # Agent 审美淘汰列表
 DROPS = {
@@ -67,7 +72,7 @@ def infer_tags(slug: str) -> list[str]:
 
 
 def main() -> int:
-    with open("/tmp/curate_result.json") as f:
+    with CURATE_RESULT.open(encoding="utf-8") as f:
         data = json.load(f)
     valid = data["valid"]
 
@@ -89,7 +94,8 @@ def main() -> int:
     # 校验每季 50
     for s, items in by_season.items():
         print(f"{s}: {len(items)}")
-        assert len(items) == 50, f"{s} != 50: {len(items)}"
+        if len(items) != 50:
+            raise ValueError(f"{s} != 50: {len(items)}")
 
     out = {
         "version": 2,
@@ -100,7 +106,7 @@ def main() -> int:
         "preview_template": "https://www.pexels.com/photo/{slug}-{id}/",
         "seasons": by_season,
     }
-    target = Path("/Users/zhukaiyuan/Documents/projects/daily-market-brief/.claude/worktrees/mystifying-hawking-b1b6b6/config/curated_images.json")
+    target = ROOT / "config" / "curated_images.json"
     target.write_text(json.dumps(out, ensure_ascii=False, indent=2))
     print(f"\nwrote {target} ({target.stat().st_size} bytes, {sum(len(v) for v in by_season.values())} entries)")
 
@@ -112,7 +118,10 @@ def main() -> int:
 
     # dropped report
     print(f"\ndropped: {len(dropped)}")
-    Path("/tmp/dropped.json").write_text(json.dumps(dropped, ensure_ascii=False, indent=2))
+    CURATION_DIR.mkdir(parents=True, exist_ok=True)
+    DROPPED_RESULT.write_text(
+        json.dumps(dropped, ensure_ascii=False, indent=2), encoding="utf-8",
+    )
     return 0
 
 

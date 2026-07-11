@@ -67,7 +67,8 @@ def retry(
                         )
                         raise
                     delay = base_delay * (backoff ** (attempt - 1))
-                    delay *= 1 + random.uniform(-jitter, jitter)
+                    # 仅用于退避抖动，不承担任何安全随机用途。
+                    delay *= 1 + random.uniform(-jitter, jitter)  # nosec B311
                     delay = max(0.05, delay)
                     logger.info(
                         "retry.sleep fn=%s attempt=%d/%d delay=%.2fs exc=%s",
@@ -75,7 +76,8 @@ def retry(
                     )
                     time.sleep(delay)
             # 不可达
-            assert last_exc is not None
+            if last_exc is None:
+                raise RuntimeError("retry attempts exhausted without an exception")
             raise last_exc
 
         return wrapper

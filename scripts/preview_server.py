@@ -11,6 +11,7 @@ import http.server
 import os
 import socketserver
 import sys
+import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +21,7 @@ PORT = int(__import__("os").environ.get("PORT", 8766))
 # 默认仅绑回环,避免本地预览暴露到 LAN(咖啡店/合住 wifi 等场景)。
 # HOST=0.0.0.0 显式覆盖。
 HOST = __import__("os").environ.get("HOST", "127.0.0.1")
-PREVIEW_DIR = Path("/tmp/email-preview")
+PREVIEW_DIR = Path(tempfile.gettempdir()) / "email-preview"
 PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
 
 # 复用 preview_email 的渲染流程(已带 logo data-URI 内联)

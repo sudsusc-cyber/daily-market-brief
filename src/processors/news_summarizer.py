@@ -130,7 +130,7 @@ def generate_silence_note(client: LLMClient) -> str | None:
     resp = client.chat(
         "请写一句替代'昨日动态'章节的占位语",
         task_extra=_SILENCE_INSTRUCTION,
-        max_tokens=1500,
+        max_tokens=4000,
         temperature=0.85,
     )
     text = (resp.text or "").strip().strip("\"'“”「」 ")
@@ -329,6 +329,13 @@ def summarize(
 
     body_html = ""
     for cn, summary in raw_rows:
+        cited_indexes = {footnote_idx(m) for m in FOOTNOTE_RE.finditer(summary)}
+        if not any(index in rewrite for index in cited_indexes):
+            logger.warning(
+                "news_summarizer.row_dropped_without_valid_source company=%r",
+                strip_all_tags(cn)[:40],
+            )
+            continue
         # cn:剥所有标签后 escape(防 <strong>)
         safe_cn = escape_text(strip_all_tags(cn))
         # summary:先剥标签(去掉 <sup>[N]</sup> 之外的所有 LLM HTML),
@@ -347,6 +354,10 @@ def summarize(
             )
         else:
             body_html += f'<div style="{row_style}">{safe_summary}</div>'
+
+    if not body_html:
+        logger.warning("news_summarizer.all_rows_dropped_without_valid_sources")
+        return None
 
     logger.info(
         "news_summarizer.ok rows=%d footnotes=%d (sanitized)",

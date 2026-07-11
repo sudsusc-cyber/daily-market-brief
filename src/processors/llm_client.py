@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -156,9 +157,16 @@ class LLMClient:
         *,
         model: str = DEFAULT_MODEL,
         base_url: str = DEFAULT_BASE_URL,
+        max_retries: int = 0,
+        total_timeout_seconds: float = 480.0,
     ):
-        self._client = OpenAI(api_key=api_key, base_url=base_url)
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=max(0, max_retries),
+        )
         self._model = model
+        self._deadline = time.monotonic() + max(1.0, total_timeout_seconds)
         # 累积本次进程所有调用的 token 数,用于 main 收尾打印 token 预算
         self.cumulative = LLMUsage()
 
@@ -194,6 +202,14 @@ class LLMClient:
             system = system_override
         else:
             system = build_system_prompt(task_extra=task_extra)
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            return LLMResponse(
+                text=None,
+                usage=LLMUsage(),
+                error="LLMStageDeadlineExceeded: cumulative LLM budget exhausted",
+            )
+        effective_timeout = max(1.0, min(float(timeout), remaining))
         try:
             kwargs: dict[str, Any] = {
                 "model": self._model,
@@ -203,7 +219,7 @@ class LLMClient:
                 ],
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "timeout": timeout,
+                "timeout": effective_timeout,
             }
             if top_p is not None:
                 kwargs["top_p"] = top_p
@@ -227,12 +243,19 @@ class LLMClient:
 
         text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
         usage = _extract_usage(resp)
+        error = None
         if not text and usage.reasoning_tokens > max_tokens * 0.7:
+            error = (
+                "ReasoningStarved: output text empty "
+                f"(reasoning={usage.reasoning_tokens}, max_tokens={max_tokens})"
+            )
             logger.warning(
                 "llm.reasoning_starved model=%s reasoning=%d max_tokens=%d "
                 "output text empty — reasoning 可能挤空了输出预算",
                 self._model, usage.reasoning_tokens, max_tokens,
             )
+        elif not text:
+            error = "EmptyOutput: model returned no visible text"
         self._accumulate(usage)
         logger.info(
             "llm.chat_ok model=%s in=%d out=%d reasoning=%d cache_hit=%d "
@@ -241,7 +264,7 @@ class LLMClient:
             usage.reasoning_tokens, usage.cache_hit_tokens,
             len(user_prompt), len(text),
         )
-        return LLMResponse(text=text or None, usage=usage)
+        return LLMResponse(text=text or None, usage=usage, error=error)
 
     def _accumulate(self, usage: LLMUsage) -> None:
         self.cumulative.input_tokens += usage.input_tokens
@@ -264,7 +287,8 @@ class LLMClient:
         return (
             in_uncached * 0.5e-6
             + c.cache_hit_tokens * 0.05e-6
-            + (c.output_tokens + c.reasoning_tokens) * 4.0e-6
+            # completion_tokens 已包含 reasoning_tokens，不能重复计费。
+            + c.output_tokens * 4.0e-6
         )
 
 

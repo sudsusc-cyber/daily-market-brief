@@ -9,15 +9,22 @@ permissions:
   contents: read
   actions: read   # restore cache 需要
 
+concurrency:
+  group: dump-thesis-state
+  cancel-in-progress: true
+
 jobs:
   dump:
+    name: export thesis state
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Restore latest daily-state cache (read-only)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: state
           key: dump-state-never-match-${{ github.run_id }}
@@ -34,7 +41,7 @@ jobs:
           wc -l state/thesis_evidence_2026.jsonl 2>/dev/null || echo "(missing)"
 
       - name: Upload thesis state + evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: thesis-state-dump
           path: |

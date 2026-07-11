@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from datetime import UTC, datetime
@@ -35,6 +36,9 @@ from src.utils.dates import BEIJING
 from src.utils.holidays import should_send_today
 
 logger = logging.getLogger(__name__)
+
+_ALERT_PATH_ENV = "MONITOR_ALERT_PATH"
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
 def _today_beijing_iso() -> str:
@@ -54,11 +58,13 @@ def _bjt_date_of_iso(iso_str: str) -> str | None:
 
 def _github_json(url: str, token: str) -> dict:
     """调用 GitHub REST API 并返回 JSON。"""
+    if not url.startswith("https://api.github.com/"):
+        raise ValueError("GitHub API URL must use the official HTTPS endpoint")
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310
         return json.load(resp)
 
 
@@ -67,7 +73,8 @@ def _run_has_delivery_confirmation(*, repo: str, token: str, run_id: int) -> boo
     url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
     data = _github_json(url, token)
     return any(
-        step.get("name") == "Confirm email delivery" and step.get("conclusion") == "success"
+        step.get("name") in {"Confirm full email delivery", "Confirm email delivery"}
+        and step.get("conclusion") == "success"
         for job in (data.get("jobs", []) or [])
         for step in (job.get("steps", []) or [])
     )
@@ -91,11 +98,13 @@ def check_today_status() -> tuple[bool, str]:
     repo = os.environ.get("GH_REPO", "")
     if not token or not repo:
         return False, "缺少 GH_TOKEN / GH_REPO 环境变量"
+    if not _REPO_SLUG_RE.fullmatch(repo):
+        return False, "GH_REPO 不是合法的 owner/repo"
 
     today = _today_beijing_iso()
     url = (
         f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
-        f"?per_page=30"
+        f"?branch=main&per_page=30"
     )
     try:
         data = _github_json(url, token)
@@ -103,7 +112,11 @@ def check_today_status() -> tuple[bool, str]:
         return False, f"GH API 调用失败: {exc!r}"
 
     runs = data.get("workflow_runs", []) or []
-    today_runs = [r for r in runs if _bjt_date_of_iso(r.get("created_at") or "") == today]
+    today_runs = [
+        r for r in runs
+        if _bjt_date_of_iso(r.get("created_at") or "") == today
+        and r.get("head_branch", "main") == "main"
+    ]
 
     if not today_runs:
         return False, f"今日({today} BJT)无 daily.yml run 记录"
@@ -193,6 +206,75 @@ def send_alert(reason: str) -> None:
     )
 
 
+def _alert_already_sent_today() -> bool:
+    """已有 monitor run 成功执行告警步骤时跳过第二封重复告警。"""
+    token = os.environ.get("GH_TOKEN", "")
+    repo = os.environ.get("GH_REPO", "")
+    current_run = os.environ.get("GH_RUN_ID", "")
+    if not token or not repo:
+        return False
+    if not _REPO_SLUG_RE.fullmatch(repo):
+        logger.warning("monitor.alert_dedup_invalid_repo")
+        return False
+    url = (
+        f"https://api.github.com/repos/{repo}/actions/workflows/monitor.yml/runs"
+        f"?branch=main&per_page=30"
+    )
+    try:
+        runs = (_github_json(url, token).get("workflow_runs", []) or [])
+        for run in runs:
+            if str(run.get("id", "")) == current_run:
+                continue
+            if run.get("head_branch", "main") != "main":
+                continue
+            if _bjt_date_of_iso(run.get("created_at") or "") != _today_beijing_iso():
+                continue
+            run_id = run.get("id")
+            if not isinstance(run_id, int):
+                continue
+            jobs_url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
+            jobs = (_github_json(jobs_url, token).get("jobs", []) or [])
+            if any(
+                step.get("name") == "Send monitor alert"
+                and step.get("conclusion") == "success"
+                for job in jobs
+                for step in (job.get("steps", []) or [])
+            ):
+                return True
+    except Exception as exc:  # noqa: BLE001
+        # 去重检查失败不能吞掉真正告警；最多承担重复一封的较小风险。
+        logger.warning("monitor.alert_dedup_failed exc_type=%s", type(exc).__name__)
+    return False
+
+
+def _alert_request_path() -> Path:
+    raw = os.environ.get(_ALERT_PATH_ENV, ".monitor-alert.txt").strip()
+    return Path(raw or ".monitor-alert.txt")
+
+
+def check_only() -> int:
+    """工作流第一步：只检查并把告警原因写入临时文件。"""
+    path = _alert_request_path()
+    path.unlink(missing_ok=True)
+    ok, reason = check_today_status()
+    logger.info("monitor.check ok=%s reason=%s", ok, reason)
+    if not ok:
+        path.write_text(reason, encoding="utf-8")
+    return 0
+
+
+def send_requested_alert() -> int:
+    """工作流第二步：若当日尚未告警，则发送临时文件中的原因。"""
+    path = _alert_request_path()
+    reason = path.read_text(encoding="utf-8").strip()
+    if _alert_already_sent_today():
+        logger.info("monitor.alert_skipped reason=今日已有成功告警")
+        return 0
+    send_alert(reason)
+    logger.info("monitor.alert_sent")
+    return 0
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -213,4 +295,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if "--check-only" in sys.argv:
+        sys.exit(check_only())
+    if "--send-request" in sys.argv:
+        sys.exit(send_requested_alert())
     sys.exit(main())
