@@ -131,6 +131,7 @@ def _inline_logos_as_data_uri(html: str) -> str:
 
 def render_preview() -> str:
     import datetime as dt
+    from types import SimpleNamespace
 
     from src.collectors.header_image import pick_header_image
     header = pick_header_image(dt.date.today())
@@ -143,9 +144,27 @@ def render_preview() -> str:
         )
 
     # 复用 render.py 的 Environment(已注册全部 filter:price/pct/metric_*/bj_time/cjk_spaced)
-    from src.renderer.render import _build_env
+    from src.renderer.render import _build_env, _build_sentiment_gauge
     env = _build_env()
     template = env.get_template("email.html.j2")
+
+    mock_sentiment = SimpleNamespace(metrics=[
+        SimpleNamespace(name="CNN Fear & Greed", unit="", stale_from=None, error=None,
+                        current=67.5, prior=64.0, delta=3.5),
+        SimpleNamespace(name="VIX", unit="", stale_from=None, error=None,
+                        current=16.8, prior=17.4, delta=-0.6),
+        SimpleNamespace(name="高收益债利差", unit="%", stale_from=None, error=None,
+                        current=3.1, prior=3.2, delta=-0.1),
+        SimpleNamespace(name="Shiller PE", unit="", stale_from=None, error=None,
+                        current=34.2, prior=34.1, delta=0.1),
+        SimpleNamespace(name="DXY", unit="", stale_from=None, error=None,
+                        current=99.4, prior=99.8, delta=-0.4),
+    ])
+    mock_sentiment_verdict = {
+        "verdict": "今日情绪 · 偏热",
+        "argument": "风险偏好温和回升，VIX 回落且高收益债利差收窄。估值仍不便宜，暂缓追高，守住现金仓位。",
+        "score": 67.5,
+    }
 
     # mock 昨日动态:用 news_summarizer 的真实渲染逻辑跑一段
     from src.processors.news_summarizer import CompanyNewsSummary, Footnote
@@ -187,7 +206,9 @@ def render_preview() -> str:
         logo_cids=_build_logo_cids(),
         header_image_url=header_url,
         # company_news 只需 truthy(jinja2 if 检查),company_news_summary 提供真实 mock
-        sentiment=None, sentiment_verdict=None,
+        sentiment=mock_sentiment,
+        sentiment_verdict=mock_sentiment_verdict,
+        sentiment_gauge=_build_sentiment_gauge(mock_sentiment_verdict),
         company_news=[1], company_news_summary=mock_summary,
         figures=None, figure_summaries=None,
         macro_news=None, macro_news_summary=None,
