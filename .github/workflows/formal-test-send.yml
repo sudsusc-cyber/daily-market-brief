@@ -1,0 +1,60 @@
+name: send-formal-test
+
+# 手动定向试发完整正式版：运行真实采集、LLM、主题与正式模板，但不恢复或保存
+# daily-state，因此不会污染定时邮件的新闻去重、主题缓存或判断账本。
+on:
+  workflow_dispatch:
+    inputs:
+      recipients:
+        description: "试发收件人（多个地址用英文逗号分隔）"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: send-formal-test
+  cancel-in-progress: false
+
+jobs:
+  send:
+    name: collect + render + send formal test
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_SEND: "true"
+      PYTHONPATH: .
+      DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Send formal test email
+        run: uv run python src/main.py
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
+          QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
+          EMAIL_RECIPIENT: ${{ inputs.recipients }}
+
+      - name: Confirm SMTP acceptance
+        run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
+
+      - name: Confirm full email delivery
+        run: uv run python -m src.utils.delivery full .delivery-receipt.json
