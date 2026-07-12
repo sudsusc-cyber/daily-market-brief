@@ -136,6 +136,8 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert 'data-sentiment-score-position="14"' in html
     assert 'data-sentiment-pointer-position="14"' in html
     assert 'data-sentiment-score-bubble="true"' in html
+    assert 'data-sentiment-score-face="continuous-corner"' in html
+    assert "-webkit-border-radius:12px; border-radius:12px" in html
     assert 'data-sentiment-score-tail-track="true"' in html
     assert 'display:inline-block; vertical-align:bottom' in html
     assert 'data-sentiment-score-tail="true"' in html
@@ -144,6 +146,20 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert 'data-sentiment-label="true"' not in html
     assert "极度恐慌" in html
     assert "极度贪婪" in html
+    assert 'data-sentiment-glass-tube="true"' in html
+    assert 'data-sentiment-glass-style="quiet-capsule"' in html
+    assert 'data-sentiment-glass-tip="curved-clear"' in html
+    assert 'data-sentiment-glass-rim="true"' in html
+    assert 'data-sentiment-color-bar="true"' in html
+    assert html.count('data-sentiment-glass-cell="true"') == 20
+    assert "background-image:radial-gradient" not in html
+    assert "border:1px solid #C8C1B5" in html
+    assert "border-radius:999px 0 0 999px" in html
+    assert "clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%" in html
+    assert "padding:1px 4px 1px 1px" in html
+    assert "background-color:rgba(248,245,238,0.42)" in html
+    assert "0 2px 8px rgba(26,26,26,0.10)" in html
+    assert "background-color:#4F6870" in html  # 渐变不支持时仍保留纯色色带
     assert "数据覆盖" not in html
     assert "项沿用缓存" not in html
     assert html.count("▼") == 1
@@ -192,7 +208,6 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
         "right_width": 40.0,
         "align": "center",
     }
-
     extreme_fear = _build_sentiment_gauge({"score": 0.0, "verdict": "极度恐慌"})
     extreme_greed = _build_sentiment_gauge({"score": 100.0, "verdict": "极度贪婪"})
     assert extreme_fear is not None

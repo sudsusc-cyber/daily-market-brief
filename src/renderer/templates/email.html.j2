@@ -306,7 +306,7 @@
                       {% if sentiment_gauge.bubble_layout.left_width > 0 %}<td width="{{ sentiment_gauge.bubble_layout.left_width }}%" style="width:{{ sentiment_gauge.bubble_layout.left_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
                       <td data-sentiment-score-position="{{ sentiment_gauge.pointer_index }}" width="{{ sentiment_gauge.bubble_layout.region_width }}%" height="49" align="{{ sentiment_gauge.bubble_layout.align }}" valign="bottom" style="width:{{ sentiment_gauge.bubble_layout.region_width }}%; height:49px; padding:0; font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1; white-space:nowrap;">
                         <span data-sentiment-score-bubble="true" style="display:inline-block; vertical-align:bottom; white-space:nowrap; text-align:center;">
-                          <span style="display:block; padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; border-radius:6px; white-space:nowrap;">
+                          <span data-sentiment-score-face="continuous-corner" style="display:block; padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; -webkit-border-radius:12px; border-radius:12px; white-space:nowrap;">
                               <span style="font-size:30px; line-height:1; color:#FFFFFF; font-weight:500; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ sentiment_gauge.score_display }}</span>
                               <span style="font-family:{{ serif_body }}; font-size:11px; line-height:1; color:#FFFFFF; margin-left:4px; letter-spacing:0.08em;">/ 100</span>
                           </span>
@@ -333,11 +333,19 @@
                       {% endfor %}
                     </tr>
                   </table>
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
+                  {# 玻璃温度计管：纯色为邮件客户端保底；支持 CSS 渐变时叠加管壁高光与底部暗部。 #}
+                  <table data-sentiment-glass-tube="true" data-sentiment-glass-style="quiet-capsule" data-sentiment-glass-tip="curved-clear" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                         style="width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; background-color:#F3F0EA; background-color:rgba(248,245,238,0.42); background-image:linear-gradient(180deg,rgba(255,255,255,0.82) 0%,rgba(255,255,255,0.22) 46%,rgba(26,26,26,0.05) 100%); border:1px solid #C8C1B5; border-radius:999px 0 0 999px; -webkit-clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%,calc(100% - 2px) 32%,100% 50%,calc(100% - 2px) 68%,calc(100% - 6px) 88%,calc(100% - 12px) 100%,0 100%); clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%,calc(100% - 2px) 32%,100% 50%,calc(100% - 2px) 68%,calc(100% - 6px) 88%,calc(100% - 12px) 100%,0 100%); box-shadow:0 2px 8px rgba(26,26,26,0.10),inset 0 1px 0 rgba(255,255,255,0.92),inset 0 -1px 0 rgba(26,26,26,0.08);">
                     <tr>
-                      {% for cell in sentiment_gauge.cells %}
-                      <td width="5%" height="9" style="width:5%; height:9px; padding:0; line-height:9px; font-size:0; background-color:{{ cell.color }}; border-right:{% if not loop.last %}2px solid {{ color_paper }}{% else %}0{% endif %};">&nbsp;</td>
-                      {% endfor %}
+                      <td data-sentiment-glass-rim="true" style="padding:1px 4px 1px 1px; line-height:0; font-size:0; border-radius:999px 0 0 999px; background-color:#F3F0EA; background-color:rgba(248,245,238,0.32);">
+                        <table data-sentiment-color-bar="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;">
+                          <tr>
+                            {% for cell in sentiment_gauge.cells %}
+                            <td data-sentiment-glass-cell="true" width="5%" height="14" style="width:5%; height:14px; padding:0; line-height:14px; font-size:0; background-color:{{ cell.color }}; background-image:linear-gradient(180deg,rgba(255,255,255,0.64) 0%,rgba(255,255,255,0.18) 42%,rgba(255,255,255,0.01) 64%,rgba(26,26,26,0.10) 100%); box-shadow:inset 0 1px 0 rgba(255,255,255,0.58),inset 0 -1px 0 rgba(26,26,26,0.10); border-radius:{% if loop.first %}999px 0 0 999px{% elif loop.last %}0 999px 999px 0{% else %}0{% endif %}; border-right:{% if not loop.last %}1px solid #EEE9E0{% else %}0{% endif %};">&nbsp;</td>
+                            {% endfor %}
+                          </tr>
+                        </table>
+                      </td>
                     </tr>
                   </table>
 
