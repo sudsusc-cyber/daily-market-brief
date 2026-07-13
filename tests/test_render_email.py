@@ -93,6 +93,20 @@ def test_render_email_header_keeps_full_two_to_one_frame() -> None:
     assert "width:100%; max-width:640px; height:auto" in html
 
 
+def test_render_email_uses_mobile_safe_holdings_table() -> None:
+    """持仓表不得再用 590px 固定宽度撑破 QQ/微信手机视口。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+    )
+
+    assert 'class="holdings-table" width="100%"' in html
+    assert "width:100%; max-width:590px; table-layout:fixed" in html
+    assert '<table width="590"' not in html
+    assert "@media only screen and (max-width:520px)" in html
+    assert 'class="holding-ticker"' in html
+
+
 def test_render_email_no_logo_falls_back_to_text_box() -> None:
     """logo_cids 不含该 ticker 时,渲染 ticker 前 3 字符的文本块兜底。"""
     s = _one_signal()
@@ -147,6 +161,7 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert "极度恐慌" in html
     assert "极度贪婪" in html
     assert 'data-sentiment-glass-tube="true"' in html
+    assert 'class="sentiment-glass-tube"' in html
     assert 'data-sentiment-glass-style="quiet-capsule"' in html
     assert 'data-sentiment-glass-tip="curved-clear"' in html
     assert 'data-sentiment-glass-rim="true"' in html
@@ -154,7 +169,9 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert html.count('data-sentiment-glass-cell="true"') == 20
     assert "background-image:radial-gradient" not in html
     assert "border:1px solid #C8C1B5" in html
-    assert "border-radius:999px 0 0 999px" in html
+    assert "border-radius:999px" in html
+    assert ".sentiment-glass-tube { border-radius:999px 0 0 999px !important; }" in html
+    assert "width:100%; max-width:100%; table-layout:fixed" in html
     assert "clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%" in html
     assert "padding:1px 4px 1px 1px" in html
     assert "background-color:rgba(248,245,238,0.42)" in html

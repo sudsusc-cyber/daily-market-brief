@@ -17,6 +17,7 @@ from src.collectors.header_image import (
     _FALLBACK_IMAGE,
     _HEADER_CID,
     _pick_season,
+    _purge_old_bing_cache,
     _tier1_pexels,
     _tier2_bing,
     _tier3_local,
@@ -118,7 +119,7 @@ def test_tier2_bing_success(tmp_path):
     fake_path.write_bytes(b"fake-bing-bytes")
 
     with patch("src.collectors.header_image.urllib.request.build_opener") as mock_opener, \
-         patch("src.collectors.header_image._download", return_value=fake_path):
+         patch("src.collectors.header_image._download", return_value=fake_path) as download:
         opener_inst = MagicMock()
         mock_opener.return_value = opener_inst
         opener_inst.open.return_value = fake_resp
@@ -127,6 +128,11 @@ def test_tier2_bing_success(tmp_path):
     assert result["source"] == "bing"
     assert result["url"] == f"cid:{_HEADER_CID}"
     assert result["local_path"] == fake_path
+    download_url, download_path = download.call_args.args
+    assert "w=1280" in download_url
+    assert "h=640" in download_url
+    assert "h=1080" not in download_url
+    assert download_path.name == "bing_2025-01-05_1280x640.jpg"
 
 
 def test_tier2_propagates_download_failure():
@@ -147,6 +153,20 @@ def test_tier2_propagates_download_failure():
             _tier2_bing(date(2025, 1, 5))
 
 
+def test_purge_handles_versioned_bing_cache_names(tmp_path):
+    """2:1 版缓存文件名仍应按日期清理，避免 Actions cache 持续膨胀。"""
+    old = tmp_path / "bing_2025-01-01_1280x640.jpg"
+    recent = tmp_path / "bing_2025-02-05_1280x640.jpg"
+    old.write_bytes(b"old")
+    recent.write_bytes(b"recent")
+
+    with patch("src.collectors.header_image._CACHE_DIR", tmp_path):
+        _purge_old_bing_cache(date(2025, 2, 10), keep_days=30)
+
+    assert not old.exists()
+    assert recent.exists()
+
+
 # ─────────────────────────  tier 3  ──────────────────────────────────
 
 def test_tier3_returns_fallback_path():
@@ -158,9 +178,13 @@ def test_tier3_returns_fallback_path():
 
 
 def test_tier3_fallback_file_exists():
-    """assets/fallback_header.jpg 必须存在,否则 SMTP 附件会失败"""
+    """本地兜底必须是真实 2:1 图片，否则 height:auto 会退回窄幅显示。"""
+    from PIL import Image
+
     assert _FALLBACK_IMAGE.exists(), f"{_FALLBACK_IMAGE} 缺失"
     assert _FALLBACK_IMAGE.stat().st_size > 0
+    with Image.open(_FALLBACK_IMAGE) as image:
+        assert image.size == (1280, 640)
 
 
 # ─────────────────────────  pick_header_image  ───────────────────────

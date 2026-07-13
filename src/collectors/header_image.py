@@ -26,17 +26,18 @@ import logging
 import urllib.request
 from datetime import date
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _CURATED_JSON = _PROJECT_ROOT / "config" / "curated_images.json"
-_FALLBACK_IMAGE = _PROJECT_ROOT / "assets" / "fallback_header.jpg"
+_FALLBACK_IMAGE = _PROJECT_ROOT / "assets" / "fallback_header_2x1.jpg"
 _CACHE_DIR = _PROJECT_ROOT / "state" / "header_cache"
 _HEADER_CID = "header_image"
 _TIMEOUT = 8
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
-_BING_CACHE_KEEP_DAYS = 30  # bing_<date>.jpg 每天新增,超过 N 天删除以防 actions/cache 膨胀
+_BING_CACHE_KEEP_DAYS = 30  # bing_<date>_1280x640.jpg 每天新增,超过 N 天删除
 
 _SEASON_MAP = {
     1: "winter", 2: "winter",
@@ -148,10 +149,17 @@ def _tier2_bing(today: date) -> dict:
         data = json.loads(resp.read().decode())
     raw_url = data["images"][0]["url"]
     url = f"https://www.bing.com{raw_url}" if raw_url.startswith("/") else raw_url
-    # 强制宽高参数
-    if "1280" not in url:
-        url = url.split("&w=")[0] + "&w=1280&h=400&rs=1&c=4"
-    local_path = _download(url, _CACHE_DIR / f"bing_{today.isoformat()}.jpg")
+    # 无条件覆盖尺寸参数：Bing 返回的 URL 可能已经带 1920×1080 或历史
+    # 1280×400 参数，只按字符串检查 "1280" 会让窄幅图漏网。
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query.update({"w": "1280", "h": "640", "rs": "1", "c": "4"})
+    url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    # 文件名含版式版本，防止 actions/cache 继续命中旧 1280×400 文件。
+    local_path = _download(
+        url,
+        _CACHE_DIR / f"bing_{today.isoformat()}_1280x640.jpg",
+    )
     # 日志只打 host + path,丢弃 query —— Bing 当前 query 无凭据,但截 query 是
     # 防御 future drift(若上游返回的 raw_url 偶发携带 token / session id 一类参数)
     log_url = url.split("?", 1)[0]
@@ -175,7 +183,7 @@ def _tier3_local() -> dict:
 
 
 def _purge_old_bing_cache(today: date, keep_days: int = _BING_CACHE_KEEP_DAYS) -> None:
-    """清理超过 keep_days 的 bing_<YYYY-MM-DD>.jpg。
+    """清理超过 keep_days 的 bing_<YYYY-MM-DD>_<版式>.jpg。
 
     Pexels 文件不动(库 ID 有限,会复用)。失败仅 warning,不阻断主流程。
     """
@@ -184,7 +192,7 @@ def _purge_old_bing_cache(today: date, keep_days: int = _BING_CACHE_KEEP_DAYS) -
     cutoff = today.toordinal() - keep_days
     for f in _CACHE_DIR.glob("bing_*.jpg"):
         try:
-            date_str = f.stem.removeprefix("bing_")
+            date_str = f.stem.removeprefix("bing_")[:10]
             file_date = date.fromisoformat(date_str)
             if file_date.toordinal() < cutoff:
                 f.unlink()
