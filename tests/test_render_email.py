@@ -93,20 +93,6 @@ def test_render_email_header_keeps_full_two_to_one_frame() -> None:
     assert "width:100%; max-width:640px; height:auto" in html
 
 
-def test_render_email_uses_mobile_safe_holdings_table() -> None:
-    """持仓表不得再用 590px 固定宽度撑破 QQ/微信手机视口。"""
-    html = render_email(
-        signals=[_one_signal()],
-        generated_at=datetime.now(UTC),
-    )
-
-    assert 'class="holdings-table" width="100%"' in html
-    assert "width:100%; max-width:590px; table-layout:fixed" in html
-    assert '<table width="590"' not in html
-    assert "@media only screen and (max-width:520px)" in html
-    assert 'class="holding-ticker"' in html
-
-
 def test_render_email_no_logo_falls_back_to_text_box() -> None:
     """logo_cids 不含该 ticker 时,渲染 ticker 前 3 字符的文本块兜底。"""
     s = _one_signal()

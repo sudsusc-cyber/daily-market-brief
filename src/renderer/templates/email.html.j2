@@ -68,19 +68,6 @@
   @supports ((clip-path:polygon(0 0,100% 50%,0 100%)) or (-webkit-clip-path:polygon(0 0,100% 50%,0 100%))) {
     .sentiment-glass-tube { border-radius:999px 0 0 999px !important; }
   }
-  @media only screen and (max-width:520px) {
-    .holding-logo-cell { width:30px !important; padding-right:6px !important; }
-    .holding-logo, .holding-logo-fallback { width:24px !important; height:24px !important; }
-    .holding-logo-fallback { line-height:24px !important; }
-    .holding-name { display:none !important; }
-    .holding-ticker { font-size:12px !important; letter-spacing:0 !important; }
-    .holding-price { font-size:13px !important; }
-    .holding-average { padding-left:4px !important; }
-    .holding-average-main { font-size:11px !important; }
-    .holding-average-delta { font-size:9px !important; letter-spacing:0 !important; }
-    .holding-signal { padding-left:4px !important; }
-    .holding-signal-badge { padding:4px !important; font-size:8px !important; letter-spacing:0.06em !important; }
-  }
 </style>
 <!--[if mso]>
 <style type="text/css">
@@ -173,18 +160,22 @@
           </td>
         </tr>
 
-        {# 数据表格：table-layout:fixed + 百分比列宽让 QQ/微信内置 WebView 在
-           窄屏真正收缩，而不是被 590px 固定宽度撑出横向滚动。移动端仅缩小
-           logo/字号并隐藏公司中文名，ticker、价格、均线和信号仍完整保留。 #}
+        {# 数据表格
+
+           Android QQ 邮箱"移动适配"会无视 white-space:nowrap,强行按列内容比例
+           分配宽度。当右侧 4 列都 nowrap 时,标的列被挤成单字符宽,导致
+           MSFT / Apple 被切成 M-S-F-T 竖排。修复:给整张数据表设固定 px 宽度,
+           Android QQ 触发整页横滑或缩放,但表格不变形。桌面 / iOS 已 ≤ 640px
+           容器内,固定 590px 不影响。 #}
         <tr>
           <td style="padding:8px 24px 8px 24px;">
-            <table class="holdings-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; width:100%; max-width:590px; table-layout:fixed; font-family:{{ serif_body }}; color:{{ color_ink }};">
+            <table width="590" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; width:590px; max-width:590px; font-family:{{ serif_body }}; color:{{ color_ink }};">
               <colgroup>
-                <col style="width:31%;" />
-                <col style="width:15%;" />
-                <col style="width:17%;" />
-                <col style="width:17%;" />
-                <col style="width:20%;" />
+                <col style="width:170px;" />
+                <col style="width:88px;" />
+                <col style="width:104px;" />
+                <col style="width:104px;" />
+                <col style="width:124px;" />
               </colgroup>
               <thead>
                 <tr>
@@ -192,7 +183,7 @@
                   <th style="padding:14px 8px 8px 0; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td class="holding-logo-cell" valign="middle" width="36" style="padding-right:12px;">&nbsp;</td>
+                        <td valign="middle" width="36" style="padding-right:12px;">&nbsp;</td>
                         <td valign="middle" align="left" style="font-family:{{ serif_body }}; font-size:9.5px; font-weight:500; letter-spacing:0.32em; color:{{ color_muted }}; text-transform:uppercase; line-height:1;">
                           标&nbsp;的
                         </td>
@@ -225,20 +216,20 @@
                   <td valign="top" style="padding:16px 8px 16px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }};">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td class="holding-logo-cell" valign="middle" width="36" style="padding-right:12px;">
+                        <td valign="middle" width="36" style="padding-right:12px;">
                           {% if has_logo %}
-                          <img class="holding-logo" src="cid:{{ logo_cids[s.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
+                          <img src="cid:{{ logo_cids[s.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
                           {% else %}
-                          <div class="holding-logo-fallback" style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ s.holding.ticker[:3] }}</div>
+                          <div style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ s.holding.ticker[:3] }}</div>
                           {% endif %}
                         </td>
-                        <td valign="middle" style="overflow:hidden;">
+                        <td valign="middle">
                           {# Android QQ 邮箱按 device-width 直接 reflow(不像 iOS 缩整页),
                              右侧 4 列都 nowrap 时,布局算法会把这一列压到单字符宽,
                              导致 MSFT / Apple 等被切成 M-S-F-T 竖排。强制 nowrap 后
                              表格在窄屏可能横滑或自动缩字号,但好过一字一行。 #}
-                          <div class="holding-ticker" style="font-family:{{ serif_display }}; font-size:15px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ s.holding.ticker }}</div>
-                          <div class="holding-name" style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-top:3px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ s.holding.name }}</div>
+                          <div style="font-family:{{ serif_display }}; font-size:15px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em; line-height:1.2; white-space:nowrap;">{{ s.holding.ticker }}</div>
+                          <div style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-top:3px; line-height:1.3; white-space:nowrap;">{{ s.holding.name }}</div>
                         </td>
                       </tr>
                     </table>
@@ -251,25 +242,25 @@
                   </td>
                   {% else %}
                   {# 现价 — tabular-nums 让小数点跨行对齐 #}
-                  <td class="holding-price" valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_display }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.01em; line-height:1.1; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
+                  <td valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_display }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.01em; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
                     {{ s.last_close | price }}
                   </td>
                   {# 120w — 主数与百分比都加 tabular-nums #}
-                  <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
-                    <div class="holding-average-main" style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.sma_120 | price }}</div>
-                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.delta_120 | pct }}</div>
+                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
+                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.sma_120 | price }}</div>
+                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.delta_120 | pct }}</div>
                   </td>
                   {# 200w #}
-                  <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
-                    <div class="holding-average-main" style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.sma_200 | price }}</div>
-                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.delta_200 | pct }}</div>
+                  <td valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; font-family:{{ serif_body }}; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
+                    <div style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.sma_200 | price }}</div>
+                    <div style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ s.delta_200 | pct }}</div>
                   </td>
                   {# 信号 #}
-                  <td class="holding-signal" valign="middle" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; white-space:nowrap; overflow:hidden;">
+                  <td valign="middle" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; background-color:{{ row_bg }}; white-space:nowrap;">
                     {% if is_lump %}
-                      <span class="holding-signal-badge" style="display:inline-block; padding:5px 11px 5px 11px; background-color:{{ color_accent }}; color:{{ color_paper }}; font-family:{{ serif_body }}; font-size:9.5px; font-weight:600; letter-spacing:0.28em; text-transform:uppercase; line-height:1.3; mso-line-height-rule:exactly; white-space:nowrap;">Lump-sum</span>
+                      <span style="display:inline-block; padding:5px 11px 5px 11px; background-color:{{ color_accent }}; color:{{ color_paper }}; font-family:{{ serif_body }}; font-size:9.5px; font-weight:600; letter-spacing:0.28em; text-transform:uppercase; line-height:1.3; mso-line-height-rule:exactly; white-space:nowrap;">Lump-sum</span>
                     {% elif is_dca %}
-                      <span class="holding-signal-badge" style="display:inline-block; font-family:{{ serif_body }}; font-size:11.5px; font-weight:600; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_accent }}; line-height:1; padding:0; border-bottom:1px solid {{ color_accent }}; padding-bottom:3px; white-space:nowrap;">DCA</span>
+                      <span style="display:inline-block; font-family:{{ serif_body }}; font-size:11.5px; font-weight:600; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_accent }}; line-height:1; padding:0; border-bottom:1px solid {{ color_accent }}; padding-bottom:3px; white-space:nowrap;">DCA</span>
                     {% else %}
                       <span style="font-family:{{ serif_body }}; font-size:15px; color:{{ color_faint }}; line-height:1;">—</span>
                     {% endif %}

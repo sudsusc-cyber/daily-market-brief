@@ -1,0 +1,75 @@
+name: formal-send-once
+
+# 一次性正式版发送入口：运行完整真实数据与 LLM 管线，但只发送给手动指定的
+# 收件人；读取最近的生产 state 以保持内容连续性，发送后不回写 state，避免影响
+# 下一次正常定时邮件。完成本次发送后删除此临时 workflow。
+on:
+  workflow_dispatch:
+    inputs:
+      recipients:
+        description: "Comma-separated recipients for this formal email only"
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: formal-send-once
+  cancel-in-progress: false
+
+jobs:
+  send:
+    name: collect + render + send formal copy
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_SEND: "true"
+      PYTHONPATH: .
+      GH_REPO: ${{ github.repository }}
+      GH_RUN_ID: ${{ github.run_id }}
+      GH_EVENT_NAME: ${{ github.event_name }}
+      DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Restore latest production state read-only
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state
+          key: formal-send-readonly-${{ github.run_id }}
+          restore-keys: |
+            daily-state-
+
+      - name: Send one formal email
+        run: uv run python src/main.py
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
+          QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
+          EMAIL_RECIPIENT: ${{ inputs.recipients }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Confirm SMTP acceptance
+        if: ${{ hashFiles('.delivery-receipt.json') != '' }}
+        run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
+
+      - name: Confirm full email delivery
+        if: ${{ hashFiles('.delivery-receipt.json') != '' }}
+        run: uv run python -m src.utils.delivery full .delivery-receipt.json
