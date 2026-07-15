@@ -93,6 +93,23 @@ def test_render_email_header_keeps_full_two_to_one_frame() -> None:
     assert "width:100%; max-width:640px; height:auto" in html
 
 
+def test_render_email_mobile_layout_never_forces_desktop_canvas() -> None:
+    """窄屏 QQ 邮箱不得因持仓表硬宽度而把整封邮件缩成桌面比例。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+    )
+
+    assert 'class="email-shell"' in html
+    assert 'class="holdings-table" width="100%"' in html
+    assert "width:100%; max-width:590px; table-layout:fixed" in html
+    assert '<table width="590"' not in html
+    assert "@media only screen and (max-width:520px)" in html
+    assert ".email-shell { padding-left:6px !important; padding-right:6px !important; }" in html
+    assert '.holding-name { display:block !important;' in html
+    assert ".holding-name { display:none" not in html
+
+
 def test_render_email_no_logo_falls_back_to_text_box() -> None:
     """logo_cids 不含该 ticker 时,渲染 ticker 前 3 字符的文本块兜底。"""
     s = _one_signal()
