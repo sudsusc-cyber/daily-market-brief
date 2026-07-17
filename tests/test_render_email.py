@@ -82,14 +82,15 @@ def test_render_email_decorative_logo_has_empty_alt() -> None:
 
 
 def test_render_email_header_keeps_full_two_to_one_frame() -> None:
-    """刊头图恢复 640×320 的完整 2:1 展示，不再退回窄幅 640×200。"""
+    """刊头图保持完整 2:1 内容，并使用流式宽度避免撑开移动端。"""
     html = render_email(
         signals=[_one_signal()],
         generated_at=datetime.now(UTC),
         header_image_url="cid:header_image",
     )
-    assert 'width="640" height="320"' in html
-    assert 'width="640" height="200"' not in html
+    assert '<img src="cid:header_image"\n                 width="100%"' in html
+    assert 'height="320"' not in html
+    assert 'height="200"' not in html
     assert "width:100%; max-width:640px; height:auto" in html
 
 
@@ -101,6 +102,16 @@ def test_render_email_mobile_layout_never_forces_desktop_canvas() -> None:
     )
 
     assert 'class="email-shell"' in html
+    assert 'class="email-container" role="presentation" width="100%"' in html
+    assert 'class="email-container" role="presentation" width="640"' not in html
+    assert "width:100%; max-width:640px" in html
+    # 640px 只允许出现在 Outlook 专用条件注释中，普通 QQ/iOS/Android
+    # 客户端不能把它当作内容的硬最小宽度。
+    fixed_width_table = html.index('<table role="presentation" width="640"')
+    mso_open = html.rfind("<!--[if mso]>", 0, fixed_width_table)
+    mso_close = html.index("<![endif]-->", fixed_width_table)
+    assert mso_open < fixed_width_table < mso_close
+    assert html.count('width="640"') == 1
     assert 'class="holdings-table" width="100%"' in html
     assert "width:100%; max-width:590px; table-layout:fixed" in html
     assert '<table width="590"' not in html
@@ -108,6 +119,26 @@ def test_render_email_mobile_layout_never_forces_desktop_canvas() -> None:
     assert ".email-shell { padding-left:6px !important; padding-right:6px !important; }" in html
     assert '.holding-name { display:block !important;' in html
     assert ".holding-name { display:none" not in html
+
+
+def test_render_email_dynamic_source_links_can_wrap_on_narrow_screens() -> None:
+    """动态来源名再长也不能把 QQ 邮箱整封邮件撑成桌面画布。"""
+    long_source = "ExtremelyLongUnbrokenDynamicSourceName" * 8
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        company_news=[SimpleNamespace()],  # 进入昨日动态区块
+        company_news_summary=SimpleNamespace(
+            summary_html="<div>摘要</div>",
+            footnotes=[SimpleNamespace(index=1, url="https://example.com", source=long_source)],
+        ),
+    )
+
+    assert long_source in html
+    assert 'class="source-link"' in html
+    assert "white-space:normal; overflow-wrap:anywhere; word-break:break-word" in html
+    assert ".source-link { white-space:normal !important;" in html
+    assert f"white-space:nowrap;\">[1] {long_source}" not in html
 
 
 def test_render_email_no_logo_falls_back_to_text_box() -> None:
