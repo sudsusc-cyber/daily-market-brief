@@ -24,6 +24,9 @@ from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
+_MAX_ARGUMENT_ATTEMPTS = 2
+_ARGUMENT_FALLBACK = "指标仍按确定性规则计算，文字说明本期从略。"
+
 
 # ──────────────────  确定性打分  ──────────────────
 
@@ -249,21 +252,40 @@ def judge(
     verdict_label = scored["verdict"]
     score = scored["score"]
     payload = _format_input(bundle, verdict_label, score)
-    resp = client.chat(
-        payload,
-        task_extra=_TASK_INSTRUCTION,
-        max_tokens=4000,
-        temperature=0.2,
-    )
     argument = ""
-    if resp.text:
-        data = _parse_json(resp.text)
-        if data and "argument" in data:
-            argument = str(data["argument"]).strip()
+    last_error: str | None = None
+    for attempt in range(1, _MAX_ARGUMENT_ATTEMPTS + 1):
+        task_instruction = _TASK_INSTRUCTION
+        if attempt > 1:
+            task_instruction += "\n上一次输出无效；这次只输出包含 argument 的 JSON 对象。"
+        resp = client.chat(
+            payload,
+            task_extra=task_instruction,
+            max_tokens=1000,
+            temperature=0.1,
+            timeout=20,
+            thinking=False,
+        )
+        if resp.text:
+            data = _parse_json(resp.text)
+            if data and "argument" in data and str(data["argument"]).strip():
+                argument = str(data["argument"]).strip()
+                break
+            last_error = "InvalidJSONOrEmptyArgument"
+            logger.warning(
+                "sentiment_judge.parse_failed attempt=%d/%d text=%r",
+                attempt, _MAX_ARGUMENT_ATTEMPTS, resp.text[:200],
+            )
         else:
-            logger.warning("sentiment_judge.parse_failed text=%r", resp.text[:200])
-    else:
-        logger.warning("sentiment_judge.llm_failed reason=%s", resp.error)
+            last_error = resp.error or "EmptyOutput"
+            logger.warning(
+                "sentiment_judge.llm_failed attempt=%d/%d reason=%s",
+                attempt, _MAX_ARGUMENT_ATTEMPTS, last_error,
+            )
+
+    argument_fallback = not argument
+    if argument_fallback:
+        argument = _ARGUMENT_FALLBACK
 
     logger.info(
         "sentiment_judge.ok verdict=%r score=%.1f argument_chars=%d",
@@ -275,4 +297,6 @@ def judge(
         "score": score,
         "breakdown": scored["breakdown"],
         "coverage": scored["coverage"],
+        "argument_fallback": argument_fallback,
+        "argument_error": last_error if argument_fallback else None,
     }

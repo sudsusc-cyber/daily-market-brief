@@ -25,6 +25,8 @@ from .prompts import MAX_EVIDENCE_ITEMS, SYSTEM_EXTRA, build_user_prompt
 
 logger = logging.getLogger("thesis.extractor")
 
+_MAX_EXTRACT_ATTEMPTS = 2
+
 _VALID_DIRECTIONS = {"support", "risk", "neutral", "new_variable"}
 _VALID_HORIZONS = {"quarterly", "multi_year", "structural"}
 _VALID_SOURCE_SECTIONS = {"company_news", "macro", "voices", "berkshire", "frontier_labs"}
@@ -86,10 +88,10 @@ def make_evidence_id(ev: ThesisEvidence) -> str:
 # ─── JSON parsing ─────────────────────────────────────────────────
 
 
-def parse_response(raw: str | None) -> list[dict[str, Any]]:
-    """解析 LLM 响应为 dict 列表。失败 → 空 list。"""
+def _parse_response_with_status(raw: str | None) -> tuple[list[dict[str, Any]], bool]:
+    """解析 LLM 响应并返回 (items, JSON 是否有效)；有效的 [] 与失败分开。"""
     if not raw:
-        return []
+        return [], False
     text = raw.strip()
 
     # 1) 剥 ```json / ``` fence
@@ -114,15 +116,21 @@ def parse_response(raw: str | None) -> list[dict[str, Any]]:
             break
         else:
             logger.warning("extractor.parse_failed raw_preview=%s", text[:200])
-            return []
+            return [], False
 
     if isinstance(result, list):
-        return result
+        return result, True
     if isinstance(result, dict):
         if "items" in result and isinstance(result["items"], list):
-            return result["items"]
-        return [result]
-    return []
+            return result["items"], True
+        return [result], True
+    return [], False
+
+
+def parse_response(raw: str | None) -> list[dict[str, Any]]:
+    """兼容既有调用：解析失败与有效空数组均返回空 list。"""
+    items, _ = _parse_response_with_status(raw)
+    return items
 
 
 # ─── validation + build ───────────────────────────────────────────
@@ -224,7 +232,7 @@ def validate_and_build(
 # ─── main entry ───────────────────────────────────────────────────
 
 
-def extract(
+def extract_with_status(
     *,
     client: LLMClient,
     company_news: Any | None = None,
@@ -234,12 +242,12 @@ def extract(
     frontier_labs_events: list[Any] | None = None,
     active_themes: list[str] | None = None,
     today: date | None = None,
-) -> list[ThesisEvidence]:
+) -> tuple[list[ThesisEvidence], str | None]:
     """
     从已筛选内容中抽取长期判断 evidence。
 
-    - extractor 不做文件 IO，仅 return list[ThesisEvidence]
-    - 任何失败 → log warning + 返回空 list，不抛异常
+    - extractor 不做文件 IO，返回 (evidence, error)
+    - 有效空数组返回 ([], None)；处理失败返回 ([], error)
     """
     if today is None:
         today = date.today()
@@ -256,26 +264,91 @@ def extract(
 
     if user_prompt.strip().startswith("（今日无") and len(user_prompt) < 50:
         logger.info("extractor.empty_input")
-        return []
+        return [], None
 
     logger.info("extractor.call user_prompt_chars=%d", len(user_prompt))
-    resp = client.chat(
-        user_prompt=user_prompt,
-        task_extra=SYSTEM_EXTRA,
-        max_tokens=6000,
-        temperature=0.2,
-    )
+    last_error: str | None = None
+    for attempt in range(1, _MAX_EXTRACT_ATTEMPTS + 1):
+        task_extra = SYSTEM_EXTRA
+        if attempt > 1:
+            task_extra += """
 
-    if resp.error or resp.text is None:
-        logger.warning("extractor.llm_failed error=%s", resp.error)
-        return []
-
-    raw_items = parse_response(resp.text)
-    evidence = validate_and_build(raw_items, today_str)
-    if len(evidence) > MAX_EVIDENCE_ITEMS:
-        logger.info(
-            "extractor.cap_evidence total=%d kept=%d",
-            len(evidence), MAX_EVIDENCE_ITEMS,
+上一次输出为空、不是有效 JSON，或所有非空条目均未通过字段校验。
+这次只输出有效 JSON 数组；若确实没有可记录证据，输出 []。
+"""
+        resp = client.chat(
+            user_prompt=user_prompt,
+            task_extra=task_extra,
+            max_tokens=3000,
+            temperature=0.1,
+            timeout=30,
+            thinking=False,
         )
-        evidence = evidence[:MAX_EVIDENCE_ITEMS]
+
+        if resp.error or resp.text is None:
+            last_error = resp.error or "EmptyOutput"
+            logger.warning(
+                "extractor.attempt_failed attempt=%d/%d error=%s",
+                attempt, _MAX_EXTRACT_ATTEMPTS, last_error,
+            )
+            continue
+
+        raw_items, valid_json = _parse_response_with_status(resp.text)
+        if not valid_json:
+            last_error = "InvalidJSONOutput"
+            logger.warning(
+                "extractor.invalid_output attempt=%d/%d reason=%s",
+                attempt, _MAX_EXTRACT_ATTEMPTS, last_error,
+            )
+            continue
+
+        if not raw_items:
+            logger.info("extractor.no_evidence attempt=%d", attempt)
+            return [], None
+
+        evidence = validate_and_build(raw_items, today_str)
+        if not evidence:
+            last_error = "AllNonEmptyItemsFailedValidation"
+            logger.warning(
+                "extractor.invalid_output attempt=%d/%d reason=%s",
+                attempt, _MAX_EXTRACT_ATTEMPTS, last_error,
+            )
+            continue
+        if len(evidence) > MAX_EVIDENCE_ITEMS:
+            logger.info(
+                "extractor.cap_evidence total=%d kept=%d",
+                len(evidence), MAX_EVIDENCE_ITEMS,
+            )
+            evidence = evidence[:MAX_EVIDENCE_ITEMS]
+        return evidence, None
+
+    logger.warning(
+        "extractor.llm_failed attempts=%d error=%s",
+        _MAX_EXTRACT_ATTEMPTS, last_error or "unknown",
+    )
+    return [], last_error or "UnknownProcessingFailure"
+
+
+def extract(
+    *,
+    client: LLMClient,
+    company_news: Any | None = None,
+    macro_news: Any | None = None,
+    figure_summaries: list[Any] | None = None,
+    berkshire_events: Any | None = None,
+    frontier_labs_events: list[Any] | None = None,
+    active_themes: list[str] | None = None,
+    today: date | None = None,
+) -> list[ThesisEvidence]:
+    """兼容既有调用；需要失败状态的主流程使用 extract_with_status。"""
+    evidence, _ = extract_with_status(
+        client=client,
+        company_news=company_news,
+        macro_news=macro_news,
+        figure_summaries=figure_summaries,
+        berkshire_events=berkshire_events,
+        frontier_labs_events=frontier_labs_events,
+        active_themes=active_themes,
+        today=today,
+    )
     return evidence

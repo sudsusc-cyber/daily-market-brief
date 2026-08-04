@@ -27,6 +27,8 @@ from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
+_MAX_FILTER_ATTEMPTS = 2
+
 
 # 直接引语标记词(中英混排,任一命中即视为可能含原话)
 _QUOTE_MARKERS_RE = re.compile(
@@ -223,8 +225,25 @@ def _similar(a: str, b: str, threshold: float = 0.6) -> bool:
     return SequenceMatcher(None, _normalize(a), _normalize(b)).ratio() >= threshold
 
 
-def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]:
+@dataclass
+class _FigureParseResult:
+    items: list[FigureKeyPoint]
+    covered_indexes: set[int]
+    duplicate_indexes: set[int]
+    invalid_yes: bool = False
+
+    def is_complete(self, expected_count: int) -> bool:
+        return (
+            self.covered_indexes == set(range(1, expected_count + 1))
+            and not self.duplicate_indexes
+            and not self.invalid_yes
+        )
+
+
+def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseResult:
     kept: list[FigureKeyPoint] = []
+    index_counts: dict[int, int] = {}
+    invalid_yes = False
     for line in text.splitlines():
         m = _LINE_RE.match(line.strip())
         if not m:
@@ -233,6 +252,19 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
         verdict = m.group(2).lower()
         score_str = (m.group(3) or "").strip()
         body = m.group(4).strip()
+        valid_indexes: list[int] = []
+        for tok in idx_part.split(","):
+            try:
+                value = int(tok.strip())
+            except ValueError:
+                continue
+            if 1 <= value <= len(items):
+                valid_indexes.append(value)
+                index_counts[value] = index_counts.get(value, 0) + 1
+        if not valid_indexes:
+            if verdict == "yes":
+                invalid_yes = True
+            continue
         if verdict != "yes":
             continue
         # score 必须显式存在且为 1-5;缺失/格式错/越界一律丢弃
@@ -240,25 +272,17 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
             score = int(score_str)
         except (ValueError, TypeError):
             logger.info("figure_filter.missing_score text=%s", body[:60])
+            invalid_yes = True
             continue
         if score < 1 or score > 5:
             logger.info("figure_filter.invalid_score score=%d text=%s", score, body[:60])
+            invalid_yes = True
             continue
         if score < 4:
             logger.info("figure_filter.low_score score=%d text=%s", score, body[:60])
             continue
         # 解析索引(可能是 "1" 或 "1,3,5"),取第一个有效的为代表来源
-        primary_idx: int | None = None
-        for tok in idx_part.split(","):
-            try:
-                v = int(tok.strip())
-                if 1 <= v <= len(items):
-                    primary_idx = v
-                    break
-            except ValueError:
-                continue
-        if primary_idx is None:
-            continue
+        primary_idx = valid_indexes[0]
         # 兜底相似度去重:LLM 万一漏判,Python 端再做一道
         # 阈值 0.6 适合中文短句:即便措辞不同但讲同一事件也会被合并
         is_dup = any(_similar(body, k.text) for k in kept)
@@ -279,7 +303,17 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
             score=score,
             published_at=src_item.published_at,
         ))
-    return kept
+    return _FigureParseResult(
+        items=kept,
+        covered_indexes=set(index_counts),
+        duplicate_indexes={index for index, count in index_counts.items() if count > 1},
+        invalid_yes=invalid_yes,
+    )
+
+
+def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]:
+    """兼容既有调用的纯解析入口。"""
+    return _parse_output_result(text, items).items
 
 
 def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -> FigureSummary:
@@ -302,21 +336,62 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
         return FigureSummary(person=bundle.person, person_en=bundle.person_en)
 
     payload = _format_input(qualified)
-    resp = client.chat(
-        payload,
-        task_extra=_TASK_INSTRUCTION.format(PERSON=bundle.person),
-        max_tokens=5000,
-        temperature=0.2,
+    last_error: str | None = None
+    for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
+        instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person)
+        if attempt > 1:
+            instruction += """
+
+【重试修正】上一次输出为空、格式错误或遗漏了输入编号。这次每个输入编号必须
+恰好出现一次；直接输出 ▦ 行，不要解释或 markdown。
+"""
+        resp = client.chat(
+            payload,
+            task_extra=instruction,
+            max_tokens=2000,
+            temperature=0.1,
+            timeout=30,
+            thinking=False,
+        )
+        if not resp.text:
+            last_error = resp.error or "EmptyOutput"
+            logger.warning(
+                "figure_filter.attempt_failed person=%s attempt=%d/%d reason=%s",
+                bundle.person, attempt, _MAX_FILTER_ATTEMPTS, last_error,
+            )
+            continue
+
+        parsed = _parse_output_result(resp.text, qualified)
+        if parsed.is_complete(len(qualified)):
+            logger.info(
+                "figure_filter.ok person=%s qualified=%d kept=%d attempt=%d",
+                bundle.person, len(qualified), len(parsed.items), attempt,
+            )
+            return FigureSummary(
+                person=bundle.person,
+                person_en=bundle.person_en,
+                items=parsed.items,
+            )
+
+        last_error = (
+            "IncompleteOrInvalidOutput: "
+            f"covered={sorted(parsed.covered_indexes)}/{len(qualified)} "
+            f"duplicates={sorted(parsed.duplicate_indexes)} invalid_yes={parsed.invalid_yes}"
+        )
+        logger.warning(
+            "figure_filter.invalid_output person=%s attempt=%d/%d reason=%s",
+            bundle.person, attempt, _MAX_FILTER_ATTEMPTS, last_error,
+        )
+
+    logger.warning(
+        "figure_filter.failed person=%s attempts=%d reason=%s",
+        bundle.person, _MAX_FILTER_ATTEMPTS, last_error or "unknown",
     )
-    if not resp.text:
-        logger.warning("figure_filter.failed person=%s reason=%s", bundle.person, resp.error)
-        return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=resp.error)
-    kept = _parse_output(resp.text, qualified)
-    logger.info(
-        "figure_filter.ok person=%s qualified=%d kept=%d",
-        bundle.person, len(qualified), len(kept),
+    return FigureSummary(
+        person=bundle.person,
+        person_en=bundle.person_en,
+        error=last_error or "UnknownProcessingFailure",
     )
-    return FigureSummary(person=bundle.person, person_en=bundle.person_en, items=kept)
 
 
 def filter_all(
@@ -435,9 +510,9 @@ def generate_silence_note(client: LLMClient) -> str | None:
     resp = client.chat(
         "请写一句替代'关键发言'章节的占位语",
         task_extra=_SILENCE_INSTRUCTION,
-        # V4-Flash reasoning 容易吃 300+ token,余量给最终输出
-        max_tokens=4000,
+        max_tokens=256,
         temperature=0.85,
+        thinking=False,
     )
     text = (resp.text or "").strip().strip("\"'“”「」 ")
     if not text:

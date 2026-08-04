@@ -275,21 +275,24 @@ def render_email(
     # M4 LLM 加工产物
     sentiment_verdict: dict | None = None,           # {verdict, argument}
     company_news_summary: Any | None = None,          # CompanyNewsSummary {summary_html, footnotes}
+    company_news_fallback_note: str | None = None,    # 个股加工/数据源失败时的受控占位语
     figure_summaries: list[Any] | None = None,        # list[FigureSummary]
     figure_silence_note: str | None = None,           # 全员沉默时的占位语
+    figure_fallback_note: str | None = None,           # 人物加工失败时的受控占位语
     figure_footnotes: list[Any] | None = None,        # list[FigureFootnote] 章节底部脚注
     macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
     company_news_silence_note: str | None = None,     # 持仓无新闻时的占位语
     macro_news_silence_note: str | None = None,       # 无宏观新闻时的占位语
     macro_news_fallback_note: str | None = None,      # 宏观加工/数据源失败时的受控占位语
     frontier_labs_items: list[Any] | None = None,     # list[FrontierKeyPoint]
+    frontier_labs_fallback_note: str | None = None,   # 前沿加工失败时的受控占位语
     judgment_section: dict | None = None,             # Judgment Ledger payload
 ) -> str:
     """
     渲染完整邮件 HTML。
 
     logo_cids: ticker -> CID 映射,如 {"NVDA": "logo_NVDA"}。
-    宏观视野不降级渲染原始 RSS 列表，失败时使用受控占位语。
+    个股动态与宏观视野不降级渲染原始列表，失败时使用受控占位语。
     """
     env = _build_env()
     template = env.get_template("email.html.j2")
@@ -311,9 +314,11 @@ def render_email(
         holdings_counts=holdings_counts,
         company_news=company_news,
         company_news_summary=company_news_summary,
+        company_news_fallback_note=company_news_fallback_note,
         figures=figures,
         figure_summaries=figure_summaries,
         figure_silence_note=figure_silence_note,
+        figure_fallback_note=figure_fallback_note,
         figure_footnotes=figure_footnotes or [],
         macro_news=macro_news,
         macro_news_summary=macro_news_summary,
@@ -322,6 +327,7 @@ def render_email(
         macro_news_fallback_note=macro_news_fallback_note,
         buffett_13f=buffett_13f,
         frontier_labs_items=frontier_labs_items or [],
+        frontier_labs_fallback_note=frontier_labs_fallback_note,
         judgment_section=judgment_section,
     )
     # 邮件客户端按解码后的 HTML 体积裁剪；只删除标签之间的排版空白，不碰正文。

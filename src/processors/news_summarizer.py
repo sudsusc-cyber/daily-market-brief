@@ -8,7 +8,7 @@
   <div>{中文公司名}    {一句话摘要}<sup>[N]</sup></div>
 
 LLM 给出引用编号,Python 端把序号映射回 url + source 拼脚注列表。
-失败时返回 None,模板降级到 M3 ticker × 5 新闻列表。
+失败时返回 None,由 main.py 使用受控占位语并记录质量告警。
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
+_MAX_SUMMARY_ATTEMPTS = 2
+
 
 @dataclass
 class Footnote:
@@ -46,6 +48,7 @@ class CompanyNewsSummary:
     """LLM 加工产物"""
     summary_html: str
     footnotes: list[Footnote] = field(default_factory=list)
+    is_silence: bool = False
 
 
 # 中文公司名映射(prompt 里展示给 LLM 让它选用,不是 enforce)
@@ -130,8 +133,9 @@ def generate_silence_note(client: LLMClient) -> str | None:
     resp = client.chat(
         "请写一句替代'昨日动态'章节的占位语",
         task_extra=_SILENCE_INSTRUCTION,
-        max_tokens=4000,
+        max_tokens=256,
         temperature=0.85,
+        thinking=False,
     )
     text = (resp.text or "").strip().strip("\"'“”「」 ")
     if not text:
@@ -263,28 +267,18 @@ def _render_summary_segment(
     return render_text_with_footnotes(text, FOOTNOTE_RE, footnote_idx, builder)
 
 
-def summarize(
-    bundles: list[CompanyNewsBundle],
-    *,
-    client: LLMClient,
-) -> CompanyNewsSummary | None:
-    if not bundles:
-        return None
-    payload, flat_items = _format_input(bundles)
-    if not payload.strip():
-        return None
-    resp = client.chat(
-        payload,
-        task_extra=_TASK_INSTRUCTION,
-        # V4-Flash reasoning 易吃 3500+ token;给可见输出留足空间
-        max_tokens=6000,
-        temperature=0.4,
-    )
-    if not resp.text:
-        logger.warning("news_summarizer.failed reason=%s", resp.error)
-        return None
+def _is_no_important_output(text: str) -> bool:
+    """识别 prompt 约定的“全部不重要”有效结果，避免误判成解析失败。"""
+    cleaned = strip_all_tags(text).strip()
+    cleaned = re.sub(r"[\s。.!！?？,，;；:：]+", "", cleaned)
+    return cleaned in {"持仓今日无重要动态", "持仓无重要动态"}
 
-    raw_text = resp.text.strip()
+
+def _rebuild_safe_summary(
+    raw_text: str,
+    flat_items: list[NewsItem],
+) -> CompanyNewsSummary | None:
+    """把单次 LLM 输出重建为安全 HTML；无有效来源时返回 None。"""
     # LLM 输出含 <strong>...</strong> 与脚注标记,但其余 HTML 一律视为不可信。
     # 处理流程(净化优先):
     #   1. 拆行
@@ -296,28 +290,22 @@ def summarize(
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     cleaned = []
     for line in lines:
-        # 若 LLM 自己写了 "1." "1、" 之类前缀,剥掉
         line = re.sub(r"^[0-9]+[.、。\s]+", "", line)
-        # Fallback:LLM 没输出 <strong> 时,用已知中文公司名反查包成 <strong>
         line = _ensure_strong_wrapping(line)
         cleaned.append(line)
 
     row_re = re.compile(r"<strong>(.+?)</strong>\s*[——\-:、]+\s*(.+)", re.DOTALL)
     raw_rows: list[tuple[str, str]] = []
     for line in cleaned:
-        m = row_re.match(line)
-        if m:
-            raw_rows.append((m.group(1).strip(), m.group(2).strip()))
+        match = row_re.match(line)
+        if match:
+            raw_rows.append((match.group(1).strip(), match.group(2).strip()))
         else:
-            # 没匹配上 → 整行视为无公司名摘要;先剥所有标签留纯文本
             raw_rows.append(("", strip_all_tags(line)))
 
-    # 解析脚注映射:在所有 summary 文本上扫一遍,确定 LLM 旧编号 → 新编号
-    # 注意:扫描原文(含 <sup>[N]</sup>)而非 escape 后的版本,确保 <sup> 包裹的 [N] 也能识别
     combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)
     rewrite, footnotes = _resolve_footnote_mapping(combined_for_scan, flat_items)
 
-    # 视觉样式(写死在 Python 端,不接受外部输入)
     name_style = "color:#7A1F2B; letter-spacing:0.04em;"
     sep_style = "color:#D9D2BE; margin:0 6px;"
     row_style = (
@@ -327,25 +315,20 @@ def summarize(
         "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
     )
 
-    body_html = ""
+    rendered_rows: list[str] = []
     for cn, summary in raw_rows:
-        cited_indexes = {footnote_idx(m) for m in FOOTNOTE_RE.finditer(summary)}
+        cited_indexes = {footnote_idx(match) for match in FOOTNOTE_RE.finditer(summary)}
         if not any(index in rewrite for index in cited_indexes):
             logger.warning(
                 "news_summarizer.row_dropped_without_valid_source company=%r",
                 strip_all_tags(cn)[:40],
             )
             continue
-        # cn:剥所有标签后 escape(防 <strong>)
         safe_cn = escape_text(strip_all_tags(cn))
-        # summary:先剥标签(去掉 <sup>[N]</sup> 之外的所有 LLM HTML),
-        # 再走 render_text_with_footnotes(escape 文本 + 安全脚注锚点)
-        # 注意:strip_all_tags 会把 <sup> 也去掉,导致 <sup>[N]</sup> 中的 [N] 暴露成裸 [N],
-        # 此时再用 FOOTNOTE_RE 匹配裸形式照样能命中,无副作用
         clean_summary_text = strip_all_tags(summary)
         safe_summary = _render_summary_segment(clean_summary_text, rewrite, footnotes)
         if safe_cn:
-            body_html += (
+            rendered_rows.append(
                 f'<div style="{row_style}">'
                 f'<span style="{name_style}">{safe_cn}</span>'
                 f'<span style="{sep_style}">│</span>'
@@ -353,14 +336,71 @@ def summarize(
                 "</div>"
             )
         else:
-            body_html += f'<div style="{row_style}">{safe_summary}</div>'
+            rendered_rows.append(f'<div style="{row_style}">{safe_summary}</div>')
 
-    if not body_html:
-        logger.warning("news_summarizer.all_rows_dropped_without_valid_sources")
+    if not rendered_rows:
         return None
-
-    logger.info(
-        "news_summarizer.ok rows=%d footnotes=%d (sanitized)",
-        len(raw_rows), len(footnotes),
+    return CompanyNewsSummary(
+        summary_html="".join(rendered_rows),
+        footnotes=footnotes,
     )
-    return CompanyNewsSummary(summary_html=body_html, footnotes=footnotes)
+
+
+def summarize(
+    bundles: list[CompanyNewsBundle],
+    *,
+    client: LLMClient,
+) -> CompanyNewsSummary | None:
+    if not bundles:
+        return None
+    payload, flat_items = _format_input(bundles)
+    if not payload.strip():
+        return None
+    last_error: str | None = None
+    for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
+        task_instruction = _TASK_INSTRUCTION
+        if attempt > 1:
+            task_instruction += """
+
+【重试修正】上一次输出为空、格式不完整或没有有效来源脚注。这次必须直接按约定
+逐行输出；若全部不重要，只输出“持仓今日无重要动态。”。
+"""
+        resp = client.chat(
+            payload,
+            task_extra=task_instruction,
+            max_tokens=2000,
+            temperature=0.2,
+            thinking=False,
+        )
+        if not resp.text:
+            last_error = resp.error or "EmptyOutput"
+            logger.warning(
+                "news_summarizer.attempt_failed attempt=%d/%d reason=%s",
+                attempt, _MAX_SUMMARY_ATTEMPTS, last_error,
+            )
+            continue
+
+        raw_text = resp.text.strip()
+        if _is_no_important_output(raw_text):
+            logger.info("news_summarizer.silence attempt=%d", attempt)
+            return CompanyNewsSummary(summary_html="", is_silence=True)
+
+        summary = _rebuild_safe_summary(raw_text, flat_items)
+        if summary is not None:
+            logger.info(
+                "news_summarizer.ok footnotes=%d attempt=%d (sanitized)",
+                len(summary.footnotes), attempt,
+            )
+            return summary
+
+        last_error = "AllRowsDroppedWithoutValidSources"
+        logger.warning(
+            "news_summarizer.invalid_output attempt=%d/%d reason=%s",
+            attempt, _MAX_SUMMARY_ATTEMPTS, last_error,
+        )
+
+    logger.warning(
+        "news_summarizer.failed attempts=%d reason=%s",
+        _MAX_SUMMARY_ATTEMPTS, last_error or "unknown",
+    )
+    return None

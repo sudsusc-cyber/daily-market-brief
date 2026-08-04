@@ -439,7 +439,7 @@
         {% endif %}
 
         {# ─────────────────────────  昨日动态  ───────────────────────── #}
-        {% if company_news or company_news_silence_note %}
+        {% if company_news_summary or company_news_silence_note or company_news_fallback_note %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">昨日动态</div>
@@ -447,7 +447,16 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
-        {% if company_news_silence_note %}
+        {% if company_news_fallback_note %}
+        {# 个股加工/数据源失败:不展示未经筛选的原始新闻列表 #}
+        <tr>
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_body }}; font-size:14px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.04em; font-style:italic; text-align:center;">
+              {{ company_news_fallback_note }}
+            </div>
+          </td>
+        </tr>
+        {% elif company_news_silence_note %}
         {# 所有持仓均无新闻:LLM 写一句古典韵味占位语,失败时退回固定兜底 #}
         <tr>
           <td style="padding:24px 24px 0 24px;">
@@ -478,51 +487,18 @@
           </td>
         </tr>
         {% endif %}
-        {% elif company_news %}
-        {% for bundle in company_news %}
-        {%- set has_logo = logo_cids and (bundle.holding.ticker in logo_cids) -%}
+        {% endif %}{# end quality fallback / silence / summary #}
+        {% endif %}{# end yesterday outer #}
+        {% if frontier_labs_items or frontier_labs_fallback_note %}
+        {% if frontier_labs_fallback_note %}
         <tr>
-          <td style="padding:18px 24px 0 24px;">
-            {# 持仓小标题:logo + ticker / name 横排 #}
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td valign="middle" width="36" style="padding-right:12px;">
-                  {% if has_logo %}
-                  <img src="cid:{{ logo_cids[bundle.holding.ticker] }}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0; outline:none; border-radius:4px;" />
-                  {% else %}
-                  <div style="display:block; width:28px; height:28px; line-height:28px; text-align:center; font-family:{{ serif_display }}; font-size:9px; font-weight:600; letter-spacing:0.08em; color:{{ color_paper }}; background-color:{{ color_ink }}; border-radius:4px;">{{ bundle.holding.ticker[:3] }}</div>
-                  {% endif %}
-                </td>
-                <td valign="middle">
-                  <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.04em;">{{ bundle.holding.ticker }}</span>
-                  <span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:8px;">{{ bundle.holding.name }}</span>
-                </td>
-              </tr>
-            </table>
-            {# 该股的新闻列表 / 错误 / 空 三态 #}
-            <div style="margin-top:8px; padding-left:48px;">
-              {% if bundle.error %}
-              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ bundle.error }}</div>
-              {% elif not bundle.items %}
-              <div style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_faint }}; font-style:italic;">昨日无重要新闻</div>
-              {% else %}
-              <ul style="margin:0; padding:0; list-style:none;">
-                {% for item in bundle.items[:5] %}
-                <li style="margin:0 0 6px 0; font-family:{{ serif_body }}; font-size:13px; line-height:1.7; color:{{ color_ink_soft }};">
-                  <span style="color:{{ color_muted }}; font-size:10.5px; letter-spacing:0.04em; margin-right:8px;">{{ item.published_at | bj_time }}</span>
-                  <a href="{{ item.url | safe_url }}" target="_blank" rel="noopener" style="color:{{ color_ink_soft }}; text-decoration:none; border-bottom:1px solid {{ color_hairline }};">{{ item.title }}</a>
-                  <span style="color:{{ color_faint }}; font-size:10.5px; margin-left:6px;">— {{ item.source }}</span>
-                </li>
-                {% endfor %}
-              </ul>
-              {% endif %}
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_body }}; font-size:13px; line-height:1.8; color:{{ color_muted }}; letter-spacing:0.03em; font-style:italic; text-align:center;">
+              {{ frontier_labs_fallback_note }}
             </div>
           </td>
         </tr>
-        {% endfor %}
-        {% endif %}{# end silence / summary / raw list #}
-        {% endif %}{# end yesterday outer #}
-        {% if frontier_labs_items %}
+        {% else %}
         <tr>
           <td style="padding:48px 24px 0 24px;">
             {% for item in frontier_labs_items[:2] %}
@@ -544,6 +520,7 @@
           </td>
         </tr>
         {% endif %}
+        {% endif %}
 
         {# ─────────────────────────  关键发言  ───────────────────────── #}
         {% if figures %}
@@ -554,7 +531,15 @@
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
-        {% if not figure_summaries %}
+        {% if not figure_summaries and figure_fallback_note %}
+        <tr>
+          <td style="padding:24px 24px 0 24px;">
+            <div style="font-family:{{ serif_body }}; font-size:14px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.04em; font-style:italic; text-align:center;">
+              {{ figure_fallback_note }}
+            </div>
+          </td>
+        </tr>
+        {% elif not figure_summaries %}
         {# 全员沉默:LLM 写一句古典韵味占位语,失败时退回固定兜底 #}
         <tr>
           <td style="padding:24px 24px 0 24px;">

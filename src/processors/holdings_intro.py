@@ -20,6 +20,8 @@ from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
+_MAX_ATTEMPTS = 2
+
 
 _TASK_INSTRUCTION = """\
 任务:基于今日持仓的实际信号与偏离度,写**一段富有哲学韵味、文采斐然、发人深省**的中文开场白
@@ -73,19 +75,27 @@ def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
     if not signals:
         return None
     payload = _format_input(signals)
-    resp = client.chat(
-        payload,
-        task_extra=_TASK_INSTRUCTION,
-        # V4-Flash reasoning 会把 max_tokens 全部吃掉做推理，2500 不够：
-        # 生产日志显示 reasoning=2500/max_tokens=2500，输出为空 → 降级到静态文案。
-        # 与 news_summarizer 主调用对齐到 6000，保证 reasoning 跑完后
-        # 仍有足够预算输出 60-110 字正文。
-        max_tokens=6000,
-        temperature=0.7,
-    )
-    text = (resp.text or "").strip()
+    text = ""
+    last_error: str | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        resp = client.chat(
+            payload,
+            task_extra=_TASK_INSTRUCTION,
+            max_tokens=800,
+            temperature=0.7,
+            timeout=20,
+            thinking=False,
+        )
+        text = (resp.text or "").strip()
+        if text:
+            break
+        last_error = resp.error or "EmptyOutput"
+        logger.warning(
+            "holdings_intro.attempt_failed attempt=%d/%d reason=%s",
+            attempt, _MAX_ATTEMPTS, last_error,
+        )
     if not text:
-        logger.warning("holdings_intro.failed reason=%s", resp.error)
+        logger.warning("holdings_intro.failed reason=%s", last_error or "unknown")
         return None
     # 去除偶发的引号包裹与 markdown
     text = text.strip("\"'“”「」 ").strip()

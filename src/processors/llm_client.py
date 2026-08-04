@@ -194,7 +194,7 @@ class LLMClient:
           False 用于翻译、格式化摘要等确定性任务，避免思考 token
           耗尽 max_tokens 后没有可见正文。
         - timeout:默认 45s。daily.yml job timeout 是 15 分钟,主流程串行调用
-          translator + news_summarizer + macro_filter + 6×figure_filter
+          translator + news_summarizer + macro_filter + 最多 13×figure_filter
           + sentiment_judge + holdings_intro + subject ≈ 12 次 LLM。
           原 90s 默认的最坏情况(全部 timeout)= 18 分钟,撞 job timeout。
           45s 给单调用余量足够(DeepSeek V4-Flash 实测 P95 ~ 30s),

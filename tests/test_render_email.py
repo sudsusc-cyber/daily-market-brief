@@ -95,6 +95,57 @@ def test_macro_quality_fallback_never_renders_raw_rss_titles() -> None:
     assert ">WSJ<" not in html
 
 
+def test_company_quality_fallback_never_renders_raw_news_titles() -> None:
+    """个股摘要失败时只展示受控占位语，不恢复逐公司原始列表。"""
+    raw_title = "Microsoft announces an unfiltered raw update"
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        company_news=[SimpleNamespace(
+            holding=HOLDINGS[0],
+            error=None,
+            items=[SimpleNamespace(
+                title=raw_title,
+                url="https://example.com/raw",
+                published_at=datetime.now(UTC),
+                source="Reuters",
+            )],
+        )],
+        company_news_summary=None,
+        company_news_fallback_note="个股动态整理未完成，本期从略。",
+    )
+
+    assert "昨日动态" in html
+    assert "个股动态整理未完成" in html
+    assert raw_title not in html
+
+
+def test_figure_processing_failure_wins_over_silence_copy() -> None:
+    """人物加工失败不能再伪装成“群贤皆默”。"""
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        figures=[_one_figure_bundle()],
+        figure_summaries=[],
+        figure_silence_note="群贤皆默，市自为声。",
+        figure_fallback_note="关键发言整理未完成，本期从略。",
+    )
+
+    assert "关键发言整理未完成" in html
+    assert "群贤皆默" not in html
+
+
+def test_frontier_processing_failure_is_visible() -> None:
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        frontier_labs_items=[],
+        frontier_labs_fallback_note="前沿动态整理未完成，本期从略。",
+    )
+
+    assert "前沿动态整理未完成" in html
+
+
 def test_render_email_decorative_logo_has_empty_alt() -> None:
     """相邻已有 ticker 文本，装饰性 logo 使用空 alt 避免屏幕阅读器重复朗读。"""
     s = _one_signal()

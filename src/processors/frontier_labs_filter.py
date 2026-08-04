@@ -21,6 +21,7 @@ from src.processors.llm_client import LLMClient
 logger = logging.getLogger(__name__)
 
 _ALLOWED_RELATED_TICKERS = {h.ticker for h in HOLDINGS} | {"AMD"}
+_MAX_FILTER_ATTEMPTS = 2
 
 
 @dataclass
@@ -144,8 +145,29 @@ def _clean_summary(text: str) -> str:
     return text
 
 
-def _parse_output(text: str, items: list[FrontierItem], lab: str) -> list[FrontierKeyPoint]:
+@dataclass
+class _FrontierParseResult:
+    items: list[FrontierKeyPoint]
+    covered_indexes: set[int]
+    duplicate_indexes: set[int]
+    invalid_yes: bool = False
+
+    def is_complete(self, expected_count: int) -> bool:
+        return (
+            self.covered_indexes == set(range(1, expected_count + 1))
+            and not self.duplicate_indexes
+            and not self.invalid_yes
+        )
+
+
+def _parse_output_result(
+    text: str,
+    items: list[FrontierItem],
+    lab: str,
+) -> _FrontierParseResult:
     kept: list[FrontierKeyPoint] = []
+    index_counts: dict[int, int] = {}
+    invalid_yes = False
     for line in text.splitlines():
         match = _LINE_RE.match(line.strip())
         if not match:
@@ -156,12 +178,27 @@ def _parse_output(text: str, items: list[FrontierItem], lab: str) -> list[Fronti
         tickers = _parse_tickers(match.group(4))
         body = _clean_summary(match.group(5))
 
+        valid_indexes: list[int] = []
+        for token in idx_part.split(","):
+            try:
+                value = int(token.strip())
+            except ValueError:
+                continue
+            if 1 <= value <= len(items):
+                valid_indexes.append(value)
+                index_counts[value] = index_counts.get(value, 0) + 1
+        if not valid_indexes:
+            if verdict == "yes":
+                invalid_yes = True
+            continue
+
         if verdict != "yes":
             continue
         try:
             score = int(score_raw)
         except (TypeError, ValueError):
             logger.info("frontier_labs_filter.missing_score lab=%s text=%s", lab, body[:60])
+            invalid_yes = True
             continue
         if score < 4 or score > 5:
             logger.info(
@@ -170,23 +207,17 @@ def _parse_output(text: str, items: list[FrontierItem], lab: str) -> list[Fronti
                 score,
                 body[:60],
             )
+            if score < 1 or score > 5:
+                invalid_yes = True
             continue
         if not tickers:
             logger.info("frontier_labs_filter.missing_tickers lab=%s text=%s", lab, body[:60])
+            invalid_yes = True
             continue
 
-        primary_idx: int | None = None
-        for token in idx_part.split(","):
-            try:
-                value = int(token.strip())
-            except ValueError:
-                continue
-            if 1 <= value <= len(items):
-                primary_idx = value
-                break
-        if primary_idx is None:
-            continue
+        primary_idx = valid_indexes[0]
         if not body:
+            invalid_yes = True
             continue
         if any(_similar(body, existing.text) for existing in kept):
             continue
@@ -212,7 +243,17 @@ def _parse_output(text: str, items: list[FrontierItem], lab: str) -> list[Fronti
                 published_at=source_item.published_at,
             )
         )
-    return kept
+    return _FrontierParseResult(
+        items=kept,
+        covered_indexes=set(index_counts),
+        duplicate_indexes={index for index, count in index_counts.items() if count > 1},
+        invalid_yes=invalid_yes,
+    )
+
+
+def _parse_output(text: str, items: list[FrontierItem], lab: str) -> list[FrontierKeyPoint]:
+    """兼容既有测试和调用的纯解析入口。"""
+    return _parse_output_result(text, items, lab).items
 
 
 _SOURCE_AUTHORITY: dict[str, int] = {
@@ -250,39 +291,88 @@ def select_frontier_items(
     return selected
 
 
+def _filter_one_with_status(
+    bundle: FrontierBundle,
+    *,
+    client: LLMClient,
+    max_items: int = 8,
+) -> tuple[list[FrontierKeyPoint], str | None]:
+    source_error = None
+    if bundle.errors:
+        source_error = f"SourceError: {'; '.join(bundle.errors)[:240]}"
+    if not bundle.items:
+        return [], source_error
+    items = bundle.items[:max_items]
+    payload = _format_input(items)
+    if not payload.strip():
+        return [], None
+
+    last_error: str | None = None
+    for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
+        instruction = _TASK_INSTRUCTION
+        if attempt > 1:
+            instruction += """
+
+【重试修正】上一次输出为空、格式错误或遗漏输入编号。这次每个输入编号必须
+恰好出现一次；直接输出 ▦ 行，不要解释或 markdown。
+"""
+        try:
+            resp = client.chat(
+                payload,
+                task_extra=instruction,
+                max_tokens=2000,
+                temperature=0.1,
+                timeout=30,
+                thinking=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+            logger.warning(
+                "frontier_labs_filter.attempt_failed lab=%s attempt=%d/%d reason=%s",
+                bundle.lab, attempt, _MAX_FILTER_ATTEMPTS, last_error,
+            )
+            continue
+        if not resp.text:
+            last_error = resp.error or "EmptyOutput"
+            logger.warning(
+                "frontier_labs_filter.attempt_failed lab=%s attempt=%d/%d reason=%s",
+                bundle.lab, attempt, _MAX_FILTER_ATTEMPTS, last_error,
+            )
+            continue
+
+        parsed = _parse_output_result(resp.text, items, bundle.lab)
+        if parsed.is_complete(len(items)):
+            logger.info(
+                "frontier_labs_filter.ok lab=%s candidates=%d kept=%d attempt=%d",
+                bundle.lab, len(items), len(parsed.items), attempt,
+            )
+            return parsed.items, source_error
+
+        last_error = (
+            "IncompleteOrInvalidOutput: "
+            f"covered={sorted(parsed.covered_indexes)}/{len(items)} "
+            f"duplicates={sorted(parsed.duplicate_indexes)} invalid_yes={parsed.invalid_yes}"
+        )
+        logger.warning(
+            "frontier_labs_filter.invalid_output lab=%s attempt=%d/%d reason=%s",
+            bundle.lab, attempt, _MAX_FILTER_ATTEMPTS, last_error,
+        )
+
+    logger.warning(
+        "frontier_labs_filter.failed lab=%s attempts=%d reason=%s",
+        bundle.lab, _MAX_FILTER_ATTEMPTS, last_error or "unknown",
+    )
+    return [], last_error or "UnknownProcessingFailure"
+
+
 def filter_one(
     bundle: FrontierBundle,
     *,
     client: LLMClient,
     max_items: int = 8,
 ) -> list[FrontierKeyPoint]:
-    if not bundle.items:
-        return []
-    items = bundle.items[:max_items]
-    payload = _format_input(items)
-    if not payload.strip():
-        return []
-    try:
-        resp = client.chat(
-            payload,
-            task_extra=_TASK_INSTRUCTION,
-            max_tokens=6000,
-            temperature=0.2,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("frontier_labs_filter.failed lab=%s exc=%s", bundle.lab, exc)
-        return []
-    if not resp.text:
-        logger.warning("frontier_labs_filter.failed lab=%s reason=%s", bundle.lab, resp.error)
-        return []
-    kept = _parse_output(resp.text, items, bundle.lab)
-    logger.info(
-        "frontier_labs_filter.ok lab=%s candidates=%d kept=%d",
-        bundle.lab,
-        len(items),
-        len(kept),
-    )
-    return kept
+    items, _ = _filter_one_with_status(bundle, client=client, max_items=max_items)
+    return items
 
 
 def filter_all(
@@ -291,7 +381,29 @@ def filter_all(
     client: LLMClient,
     max_items_per_lab: int = 8,
 ) -> list[FrontierKeyPoint]:
+    items, _ = filter_all_with_status(
+        bundles,
+        client=client,
+        max_items_per_lab=max_items_per_lab,
+    )
+    return items
+
+
+def filter_all_with_status(
+    bundles: list[FrontierBundle],
+    *,
+    client: LLMClient,
+    max_items_per_lab: int = 8,
+) -> tuple[list[FrontierKeyPoint], list[str]]:
     points: list[FrontierKeyPoint] = []
+    failures: list[str] = []
     for bundle in bundles:
-        points.extend(filter_one(bundle, client=client, max_items=max_items_per_lab))
-    return select_frontier_items(points)
+        bundle_points, error = _filter_one_with_status(
+            bundle,
+            client=client,
+            max_items=max_items_per_lab,
+        )
+        points.extend(bundle_points)
+        if error:
+            failures.append(f"{bundle.lab}: {error}")
+    return select_frontier_items(points), failures

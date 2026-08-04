@@ -71,6 +71,10 @@ _DEFAULT_QUALITY_ALERT_PATH = _PROJECT_ROOT / ".quality-alert.txt"
 
 _MACRO_PROCESSING_FALLBACK_NOTE = "宏观信息整理未完成，本期从略。"
 _MACRO_SOURCE_FALLBACK_NOTE = "宏观数据源暂不可用，本期从略。"
+_COMPANY_PROCESSING_FALLBACK_NOTE = "个股动态整理未完成，本期从略。"
+_COMPANY_SOURCE_FALLBACK_NOTE = "个股动态数据源暂不可用，本期从略。"
+_FIGURE_PROCESSING_FALLBACK_NOTE = "关键发言整理未完成，本期从略。"
+_FRONTIER_PROCESSING_FALLBACK_NOTE = "前沿动态整理未完成，本期从略。"
 
 _ACTIVE_THESIS_STATUS_RANK = {
     "core": 0,
@@ -244,18 +248,40 @@ def main() -> int:
 
     logger.info("processors.news_summarizer")
     company_news_silence_note = None
+    company_news_fallback_note = None
+    company_source_failures = sum(1 for bundle in cn_bundles if bundle.error)
     if any(bundle.items for bundle in cn_bundles):
         company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
+        if company_news_summary is not None and getattr(company_news_summary, "is_silence", False):
+            company_news_summary = None
+            company_news_silence_note = (
+                news_summarizer.generate_silence_note(client=llm)
+                or "商海无波，舟自徐行。"
+            )
+        elif company_news_summary is None:
+            company_news_fallback_note = _COMPANY_PROCESSING_FALLBACK_NOTE
+            _record_quality_alert(
+                "个股动态加工失败：已使用受控占位语，未展示原始新闻列表。"
+            )
     elif any(bundle.error for bundle in cn_bundles):
-        # 数据源故障必须保留原始错误，不能粉饰成“今日无新闻”。
         company_news_summary = None
+        company_news_fallback_note = _COMPANY_SOURCE_FALLBACK_NOTE
+        _record_quality_alert("个股动态数据源不可用：已使用受控占位语。")
     else:
         company_news_summary = None
-        company_news_silence_note = news_summarizer.generate_silence_note(client=llm)
+        company_news_silence_note = (
+            news_summarizer.generate_silence_note(client=llm)
+            or "商海无波，舟自徐行。"
+        )
+    if company_source_failures and any(bundle.items for bundle in cn_bundles):
+        _record_quality_alert(
+            f"个股动态部分数据源不可用：{company_source_failures} 个持仓仅展示其余有效内容。"
+        )
 
     logger.info("processors.macro_filter")
     macro_news_silence_note = None
     macro_news_fallback_note = None
+    macro_source_failures = sum(1 for bundle in macro_bundles if bundle.error)
     if any(bundle.items for bundle in macro_bundles):
         macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
         if macro_news_summary is None:
@@ -275,20 +301,43 @@ def main() -> int:
             macro_filter.generate_silence_note(client=llm)
             or "四海无波，日升月落而已。"
         )
+    if macro_source_failures and any(bundle.items for bundle in macro_bundles):
+        _record_quality_alert(
+            f"宏观视野部分数据源不可用：{macro_source_failures} 个来源未参与摘要。"
+        )
 
     logger.info("processors.figure_filter")
-    figure_summaries = figure_filter.filter_all(fig_bundles, client=llm)
+    figure_results = figure_filter.filter_all(fig_bundles, client=llm)
+    figure_failures = [summary for summary in figure_results if summary.error]
+    figure_summaries = [summary for summary in figure_results if summary.items]
     # M5.10 质量门槛:无 items 的人物(规则层全砍 / LLM 全 no)整个不渲染
-    _before = len(figure_summaries)
-    figure_summaries = [f for f in figure_summaries if f.items]
-    if len(figure_summaries) < _before:
-        logger.info("figure_filter.dropped_silent count=%d", _before - len(figure_summaries))
+    if len(figure_summaries) < len(figure_results):
+        logger.info(
+            "figure_filter.dropped_silent count=%d failures=%d",
+            len(figure_results) - len(figure_summaries), len(figure_failures),
+        )
     # 全员沉默时:LLM 写一句古典韵味的占位语
     figure_silence_note = None
+    figure_fallback_note = None
     figure_footnotes = []
     if not figure_summaries:
-        figure_silence_note = figure_filter.generate_silence_note(llm)
+        if figure_failures:
+            figure_fallback_note = _FIGURE_PROCESSING_FALLBACK_NOTE
+            _record_quality_alert(
+                f"关键发言加工失败：{len(figure_failures)} 位人物处理未完成，"
+                "已使用受控占位语。"
+            )
+        else:
+            figure_silence_note = (
+                figure_filter.generate_silence_note(llm)
+                or "群贤皆默，市自为声。"
+            )
     else:
+        if figure_failures:
+            _record_quality_alert(
+                f"关键发言部分降级：{len(figure_failures)} 位人物处理未完成，"
+                "已展示其余有效内容。"
+            )
         # 版面限流:质量评分后最多展示 3 位人物
         figure_summaries = figure_filter.select_voice_summaries(figure_summaries)
         # 跨人物统一编号 [1] [2] ...,章节底部一次列出所有来源
@@ -296,9 +345,21 @@ def main() -> int:
 
     logger.info("processors.sentiment_judge")
     sentiment_verdict = sentiment_judge.judge(sentiment_bundle, client=llm)
+    if sentiment_verdict and sentiment_verdict.get("argument_fallback"):
+        _record_quality_alert("市场情绪文字说明加工失败：已使用确定性说明。")
 
     logger.info("processors.frontier_labs_filter")
-    frontier_labs_items = frontier_labs_filter.filter_all(frontier_labs_bundles, client=llm)
+    frontier_labs_items, frontier_labs_failures = frontier_labs_filter.filter_all_with_status(
+        frontier_labs_bundles,
+        client=llm,
+    )
+    frontier_labs_fallback_note = None
+    if frontier_labs_failures:
+        if not frontier_labs_items:
+            frontier_labs_fallback_note = _FRONTIER_PROCESSING_FALLBACK_NOTE
+        _record_quality_alert(
+            f"前沿动态加工失败：{len(frontier_labs_failures)} 个实验室处理未完成。"
+        )
 
     logger.info("processors.thesis")
     try:
@@ -306,7 +367,7 @@ def main() -> int:
         state_dict = thesis_state.load_state(_STATE_DIR)
         active_themes = _select_active_thesis_themes(state_dict)
 
-        evidence_today = thesis_extractor.extract(
+        evidence_today, thesis_extraction_error = thesis_extractor.extract_with_status(
             client=llm,
             company_news=company_news_summary,
             macro_news=macro_news_summary,
@@ -316,6 +377,10 @@ def main() -> int:
             active_themes=active_themes,
             today=now_bj.date(),
         )
+        if thesis_extraction_error:
+            _record_quality_alert(
+                "长期判断证据提取失败：本次未写入新的判断证据。"
+            )
         # extractor 只 return；写入由 state.py 统一负责（内部按 evidence_id 去重）
         thesis_state.append_evidence(evidence_today, _STATE_DIR)
 
@@ -348,10 +413,13 @@ def main() -> int:
             "thesis.pipeline_failed exc_type=%s msg=%s",
             type(exc).__name__, str(exc)[:200],
         )
+        _record_quality_alert("长期判断管线失败：已跳过本次判断更新。")
         judgment_section = None
 
     logger.info("processors.holdings_intro")
     holdings_intro_text = holdings_intro.write_intro(signals, client=llm)
+    if signals and holdings_intro_text is None:
+        _record_quality_alert("持仓引言加工失败：已使用确定性说明。")
 
     # token 成本汇总
     cum = llm.cumulative
@@ -382,14 +450,16 @@ def main() -> int:
         logo_cids=logo_cids,
         header_image_url=header["url"],
         holdings_intro=holdings_intro_text,
-        # 加工产物(为 None 时模板自动 fallback 到原始数据展示)
+        # 加工产物；失败区块使用受控占位语，不展示未经筛选的原始列表。
         sentiment=sentiment_bundle,
         sentiment_verdict=sentiment_verdict,
         company_news=cn_bundles,
         company_news_summary=company_news_summary,
+        company_news_fallback_note=company_news_fallback_note,
         figures=fig_bundles,
         figure_summaries=figure_summaries,
         figure_silence_note=figure_silence_note,
+        figure_fallback_note=figure_fallback_note,
         figure_footnotes=figure_footnotes,
         macro_news=macro_bundles,
         macro_news_summary=macro_news_summary,
@@ -398,6 +468,7 @@ def main() -> int:
         macro_news_fallback_note=macro_news_fallback_note,
         buffett_13f=buffett_bundle,
         frontier_labs_items=frontier_labs_items,
+        frontier_labs_fallback_note=frontier_labs_fallback_note,
         judgment_section=judgment_section,
     )
 

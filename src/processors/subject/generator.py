@@ -154,12 +154,12 @@ def _call_deepseek(
     resp = llm.chat(
         user_prompt,
         system_override=prompts.SYSTEM_PROMPT,
-        # DeepSeek V4-Flash 是 reasoning model,reasoning_tokens 常占 500-2000
-        # max_tokens 必须给 reasoning + 最终输出留足空间,虽然主题本身只 9 字符
-        max_tokens=4000,
+        # 主题只有 8 个汉字；显式关闭思考，避免推理占满预算或撞 10s 超时。
+        max_tokens=256,
         temperature=0.95,     # 用户要求更多样性(原 0.85 → 0.95)
         top_p=0.9,            # plan 要求
         timeout=timeout,
+        thinking=False,
     )
     return resp.text, resp.error
 
