@@ -180,6 +180,7 @@ class LLMClient:
         temperature: float = 0.3,
         timeout: int = 45,
         top_p: float | None = None,
+        thinking: bool | None = None,
     ) -> LLMResponse:
         """
         发起一次 chat completion。
@@ -189,6 +190,9 @@ class LLMClient:
           (用于主题生成等需要纯文学风格的场景);为 None 维持原行为
           (system = INVESTMENT_FRAMEWORK + 时间 + task_extra)
         - top_p:可选 nucleus sampling;为 None 使用模型默认
+        - thinking:显式开关 DeepSeek 思考模式。None 保留服务端默认;
+          False 用于翻译、格式化摘要等确定性任务，避免思考 token
+          耗尽 max_tokens 后没有可见正文。
         - timeout:默认 45s。daily.yml job timeout 是 15 分钟,主流程串行调用
           translator + news_summarizer + macro_filter + 6×figure_filter
           + sentiment_judge + holdings_intro + subject ≈ 12 次 LLM。
@@ -223,6 +227,10 @@ class LLMClient:
             }
             if top_p is not None:
                 kwargs["top_p"] = top_p
+            if thinking is not None:
+                kwargs["extra_body"] = {
+                    "thinking": {"type": "enabled" if thinking else "disabled"},
+                }
             resp = self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 — 失败降级,绝不阻断邮件
             # 不用 logger.exception(会打整段 traceback,某些 SDK 异常会带 url

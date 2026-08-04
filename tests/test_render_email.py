@@ -70,6 +70,31 @@ def test_render_email_no_silence_note_uses_template_fallback() -> None:
     assert "群贤皆默" in html
 
 
+def test_macro_quality_fallback_never_renders_raw_rss_titles() -> None:
+    """宏观加工失败时只展示受控占位语，不恢复早期原始列表。"""
+    raw_title = "Opinion | Can the U.S. Treasury Save the Yen?"
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        macro_news=[SimpleNamespace(
+            source="WSJ",
+            error=None,
+            items=[SimpleNamespace(
+                title=raw_title,
+                url="https://example.com/raw",
+                published_at=datetime.now(UTC),
+            )],
+        )],
+        macro_news_summary=None,
+        macro_news_fallback_note="宏观信息整理未完成，本期从略。",
+    )
+
+    assert "宏观视野" in html
+    assert "宏观信息整理未完成" in html
+    assert raw_title not in html
+    assert ">WSJ<" not in html
+
+
 def test_render_email_decorative_logo_has_empty_alt() -> None:
     """相邻已有 ticker 文本，装饰性 logo 使用空 alt 避免屏幕阅读器重复朗读。"""
     s = _one_signal()

@@ -26,6 +26,8 @@ from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
+_MAX_SUMMARY_ATTEMPTS = 2
+
 
 @dataclass
 class Footnote:
@@ -103,8 +105,9 @@ def generate_silence_note(client: LLMClient) -> str | None:
     resp = client.chat(
         "请写一句替代'宏观视野'章节的占位语",
         task_extra=_SILENCE_INSTRUCTION,
-        max_tokens=4000,
+        max_tokens=256,
         temperature=0.85,
+        thinking=False,
     )
     text = (resp.text or "").strip().strip("\"'“”「」 ")
     if not text:
@@ -262,19 +265,46 @@ def summarize(
     payload, flat_items = _format_input(bundles)
     if not payload.strip():
         return None
-    resp = client.chat(
-        payload,
-        task_extra=_TASK_INSTRUCTION,
-        # 同步 news_summarizer:reasoning 易吃 1500+,留双倍空间
-        max_tokens=4000,
-        temperature=0.3,
+    last_error: str | None = None
+    for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
+        task_instruction = _TASK_INSTRUCTION
+        if attempt > 1:
+            task_instruction += """
+
+【重试修正】上一次输出为空或没有带有效来源脚注。这次必须直接输出
+2-3 个 <p> 段落，且每段至少包含一个来自输入编号的 <sup>[N]</sup>。
+"""
+        resp = client.chat(
+            payload,
+            task_extra=task_instruction,
+            max_tokens=2000,
+            temperature=0.2,
+            thinking=False,
+        )
+        if not resp.text:
+            last_error = resp.error or "EmptyOutput"
+            logger.warning(
+                "macro_filter.attempt_failed attempt=%d/%d reason=%s",
+                attempt, _MAX_SUMMARY_ATTEMPTS, last_error,
+            )
+            continue
+
+        body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items)
+        if body_html:
+            logger.info(
+                "macro_filter.ok footnotes=%d attempt=%d (sanitized)",
+                len(footnotes), attempt,
+            )
+            return MacroNewsSummary(summary_html=body_html, footnotes=footnotes)
+
+        last_error = "AllParagraphsDroppedWithoutValidSources"
+        logger.warning(
+            "macro_filter.invalid_output attempt=%d/%d reason=%s",
+            attempt, _MAX_SUMMARY_ATTEMPTS, last_error,
+        )
+
+    logger.warning(
+        "macro_filter.failed attempts=%d reason=%s",
+        _MAX_SUMMARY_ATTEMPTS, last_error or "unknown",
     )
-    if not resp.text:
-        logger.warning("macro_filter.failed reason=%s", resp.error)
-        return None
-    body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items)
-    if not body_html:
-        logger.warning("macro_filter.all_paragraphs_dropped_without_valid_sources")
-        return None
-    logger.info("macro_filter.ok footnotes=%d (sanitized)", len(footnotes))
-    return MacroNewsSummary(summary_html=body_html, footnotes=footnotes)
+    return None
