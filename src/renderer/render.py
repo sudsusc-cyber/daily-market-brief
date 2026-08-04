@@ -272,7 +272,7 @@ def render_email(
     figures: list[Any] | None = None,         # list[FigureBundle]
     macro_news: list[Any] | None = None,      # list[MacroFeedBundle]
     buffett_13f: Any | None = None,           # BuffettBundle
-    # M4 LLM 加工产物(若为 None,模板自动降级到 M3 原始数据)
+    # M4 LLM 加工产物
     sentiment_verdict: dict | None = None,           # {verdict, argument}
     company_news_summary: Any | None = None,          # CompanyNewsSummary {summary_html, footnotes}
     figure_summaries: list[Any] | None = None,        # list[FigureSummary]
@@ -281,6 +281,7 @@ def render_email(
     macro_news_summary: Any | None = None,            # MacroNewsSummary {summary_html, footnotes}
     company_news_silence_note: str | None = None,     # 持仓无新闻时的占位语
     macro_news_silence_note: str | None = None,       # 无宏观新闻时的占位语
+    macro_news_fallback_note: str | None = None,      # 宏观加工/数据源失败时的受控占位语
     frontier_labs_items: list[Any] | None = None,     # list[FrontierKeyPoint]
     judgment_section: dict | None = None,             # Judgment Ledger payload
 ) -> str:
@@ -288,7 +289,7 @@ def render_email(
     渲染完整邮件 HTML。
 
     logo_cids: ticker -> CID 映射,如 {"NVDA": "logo_NVDA"}。
-    M4 加工产物若为 None,模板降级渲染 M3 原始数据列表。
+    宏观视野不降级渲染原始 RSS 列表，失败时使用受控占位语。
     """
     env = _build_env()
     template = env.get_template("email.html.j2")
@@ -318,6 +319,7 @@ def render_email(
         macro_news_summary=macro_news_summary,
         company_news_silence_note=company_news_silence_note,
         macro_news_silence_note=macro_news_silence_note,
+        macro_news_fallback_note=macro_news_fallback_note,
         buffett_13f=buffett_13f,
         frontier_labs_items=frontier_labs_items or [],
         judgment_section=judgment_section,

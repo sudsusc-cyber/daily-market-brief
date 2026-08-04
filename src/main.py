@@ -12,13 +12,13 @@
                           news_summarizer / macro_filter
                           / figure_filter / sentiment_judge
                                     ↓
-                          renderer/render(段落 + 原始列表 fallback)
+                          renderer/render(段落 + 受控占位语 fallback)
                                     ↓
                           sender/smtp_sender.send_html_email
                                     (含 logo inline 附件)
 
 时区:全程内部用 UTC,展示与邮件标题用北京时间。
-任何 LLM 调用失败 → 降级到 M3 原始数据展示(模板已支持)。
+LLM 调用失败时各区块独立降级；宏观视野不展示未加工 RSS 列表。
 """
 
 from __future__ import annotations
@@ -67,6 +67,10 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _LOGOS_DIR = _PROJECT_ROOT / "assets" / "logos"
 _STATE_DIR = _PROJECT_ROOT / "state"
+_DEFAULT_QUALITY_ALERT_PATH = _PROJECT_ROOT / ".quality-alert.txt"
+
+_MACRO_PROCESSING_FALLBACK_NOTE = "宏观信息整理未完成，本期从略。"
+_MACRO_SOURCE_FALLBACK_NOTE = "宏观数据源暂不可用，本期从略。"
 
 _ACTIVE_THESIS_STATUS_RANK = {
     "core": 0,
@@ -75,6 +79,23 @@ _ACTIVE_THESIS_STATUS_RANK = {
     "dormant": 3,
 }
 _ACTIVE_THESIS_THEME_LIMIT = 120
+
+
+def _quality_alert_path() -> Path:
+    configured = os.environ.get("QUALITY_ALERT_PATH", "").strip()
+    return Path(configured) if configured else _DEFAULT_QUALITY_ALERT_PATH
+
+
+def _clear_quality_alert() -> None:
+    _quality_alert_path().unlink(missing_ok=True)
+
+
+def _record_quality_alert(message: str) -> None:
+    path = _quality_alert_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    previous = path.read_text(encoding="utf-8") if path.exists() else ""
+    path.write_text(f"{previous}{message.strip()}\n", encoding="utf-8")
+    logger.warning("quality.alert %s", message)
 
 
 def _select_active_thesis_themes(
@@ -153,6 +174,7 @@ def main() -> int:
     )
 
     clear_delivery_receipt()
+    _clear_quality_alert()
     settings = load_settings()
     now_bj = now_beijing()
 
@@ -233,13 +255,26 @@ def main() -> int:
 
     logger.info("processors.macro_filter")
     macro_news_silence_note = None
+    macro_news_fallback_note = None
     if any(bundle.items for bundle in macro_bundles):
         macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
+        if macro_news_summary is None:
+            macro_news_fallback_note = _MACRO_PROCESSING_FALLBACK_NOTE
+            _record_quality_alert(
+                "宏观视野加工失败：已使用受控占位语，未展示原始 RSS 列表。"
+            )
     elif any(bundle.error for bundle in macro_bundles):
         macro_news_summary = None
+        macro_news_fallback_note = _MACRO_SOURCE_FALLBACK_NOTE
+        _record_quality_alert(
+            "宏观视野数据源不可用：已使用受控占位语。"
+        )
     else:
         macro_news_summary = None
-        macro_news_silence_note = macro_filter.generate_silence_note(client=llm)
+        macro_news_silence_note = (
+            macro_filter.generate_silence_note(client=llm)
+            or "四海无波，日升月落而已。"
+        )
 
     logger.info("processors.figure_filter")
     figure_summaries = figure_filter.filter_all(fig_bundles, client=llm)
@@ -360,6 +395,7 @@ def main() -> int:
         macro_news_summary=macro_news_summary,
         company_news_silence_note=company_news_silence_note,
         macro_news_silence_note=macro_news_silence_note,
+        macro_news_fallback_note=macro_news_fallback_note,
         buffett_13f=buffett_bundle,
         frontier_labs_items=frontier_labs_items,
         judgment_section=judgment_section,

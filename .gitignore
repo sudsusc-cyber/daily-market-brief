@@ -3,6 +3,7 @@ __pycache__/
 *.py[codz]
 *$py.class
 .delivery-receipt.json
+.quality-alert.txt
 
 # C extensions
 *.so

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _HAS_CJK = re.compile(r"[一-鿿]")
 _LINE_RE = re.compile(r"^▦\s*(\d+)\s*:\s*(.+?)\s*$")
+_MAX_ATTEMPTS = 2
 
 _TASK_INSTRUCTION = """\
 任务:把下面以 "▦ N:" 编号的英文财经新闻标题逐条翻译为简体中文。
@@ -62,25 +63,60 @@ def translate_titles(
     out = list(titles)
     for start in range(0, len(to_translate), batch_size):
         chunk = to_translate[start : start + batch_size]
-        numbered = "\n".join(f"▦ {i+1}: {t}" for i, (_, t) in enumerate(chunk))
-        user_prompt = f"{numbered}"
-        resp = client.chat(
-            user_prompt,
-            task_extra=_TASK_INSTRUCTION,
-            # V4-Flash reasoning 偶尔会吃 1500+ token,留双份空间避免丢标题
-            max_tokens=3500,
-            temperature=0.0,
-        )
-        if not resp.text:
-            logger.warning("translate.batch_failed start=%d size=%d reason=%s",
-                          start, len(chunk), resp.error)
-            continue
-        parsed = _parse_lines(resp.text)
-        for i, (orig_idx, _) in enumerate(chunk, start=1):
-            if i in parsed:
-                out[orig_idx] = parsed[i]
-        logger.info("translate.batch_ok start=%d size=%d parsed=%d/%d",
-                   start, len(chunk), len(parsed), len(chunk))
+        indexed_chunk = {
+            position: pair
+            for position, pair in enumerate(chunk, start=1)
+        }
+        pending = set(indexed_chunk)
+        translated: dict[int, str] = {}
+
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            numbered = "\n".join(
+                f"▦ {position}: {indexed_chunk[position][1]}"
+                for position in sorted(pending)
+            )
+            resp = client.chat(
+                numbered,
+                task_extra=_TASK_INSTRUCTION,
+                max_tokens=3500,
+                temperature=0.0,
+                thinking=False,
+            )
+            if not resp.text:
+                logger.warning(
+                    "translate.batch_attempt_failed start=%d size=%d attempt=%d reason=%s",
+                    start, len(chunk), attempt, resp.error,
+                )
+            else:
+                parsed = _parse_lines(resp.text)
+                for position in pending:
+                    text = parsed.get(position, "").strip()
+                    if text:
+                        translated[position] = text
+                pending.difference_update(translated)
+
+            if not pending:
+                break
+            if attempt < _MAX_ATTEMPTS:
+                logger.warning(
+                    "translate.batch_retry start=%d size=%d missing=%d attempt=%d",
+                    start, len(chunk), len(pending), attempt + 1,
+                )
+
+        for position, text in translated.items():
+            orig_idx, _ = indexed_chunk[position]
+            out[orig_idx] = text
+
+        if pending:
+            logger.warning(
+                "translate.batch_incomplete start=%d size=%d parsed=%d/%d missing=%s",
+                start, len(chunk), len(translated), len(chunk), sorted(pending),
+            )
+        else:
+            logger.info(
+                "translate.batch_ok start=%d size=%d parsed=%d/%d",
+                start, len(chunk), len(translated), len(chunk),
+            )
     return out
 
 

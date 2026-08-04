@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import requests
 
 from src.processors.llm_client import (
@@ -124,6 +126,29 @@ def test_client_disables_sdk_hidden_retries(monkeypatch) -> None:
     LLMClient(api_key="secret")
 
     assert calls[0]["max_retries"] == 0
+
+
+def test_chat_can_explicitly_disable_deepseek_thinking(monkeypatch) -> None:
+    captured: dict = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="已完成"))],
+                usage=None,
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", FakeOpenAI)
+
+    response = LLMClient(api_key="secret").chat("翻译", thinking=False)
+
+    assert response.text == "已完成"
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 def test_cost_does_not_double_count_reasoning(monkeypatch) -> None:
