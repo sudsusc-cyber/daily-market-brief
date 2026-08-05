@@ -675,18 +675,11 @@
             {% endif %}
             {% if jiangsu_fuel_alert %}
             <div style="margin-top:{% if judgment_section or (buffett_13f and buffett_13f.is_new) %}36px{% else %}0{% endif %}; text-align:center; font-family:{{ serif_body }}; font-size:13.5px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.02em;">
-              <span style="color:{{ color_accent }}; letter-spacing:0.08em;">江苏油价预告</span>
+              <span style="color:{{ color_accent }}; letter-spacing:0.08em;">油价预告</span>
               <br/>
               预计 {{ jiangsu_fuel_alert.adjustment_date.month }} 月 {{ jiangsu_fuel_alert.adjustment_date.day }} 日 24 时{% if jiangsu_fuel_alert.direction == "待定" %}开启调价窗口{% else %}{{ jiangsu_fuel_alert.direction | e }}{% endif %}
               <br/>
               <span style="font-size:12.5px; color:{{ color_ink_soft }};">{{ jiangsu_fuel_alert.detail | e }}</span>
-              {% if jiangsu_fuel_alert.forecast_source and jiangsu_fuel_alert.forecast_url %}
-              <br/>
-              <a href="{{ jiangsu_fuel_alert.forecast_url | safe_url | e }}" target="_blank" rel="noopener" title="{{ (jiangsu_fuel_alert.forecast_title or '') | e }}" style="color:#0563C1; text-decoration:none; font-size:11.5px; letter-spacing:0.04em; border-bottom:0.5px solid #B5D0EC; padding-bottom:1px; overflow-wrap:anywhere; word-break:break-word;">预测来源 · {{ jiangsu_fuel_alert.forecast_source | e }}</a>
-              {% endif %}
-              <span style="font-size:11.5px; color:{{ color_faint }};">&nbsp;·&nbsp;最终以</span>
-              <a href="{{ jiangsu_fuel_alert.official_url | safe_url | e }}" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-size:11.5px; letter-spacing:0.04em; border-bottom:0.5px solid #B5D0EC; padding-bottom:1px;">江苏省发改委公告</a>
-              <span style="font-size:11.5px; color:{{ color_faint }};">为准</span>
             </div>
             {% endif %}
           </td>

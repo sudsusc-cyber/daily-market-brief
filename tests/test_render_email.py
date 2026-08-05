@@ -498,7 +498,7 @@ def _mock_jiangsu_fuel() -> JiangsuFuelAlert:
     )
 
 
-def test_template_renders_jiangsu_fuel_in_bottom_module() -> None:
+def test_template_renders_fuel_alert_in_bottom_module() -> None:
     html = render_email(
         signals=[_one_signal()],
         generated_at=datetime.now(UTC),
@@ -506,12 +506,14 @@ def test_template_renders_jiangsu_fuel_in_bottom_module() -> None:
     )
 
     assert "❀" in html
-    assert "江苏油价预告" in html
+    assert "油价预告" in html
+    assert "江苏油价预告" not in html
     assert "预计 8 月 14 日 24 时下调" in html
     assert "92 号约 -0.18 元/升" in html
-    assert "预测来源 · 第一财经" in html
-    assert "江苏省发改委公告" in html
-    assert "https://example.com/fuel-forecast" in html
+    assert "预测来源" not in html
+    assert "最终以" not in html
+    assert "江苏省发改委公告" not in html
+    assert "https://example.com/fuel-forecast" not in html
 
 
 def test_template_renders_judgment_13f_and_fuel_together() -> None:
@@ -525,11 +527,11 @@ def test_template_renders_judgment_13f_and_fuel_together() -> None:
 
     assert "AI基础设施资本开支将持续十年以上" in html
     assert "伯克希尔本季度 13F" in html
-    assert "江苏油价预告" in html
+    assert "油价预告" in html
     assert html.count("margin-top:36px") >= 2
 
 
-def test_template_escapes_fuel_forecast_metadata() -> None:
+def test_template_does_not_render_fuel_forecast_metadata() -> None:
     alert = JiangsuFuelAlert(
         adjustment_date=datetime(2026, 8, 14, tzinfo=UTC).date(),
         days_until=1,
@@ -547,5 +549,6 @@ def test_template_escapes_fuel_forecast_metadata() -> None:
 
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
-    assert 'href=""' in html
+    assert "媒体&lt;script&gt;" not in html
+    assert "javascript:alert(1)" not in html
     assert "onmouseover=\"alert(1)" not in html
