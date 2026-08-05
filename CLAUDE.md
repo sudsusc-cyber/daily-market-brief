@@ -17,7 +17,7 @@
   - `src/processors/subject/` — DeepSeek 8 字两段四言标题生成（含节气意象校验）
   - `src/collectors/frontier_labs.py` + `src/processors/frontier_labs_filter.py` — OpenAI/Anthropic 跟踪
   - `src/collectors/figure_official_sources.py` — 关键人物官方源补充（OpenAI Blog、Microsoft Blog、AMD IR、Berkshire 官网）
-  - `src/collectors/jiangsu_fuel.py` — 江苏成品油调价预告（仅调价前 1—2 天显示；预测与省发改委正式公告严格区分）
+  - `src/collectors/jiangsu_fuel.py` — 成品油调价预告（多源新闻 → Brent/WTI 代理 → schedule-only；周二窗口提前到周六兜底，保证模块不漏报）
 - 情绪温度计已从 6 指标减为 5 指标(PR #38 移除恒指 14 日 RSI),权重重新归一化,详见 `src/processors/sentiment_judge.py` 和 ADR-0010 末尾 amendment。
 - 所有 collector 统一为"延后写盘"模式:fetch_all/fetch 返回 `pending_pushed` / `pending_save`,main.py 在 SMTP 成功后才调 `commit_pushed`。包括 `buffett_13f`(2026-05 起对齐),避免 LLM/SMTP 失败时 state 已写导致漏发。
 - 接下来不要从 M5 重做,除非用户明确要求;优先处理用户给的新问题、生产运行问题、兼容性小修或可选 M7。

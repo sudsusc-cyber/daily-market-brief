@@ -230,6 +230,14 @@ def main() -> int:
 
     logger.info("collect.jiangsu_fuel")
     jiangsu_fuel_alert = jiangsu_fuel.fetch(today=now_bj.date())
+    if (
+        jiangsu_fuel_alert is not None
+        and jiangsu_fuel_alert.forecast_method == "schedule_only"
+    ):
+        _record_quality_alert(
+            "油价预告方向降级：新闻预测与国际原油代理均不可用，"
+            "已保证显示调价时间和方向待更新。"
+        )
 
     logger.info("collect.sentiment")
     sentiment_bundle = sentiment.fetch_all(

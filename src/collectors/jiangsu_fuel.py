@@ -1,22 +1,27 @@
 """江苏成品油调价预告。
 
-目标不是提前冒充官方定价，而是在国内成品油调价窗口前 1—2 天给出一条
-可核验的江苏本地提醒：调价时间来自年度窗口表，方向和幅度来自近期媒体/行业
-预测；最终价格仍以江苏省发展改革委当天发布的公告为准。
+目标不是提前冒充官方定价，而是在国内成品油调价窗口前给出一条不会因单一
+来源故障而消失的提醒。调价时间优先来自年度窗口表，后续年份按国务院放假安排
+和“每 10 个工作日”机制滚动生成；方向和幅度优先来自近期媒体/行业预测，失败
+时用 Brent/WTI 均价代理估算方向，再失败仍展示调价时间和“方向待确认”。
 
-国家成品油价格原则上每 10 个工作日调整一次。2026 年窗口日期按公开调价日历
-固化为确定性兜底；后续年份若尚未维护，则从近期 Google News 结果中发现明确的
-未来调价日期。只有距离窗口 1 或 2 个自然日时才抓取预测和返回展示对象，避免
-日常邮件出现无关的长期倒计时。
+国家成品油价格原则上每 10 个工作日调整一次。正常只在距离窗口 1 或 2 个自然日
+时返回展示对象；若调价日为周二，前两天恰逢本系统不发刊的周日、周一，则提前
+到周六（3 天前）展示一次，确保可用发刊日不漏报。
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import re
 import urllib.parse
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
+
+import requests
+import yfinance as yf
 
 from src.utils.fetch_rss import fetch_rss
 from src.utils.retry import retry
@@ -25,6 +30,16 @@ from src.utils.secrets import redact_secrets
 logger = logging.getLogger(__name__)
 
 JIANGSU_OFFICIAL_NOTICES_URL = "https://fzggw.jiangsu.gov.cn/col/col284/index.html"
+
+_CALENDAR_URLS = (
+    "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/{year}.json",
+    "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/{year}.json",
+    "https://timor.tech/api/holiday/year/{year}",
+)
+_CALENDAR_USER_AGENT = "daily-market-brief/0.1"
+_MAX_CALENDAR_BYTES = 1024 * 1024
+_CRUDE_PROXY_SYMBOLS = ("BZ=F", "CL=F")
+_CRUDE_DIRECTION_THRESHOLD = 0.003
 
 # 2026 年公开调价日历。窗口均于当日 24 时开启；实际可因机制触发暂停、延迟或搁浅。
 _WINDOWS_BY_YEAR: dict[int, tuple[tuple[int, int], ...]] = {
@@ -84,6 +99,7 @@ class JiangsuFuelAlert:
     forecast_source: str | None = None
     forecast_url: str | None = None
     forecast_title: str | None = None
+    forecast_method: str = "schedule_only"
     official_url: str = JIANGSU_OFFICIAL_NOTICES_URL
 
 
@@ -95,6 +111,103 @@ def _next_known_window(today: date) -> date | None:
     candidates = [window for year in (today.year, today.year + 1)
                   for window in _year_windows(year) if window >= today]
     return min(candidates) if candidates else None
+
+
+@retry(max_attempts=2, base_delay=0.8)
+def _fetch_json(url: str) -> Any:
+    response = requests.get(
+        url,
+        headers={"User-Agent": _CALENDAR_USER_AGENT, "Accept": "application/json"},
+        timeout=(8, 15),
+    )
+    response.raise_for_status()
+    if len(response.content) > _MAX_CALENDAR_BYTES:
+        raise ValueError("calendar response too large")
+    return response.json()
+
+
+def _parse_holiday_overrides(payload: Any, year: int) -> dict[date, bool]:
+    """把 holiday-cn / Timor 两种结构统一为 ``日期 -> 是否工作日``。"""
+    overrides: dict[date, bool] = {}
+    if isinstance(payload, dict) and payload.get("year") == year:
+        for item in payload.get("days", []):
+            if not isinstance(item, dict) or not isinstance(item.get("isOffDay"), bool):
+                continue
+            try:
+                day = date.fromisoformat(str(item.get("date", "")))
+            except ValueError:
+                continue
+            if day.year == year:
+                overrides[day] = not item["isOffDay"]
+    elif isinstance(payload, dict) and payload.get("code") == 0:
+        for item in (payload.get("holiday") or {}).values():
+            if not isinstance(item, dict) or not isinstance(item.get("holiday"), bool):
+                continue
+            try:
+                day = date.fromisoformat(str(item.get("date", "")))
+            except ValueError:
+                continue
+            if day.year == year:
+                overrides[day] = not item["holiday"]
+    return overrides
+
+
+def _fetch_holiday_overrides(year: int) -> dict[date, bool]:
+    """国务院节假日安排的多镜像读取；全部失败时由调用方退回普通周一至周五。"""
+    errors: list[str] = []
+    for template in _CALENDAR_URLS:
+        url = template.format(year=year)
+        try:
+            overrides = _parse_holiday_overrides(_fetch_json(url), year)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{type(exc).__name__}: {redact_secrets(str(exc))[:80]}")
+            continue
+        if overrides:
+            logger.info(
+                "jiangsu_fuel.calendar_loaded year=%d source=%s overrides=%d",
+                year, urllib.parse.urlparse(url).netloc, len(overrides),
+            )
+            return overrides
+        errors.append("empty calendar")
+    logger.warning(
+        "jiangsu_fuel.calendar_all_sources_failed year=%d errors=%s; using weekdays",
+        year, " | ".join(errors)[:320],
+    )
+    return {}
+
+
+def _is_workday(day: date, calendars: dict[int, dict[date, bool]]) -> bool:
+    if day.year not in calendars:
+        calendars[day.year] = _fetch_holiday_overrides(day.year)
+    return calendars[day.year].get(day, day.weekday() < 5)
+
+
+def _advance_ten_workdays(
+    start: date,
+    calendars: dict[int, dict[date, bool]],
+) -> date:
+    cursor = start
+    count = 0
+    while count < 10:
+        cursor += timedelta(days=1)
+        if _is_workday(cursor, calendars):
+            count += 1
+    return cursor
+
+
+def _next_calculated_window(today: date) -> date | None:
+    """从已核验的 2026-12-24 窗口向后滚动，每 10 个中国工作日生成窗口。"""
+    anchor_windows = _year_windows(2026)
+    if not anchor_windows:
+        return None
+    cursor = anchor_windows[-1]
+    calendars: dict[int, dict[date, bool]] = {}
+    # 防御异常远期输入，避免意外无限循环；100 年远超本项目实际生命周期。
+    for _ in range(2600):
+        cursor = _advance_ten_workdays(cursor, calendars)
+        if cursor >= today:
+            return cursor
+    return None
 
 
 def _entry_datetime(entry: object) -> datetime | None:
@@ -210,14 +323,50 @@ def _candidate_score(candidate: ForecastCandidate, target: date) -> tuple[int, f
 
 
 @retry(max_attempts=2, base_delay=1.0)
-def _fetch_forecast_entries(target: date) -> list[object]:
-    query = f"{target.month}月{target.day}日 国内成品油 调价 预计 when:7d"
+def _fetch_google_news_query(query: str) -> list[object]:
     encoded = urllib.parse.quote(query)
     url = (
         f"https://news.google.com/rss/search?q={encoded}"
         "&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
     )
     return list(fetch_rss(url).entries or [])
+
+
+def _fetch_forecast_entries(target: date) -> list[object]:
+    """用互补查询找预测；任一查询成功即可，不让单个 query 故障拖垮整组。"""
+    date_text = f"{target.month}月{target.day}日"
+    queries = (
+        f"{date_text} 国内成品油 调价 预计 when:7d",
+        f"{date_text} 成品油 原油变化率 调价窗口 when:7d",
+        f"site:oilchem.net {date_text} 成品油 调价 when:14d",
+        f"site:sci99.com {date_text} 成品油 调价 when:14d",
+    )
+    entries: list[object] = []
+    successes = 0
+    for query in queries:
+        try:
+            entries.extend(_fetch_google_news_query(query))
+            successes += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jiangsu_fuel.forecast_query_failed query=%r exc_type=%s msg=%s",
+                query, type(exc).__name__, redact_secrets(str(exc))[:120],
+            )
+    if successes == 0:
+        raise RuntimeError("all forecast queries failed")
+
+    deduped: list[object] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in entries:
+        key = (
+            str(getattr(entry, "title", "") or "").strip(),
+            str(getattr(entry, "link", "") or "").strip(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    return deduped
 
 
 @retry(max_attempts=2, base_delay=1.0)
@@ -254,15 +403,69 @@ def _discover_next_window(today: date) -> date | None:
     return min(candidates) if candidates else None
 
 
+@retry(max_attempts=2, base_delay=1.0)
+def _fetch_crude_history(symbol: str):
+    history = yf.Ticker(symbol).history(period="3mo", interval="1d", auto_adjust=False)
+    if history is None or history.empty or "Close" not in history:
+        raise RuntimeError(f"empty crude history for {symbol}")
+    return history
+
+
+def _estimate_direction_from_crude(today: date) -> tuple[str, float] | None:
+    """用 Brent/WTI 最近两组 10 日均价估算方向，仅作新闻预测全失效时的兜底。"""
+    changes: list[float] = []
+    for symbol in _CRUDE_PROXY_SYMBOLS:
+        try:
+            history = _fetch_crude_history(symbol)
+            closes = [
+                float(value)
+                for index, value in history["Close"].items()
+                if index.date() <= today and math.isfinite(float(value)) and float(value) > 0
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "jiangsu_fuel.crude_proxy_failed symbol=%s exc_type=%s msg=%s",
+                symbol, type(exc).__name__, redact_secrets(str(exc))[:120],
+            )
+            continue
+        if len(closes) < 20:
+            continue
+        previous = sum(closes[-20:-10]) / 10
+        current = sum(closes[-10:]) / 10
+        changes.append((current - previous) / previous)
+
+    if not changes:
+        return None
+    average_change = sum(changes) / len(changes)
+    if average_change > _CRUDE_DIRECTION_THRESHOLD:
+        return "上调", average_change
+    if average_change < -_CRUDE_DIRECTION_THRESHOLD:
+        return "下调", average_change
+    return "待定", average_change
+
+
+def _is_alert_delivery_day(today: date, target: date) -> bool:
+    days_until = (target - today).days
+    if days_until in (1, 2):
+        return True
+    # 本晨报只在周二至周六发刊。周二调价时，前 1—2 天为周日、周一，
+    # 因此在最近的可用发刊日周六提前一次，避免整个预告窗口被跳过。
+    return days_until == 3 and target.weekday() == 1 and today.weekday() == 5
+
+
 def fetch(*, today: date) -> JiangsuFuelAlert | None:
-    """在调价窗口前 1—2 天返回预告，其余日期返回 ``None``。"""
-    target = _next_known_window(today) or _discover_next_window(today)
+    """在调价窗口前返回预告；任何预测源故障都不会让应显示的模块消失。"""
+    target = (
+        _next_known_window(today)
+        or _discover_next_window(today)
+        or _next_calculated_window(today)
+    )
     if target is None:
         logger.info("jiangsu_fuel.no_upcoming_window today=%s", today.isoformat())
         return None
 
     days_until = (target - today).days
-    if days_until not in (1, 2):
+    if not _is_alert_delivery_day(today, target):
         logger.info(
             "jiangsu_fuel.outside_alert_window target=%s days_until=%d",
             target.isoformat(), days_until,
@@ -285,12 +488,29 @@ def fetch(*, today: date) -> JiangsuFuelAlert | None:
         best = None
 
     if best is None:
-        logger.info("jiangsu_fuel.schedule_only target=%s", target.isoformat())
+        crude_estimate = _estimate_direction_from_crude(today)
+        if crude_estimate is not None and crude_estimate[0] != "待定":
+            direction, change = crude_estimate
+            logger.info(
+                "jiangsu_fuel.crude_proxy target=%s direction=%s change=%.4f",
+                target.isoformat(), direction, change,
+            )
+            return JiangsuFuelAlert(
+                adjustment_date=target,
+                days_until=days_until,
+                direction=direction,
+                detail=f"预计{direction}，具体幅度待更新",
+                forecast_source="Brent/WTI 原油均价代理",
+                forecast_method="crude_proxy",
+            )
+
+        logger.warning("jiangsu_fuel.schedule_only target=%s", target.isoformat())
         return JiangsuFuelAlert(
             adjustment_date=target,
             days_until=days_until,
             direction="待定",
             detail="涨跌方向与幅度待更新",
+            forecast_method="schedule_only",
         )
 
     logger.info(
@@ -305,4 +525,5 @@ def fetch(*, today: date) -> JiangsuFuelAlert | None:
         forecast_source=best.source,
         forecast_url=best.url,
         forecast_title=best.title,
+        forecast_method="news",
     )

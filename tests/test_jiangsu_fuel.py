@@ -93,6 +93,7 @@ def test_forecast_failure_still_renders_schedule_only_alert(monkeypatch) -> None
         raise RuntimeError("network unavailable")
 
     monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", fail)
+    monkeypatch.setattr(jiangsu_fuel, "_estimate_direction_from_crude", lambda _today: None)
 
     alert = jiangsu_fuel.fetch(today=date(2026, 8, 13))
 
@@ -100,6 +101,7 @@ def test_forecast_failure_still_renders_schedule_only_alert(monkeypatch) -> None
     assert alert.direction == "待定"
     assert alert.detail == "涨跌方向与幅度待更新"
     assert alert.forecast_source is None
+    assert alert.forecast_method == "schedule_only"
 
 
 def test_candidate_rejects_unrelated_oil_market_story() -> None:
@@ -109,3 +111,87 @@ def test_candidate_rejects_unrelated_oil_market_story() -> None:
     )
 
     assert candidate is None
+
+
+def test_forecast_queries_continue_after_one_source_path_fails(monkeypatch) -> None:
+    entry = _entry("8月14日国内成品油调价预计下调120元/吨")
+    calls = 0
+
+    def fetch_query(_query):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("first query unavailable")
+        return [entry]
+
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_google_news_query", fetch_query)
+
+    entries = jiangsu_fuel._fetch_forecast_entries(date(2026, 8, 14))
+
+    assert calls == 4
+    assert entries == [entry]
+
+
+def test_crude_proxy_supplies_direction_when_all_news_predictions_fail(monkeypatch) -> None:
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", lambda _target: [])
+    monkeypatch.setattr(
+        jiangsu_fuel,
+        "_estimate_direction_from_crude",
+        lambda _today: ("下调", -0.024),
+    )
+
+    alert = jiangsu_fuel.fetch(today=date(2026, 8, 13))
+
+    assert alert is not None
+    assert alert.direction == "下调"
+    assert alert.detail == "预计下调，具体幅度待更新"
+    assert alert.forecast_method == "crude_proxy"
+
+
+def test_tuesday_window_is_announced_on_previous_saturday(monkeypatch) -> None:
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", lambda _target: [])
+    monkeypatch.setattr(jiangsu_fuel, "_estimate_direction_from_crude", lambda _today: None)
+
+    alert = jiangsu_fuel.fetch(today=date(2026, 1, 31))
+
+    assert alert is not None
+    assert alert.adjustment_date == date(2026, 2, 3)
+    assert alert.days_until == 3
+    assert alert.forecast_method == "schedule_only"
+
+
+def test_holiday_calendar_uses_secondary_mirror_when_primary_fails(monkeypatch) -> None:
+    payload = {
+        "year": 2027,
+        "days": [
+            {"name": "元旦", "date": "2027-01-01", "isOffDay": True},
+            {"name": "补班", "date": "2027-01-09", "isOffDay": False},
+        ],
+    }
+    calls = 0
+
+    def fetch_json(_url):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("raw github unavailable")
+        return payload
+
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_json", fetch_json)
+
+    overrides = jiangsu_fuel._fetch_holiday_overrides(2027)
+
+    assert calls == 2
+    assert overrides[date(2027, 1, 1)] is False
+    assert overrides[date(2027, 1, 9)] is True
+
+
+def test_future_windows_roll_forward_by_ten_china_workdays(monkeypatch) -> None:
+    def calendar(year):
+        if year == 2027:
+            return {date(2027, 1, 1): False}
+        return {}
+
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_holiday_overrides", calendar)
+
+    assert jiangsu_fuel._next_calculated_window(date(2026, 12, 25)) == date(2027, 1, 8)
