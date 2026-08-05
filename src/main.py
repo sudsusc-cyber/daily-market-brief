@@ -4,7 +4,7 @@
 链路:
     config.HOLDINGS  →  collectors:
                           stocks / company_news / figures / macro_news
-                          / buffett_13f / sentiment
+                          / buffett_13f / jiangsu_fuel / sentiment
                                     ↓
                           translator(标题英→中)
                                     ↓
@@ -34,6 +34,7 @@ from src.collectors import (
     figures,
     frontier_labs,
     header_image,
+    jiangsu_fuel,
     macro_news,
     sentiment,
     stocks,
@@ -226,6 +227,9 @@ def main() -> int:
     logger.info("collect.buffett_13f")
     buffett_13f_state_path = _STATE_DIR / "last_13f.json"
     buffett_bundle, buffett_13f_pending_save = buffett_13f.fetch(state_path=buffett_13f_state_path)
+
+    logger.info("collect.jiangsu_fuel")
+    jiangsu_fuel_alert = jiangsu_fuel.fetch(today=now_bj.date())
 
     logger.info("collect.sentiment")
     sentiment_bundle = sentiment.fetch_all(
@@ -467,6 +471,7 @@ def main() -> int:
         macro_news_silence_note=macro_news_silence_note,
         macro_news_fallback_note=macro_news_fallback_note,
         buffett_13f=buffett_bundle,
+        jiangsu_fuel_alert=jiangsu_fuel_alert,
         frontier_labs_items=frontier_labs_items,
         frontier_labs_fallback_note=frontier_labs_fallback_note,
         judgment_section=judgment_section,

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from src.collectors.buffett_13f import BuffettBundle, Filing13F
 from src.collectors.figures import FigureBundle
+from src.collectors.jiangsu_fuel import JiangsuFuelAlert
 from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
 from src.processors.thesis.renderer import JudgmentSection
@@ -480,3 +481,71 @@ def test_template_13f_no_longer_in_figures_section() -> None:
     assert "Berkshire 13F" not in html
     # 系统通知文案也被移除
     assert "SEC EDGAR 检测到" not in html
+
+
+# ─── 江苏油价预告测试 ──────────────────────────────────────────────
+
+
+def _mock_jiangsu_fuel() -> JiangsuFuelAlert:
+    return JiangsuFuelAlert(
+        adjustment_date=datetime(2026, 8, 14, tzinfo=UTC).date(),
+        days_until=2,
+        direction="下调",
+        detail="92 号约 -0.18 元/升；95 号约 -0.2 元/升",
+        forecast_source="第一财经",
+        forecast_url="https://example.com/fuel-forecast",
+        forecast_title="8月14日油价预计下调",
+    )
+
+
+def test_template_renders_jiangsu_fuel_in_bottom_module() -> None:
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        jiangsu_fuel_alert=_mock_jiangsu_fuel(),
+    )
+
+    assert "❀" in html
+    assert "江苏油价预告" in html
+    assert "预计 8 月 14 日 24 时下调" in html
+    assert "92 号约 -0.18 元/升" in html
+    assert "预测来源 · 第一财经" in html
+    assert "江苏省发改委公告" in html
+    assert "https://example.com/fuel-forecast" in html
+
+
+def test_template_renders_judgment_13f_and_fuel_together() -> None:
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        judgment_section=_MOCK_JUDGMENT,
+        buffett_13f=_mock_13f_new(),
+        jiangsu_fuel_alert=_mock_jiangsu_fuel(),
+    )
+
+    assert "AI基础设施资本开支将持续十年以上" in html
+    assert "伯克希尔本季度 13F" in html
+    assert "江苏油价预告" in html
+    assert html.count("margin-top:36px") >= 2
+
+
+def test_template_escapes_fuel_forecast_metadata() -> None:
+    alert = JiangsuFuelAlert(
+        adjustment_date=datetime(2026, 8, 14, tzinfo=UTC).date(),
+        days_until=1,
+        direction="下调",
+        detail="预计下调<script>alert(1)</script>",
+        forecast_source="媒体<script>",
+        forecast_url="javascript:alert(1)",
+        forecast_title='标题\" onmouseover=\"alert(1)',
+    )
+    html = render_email(
+        signals=[_one_signal()],
+        generated_at=datetime.now(UTC),
+        jiangsu_fuel_alert=alert,
+    )
+
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert 'href=""' in html
+    assert "onmouseover=\"alert(1)" not in html

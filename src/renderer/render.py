@@ -4,7 +4,7 @@
 输入:
   - signals: list[StockSignal]
   - generated_at: datetime(应该是 Asia/Shanghai)
-  - sentiment / company_news / figures / macro_news / buffett_13f(M3 起)
+  - sentiment / company_news / figures / macro_news / buffett_13f / jiangsu_fuel_alert
 
 输出:
   - HTML 字符串(完整的 <!doctype html>...</html>)
@@ -272,6 +272,7 @@ def render_email(
     figures: list[Any] | None = None,         # list[FigureBundle]
     macro_news: list[Any] | None = None,      # list[MacroFeedBundle]
     buffett_13f: Any | None = None,           # BuffettBundle
+    jiangsu_fuel_alert: Any | None = None,    # JiangsuFuelAlert（调价前 1—2 天）
     # M4 LLM 加工产物
     sentiment_verdict: dict | None = None,           # {verdict, argument}
     company_news_summary: Any | None = None,          # CompanyNewsSummary {summary_html, footnotes}
@@ -326,6 +327,7 @@ def render_email(
         macro_news_silence_note=macro_news_silence_note,
         macro_news_fallback_note=macro_news_fallback_note,
         buffett_13f=buffett_13f,
+        jiangsu_fuel_alert=jiangsu_fuel_alert,
         frontier_labs_items=frontier_labs_items or [],
         frontier_labs_fallback_note=frontier_labs_fallback_note,
         judgment_section=judgment_section,

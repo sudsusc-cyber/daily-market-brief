@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import time
+from datetime import date
+from types import SimpleNamespace
+
+from src.collectors import jiangsu_fuel
+
+
+def _entry(
+    title: str,
+    *,
+    source: str = "第一财经",
+    published: str = "2026-08-12 03:00:00",
+    summary: str = "",
+) -> SimpleNamespace:
+    parsed = time.strptime(published, "%Y-%m-%d %H:%M:%S")
+    return SimpleNamespace(
+        title=title,
+        summary=summary,
+        link="https://news.google.com/example",
+        published_parsed=parsed,
+        source=SimpleNamespace(title=source),
+    )
+
+
+def test_fetch_only_returns_during_one_or_two_day_window(monkeypatch) -> None:
+    def should_not_fetch(_target):
+        raise AssertionError("窗口之外不应抓预测新闻")
+
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", should_not_fetch)
+
+    assert jiangsu_fuel.fetch(today=date(2026, 8, 5)) is None
+
+
+def test_fetch_parses_jiangsu_forecast_direction_and_per_liter_amounts(monkeypatch) -> None:
+    entries = [_entry(
+        "油价调整最新消息：8月14日24时，预计92号汽油每升下调0.18元，"
+        "95号汽油每升下调0.20元",
+    )]
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", lambda _target: entries)
+
+    alert = jiangsu_fuel.fetch(today=date(2026, 8, 12))
+
+    assert alert is not None
+    assert alert.adjustment_date == date(2026, 8, 14)
+    assert alert.days_until == 2
+    assert alert.direction == "下调"
+    assert "92 号约 -0.18 元/升" in alert.detail
+    assert "95 号约 -0.2 元/升" in alert.detail
+    assert alert.forecast_source == "第一财经"
+    assert alert.forecast_url == "https://news.google.com/example"
+
+
+def test_forecast_word_wins_over_historic_move_in_same_title(monkeypatch) -> None:
+    entries = [_entry(
+        "全国92号汽油刚涨0.59元/升，下次8月14日调价预计下调120元/吨",
+        source="隆众资讯",
+    )]
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", lambda _target: entries)
+
+    alert = jiangsu_fuel.fetch(today=date(2026, 8, 13))
+
+    assert alert is not None
+    assert alert.direction == "下调"
+    assert alert.detail == "汽柴油约 -120 元/吨"
+
+
+def test_exact_target_date_beats_newer_low_relevance_candidate(monkeypatch) -> None:
+    entries = [
+        _entry(
+            "8月14日国内成品油调价预计下调120元/吨",
+            source="第一财经",
+            published="2026-08-12 03:00:00",
+        ),
+        _entry(
+            "国际油价上涨，国内成品油上调预期升温",
+            source="未知自媒体",
+            published="2026-08-13 05:00:00",
+        ),
+    ]
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", lambda _target: entries)
+
+    alert = jiangsu_fuel.fetch(today=date(2026, 8, 13))
+
+    assert alert is not None
+    assert alert.direction == "下调"
+    assert alert.forecast_source == "第一财经"
+
+
+def test_forecast_failure_still_renders_schedule_only_alert(monkeypatch) -> None:
+    def fail(_target):
+        raise RuntimeError("network unavailable")
+
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", fail)
+
+    alert = jiangsu_fuel.fetch(today=date(2026, 8, 13))
+
+    assert alert is not None
+    assert alert.direction == "待定"
+    assert alert.detail == "涨跌方向与幅度待更新"
+    assert alert.forecast_source is None
+
+
+def test_candidate_rejects_unrelated_oil_market_story() -> None:
+    candidate = jiangsu_fuel._candidate_from_entry(
+        _entry("国际原油市场供需展望：油价波动加剧"),
+        date(2026, 8, 14),
+    )
+
+    assert candidate is None
