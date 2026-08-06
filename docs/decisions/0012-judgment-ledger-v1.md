@@ -120,3 +120,19 @@ V1 渲染经历了多次迭代（详见 commits `1746579` → `2f1175f` → `42d
 上文初版定义 `COOLDOWN_DAYS = 30`，但 [src/processors/thesis/rules.py](../../src/processors/thesis/rules.py) 已在 PR #40 期间调整为 21 天。原因：30 天对快主题（regulatory / antitrust / geopolitical 等 fast cadence）显得过长，core 主题获得新证据后要等 30 天才能再次展示，会让"渐明"事件长期空白。21 天是当前折中值；rules.py 内 TODO 注释提到，等去重上线观察 30+ 天后可能改为 cadence-aware 表（fast 主题更短、structural 主题更长）。
 
 校准期(2026-05 起)：`company_news` / `macro_news` 引入 7 天 hash + 同日模糊去重后,evidence 流入量较此前下降约一半。这是历史去重缺失导致的虚高归正,**不调整 EMERGING/CORE 阈值**,让 90 天滚动窗口自然将虚高 evidence 滚出。预期 30-90 天内会有一波 core → stable 降级,日志 `thesis.demotions_today` 跟踪。
+
+### 2026-08 — V2 主题归并与持续展示
+
+生产检查发现，防 theme 漂移的 active-theme 选择器排除了
+`candidate`，而新主题又全部从 `candidate` 开始。结果是模型每天看不到前一天
+的候选主题，在 109 条 evidence 中生成了 102 个 theme，且没有任何一个 theme
+进入 `emerging` / `core`。
+
+V2 做如下修正：
+
+- active themes 包含近期 `candidate`，新 evidence 可复用现有 key。
+- 使用版本化的高置信 alias taxonomy 一次性归并历史近义主题，重算
+  `evidence_id`，并按历史日期重放状态机。
+- 邮件持续展示当前 `core` / `emerging` / `stable` 判断，不再只有当日
+  `substantiate` 事件时才出现。
+- 恢复“长期判断 / LONG-TERM VIEW”标题；当日强支持仅标记为“新证据”。

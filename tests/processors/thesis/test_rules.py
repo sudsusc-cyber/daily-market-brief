@@ -146,6 +146,15 @@ def test_authoritative_source_case_insensitive():
     assert has_authoritative_source(evs) is True
 
 
+def test_google_news_aggregator_is_not_authoritative_google_source():
+    assert has_authoritative_source([
+        _ev(_d(0), "x", source_name="Google News RSS"),
+    ]) is False
+    assert has_authoritative_source([
+        _ev(_d(0), "x", source_name="news.google.com"),
+    ]) is False
+
+
 def test_has_risk_evidence():
     evs = [
         _ev(_d(0), "x", direction="support"),

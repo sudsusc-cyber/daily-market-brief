@@ -184,6 +184,71 @@ def load_recent_evidence(
     return result
 
 
+def load_all_evidence(state_dir: Path) -> list[ThesisEvidence]:
+    """读取账本中全部年份的 evidence，按 evidence_id 去重。"""
+    result: list[ThesisEvidence] = []
+    seen_ids: set[str] = set()
+    for path in sorted(state_dir.glob("thesis_evidence_*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            logger.warning("evidence.read_error path=%s exc=%r", path, exc)
+            continue
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+                ev = _dict_to_evidence(obj)
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                logger.warning("evidence.bad_line path=%s exc=%r", path, exc)
+                continue
+            if ev.evidence_id and ev.evidence_id in seen_ids:
+                continue
+            if ev.evidence_id:
+                seen_ids.add(ev.evidence_id)
+            result.append(ev)
+    return result
+
+
+def replace_all_evidence(
+    evidence_list: list[ThesisEvidence],
+    state_dir: Path,
+) -> None:
+    """按年原子重写 evidence 账本，用于版本化主题迁移。"""
+    state_dir.mkdir(parents=True, exist_ok=True)
+    by_year: dict[int, list[ThesisEvidence]] = {}
+    seen_ids: set[str] = set()
+    for ev in sorted(evidence_list, key=lambda item: (item.date, item.evidence_id)):
+        try:
+            year = date.fromisoformat(ev.date).year
+        except ValueError:
+            logger.warning("evidence.skip_bad_date date=%r theme=%s", ev.date, ev.theme)
+            continue
+        if ev.evidence_id and ev.evidence_id in seen_ids:
+            continue
+        if ev.evidence_id:
+            seen_ids.add(ev.evidence_id)
+        by_year.setdefault(year, []).append(ev)
+
+    existing_years: set[int] = set()
+    for path in state_dir.glob("thesis_evidence_*.jsonl"):
+        try:
+            existing_years.add(int(path.stem.rsplit("_", 1)[-1]))
+        except ValueError:
+            continue
+
+    for year in sorted(existing_years | set(by_year)):
+        path = _evidence_path(state_dir, year)
+        tmp = path.with_suffix(".tmp")
+        rows = by_year.get(year, [])
+        with tmp.open("w", encoding="utf-8") as handle:
+            for ev in rows:
+                handle.write(json.dumps(_evidence_to_dict(ev), ensure_ascii=False) + "\n")
+        os.replace(tmp, path)
+        logger.info("evidence.replaced year=%d count=%d path=%s", year, len(rows), path)
+
+
 # ─── rolling evidence 维护 ─────────────────────────────────────────
 
 

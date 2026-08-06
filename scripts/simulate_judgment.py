@@ -91,15 +91,12 @@ def main():
         holdings_tickers=holdings_tickers,
     )
 
-    section = build_judgment_section(events)
+    section = build_judgment_section(events, state=new_state)
 
     # ── 渲染为真实 email HTML ──
-    from src.renderer.render import _build_env
-    env = _build_env()
-    template = env.get_template("email.html.j2")
-
     from src.collectors.stocks import StockSignal
     from src.config import HOLDINGS
+    from src.renderer.render import render_email
 
     mock_signals = []
     for h in HOLDINGS:
@@ -172,7 +169,7 @@ def main():
         ),
     ]
 
-    html = template.render(
+    html = render_email(
         signals=mock_signals,
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids={},
@@ -206,9 +203,10 @@ def main():
     print("═" * 66)
     if section:
         for i, item in enumerate(section.items, 1):
-            print(f"  [{i}] 「{item['thesis']}」{item['tail']}")
+            marker = " · 新证据" if item["updated"] else ""
+            print(f"  [{i}] 「{item['thesis']}」{marker}")
     else:
-        print("  (无渐明事件 — 区块不渲染)")
+        print("  (尚无成熟的长期判断)")
     print("═" * 66)
 
     # 状态一览

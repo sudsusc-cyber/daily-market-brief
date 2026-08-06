@@ -385,8 +385,8 @@ def test_sentiment_gauge_label_is_derived_from_score() -> None:
 
 _MOCK_JUDGMENT = JudgmentSection(
     items=[
-        {"thesis": "AI基础设施资本开支将持续十年以上", "tail": "获得新证据支持。"},
-        {"thesis": "保险定价权在经济周期中持续增强", "tail": "获得新证据支持。"},
+        {"thesis": "AI基础设施资本开支将持续十年以上", "updated": True},
+        {"thesis": "保险定价权在经济周期中持续增强", "updated": False},
     ],
 )
 
@@ -423,7 +423,11 @@ def test_template_renders_judgment_only() -> None:
         judgment_section=_MOCK_JUDGMENT,
     )
     assert "❀" in html
+    assert "长 期 判 断" in html
+    assert "LONG-TERM VIEW" in html
     assert "AI基础设施资本开支将持续十年以上" in html
+    assert html.count("· 新证据") == 1
+    assert "获得新证据支持" not in html
     assert "伯克希尔本季度 13F" not in html
 
 

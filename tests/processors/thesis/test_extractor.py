@@ -118,6 +118,12 @@ def test_canonicalize_company_prefix():
     assert canonicalize_theme("openai-inference-cost") == "inference-cost"
 
 
+def test_canonicalize_production_semantic_alias():
+    assert canonicalize_theme("NVDA_AI_DEMAND") == "ai-infrastructure-demand"
+    assert canonicalize_theme("apple-ai-china") == "device-ecosystem-growth"
+    assert canonicalize_theme("amd-hbm4-supply") == "ai-accelerator-competition"
+
+
 def test_canonicalize_keeps_nonprefix():
     assert canonicalize_theme("inference-cost") == "inference-cost"
 

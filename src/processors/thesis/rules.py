@@ -55,6 +55,10 @@ AUTHORITATIVE_NAMES: set[str] = {
     # 注：关键人物 score >= 5 的白名单由 figure 模块自己管理，
     # 不在此处重复列出，避免双重维护
 }
+NON_AUTHORITATIVE_AGGREGATORS: set[str] = {
+    "google news",
+    "news.google.",
+}
 
 CORE_CAP = 12
 COOLDOWN_DAYS = 21
@@ -138,6 +142,8 @@ def has_authoritative_source(evidence_list: list[ThesisEvidence]) -> bool:
         if e.source_section in AUTHORITATIVE_SECTIONS:
             return True
         src_lower = (e.source_name or "").lower()
+        if any(name in src_lower for name in NON_AUTHORITATIVE_AGGREGATORS):
+            continue
         if any(name in src_lower for name in AUTHORITATIVE_NAMES):
             return True
     return False
@@ -307,6 +313,10 @@ def run_state_transitions(
         if theme_evs:
             latest = max(theme_evs, key=lambda e: e.date)
             st.last_evidence_date = latest.date
+            for evidence in theme_evs:
+                for ticker in evidence.related_tickers:
+                    if ticker not in st.related_tickers:
+                        st.related_tickers.append(ticker)
             # 仅在 direction==support 时更新 last_strong_evidence_date
             strong_support_dates = [e.date for e in theme_evs if is_strong_support(e)]
             if strong_support_dates:

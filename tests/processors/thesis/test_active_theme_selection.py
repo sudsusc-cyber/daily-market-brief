@@ -25,10 +25,10 @@ def test_select_active_themes_prioritizes_status_then_recent_date() -> None:
         "candidate": _state("candidate", "2026-06-03"),
     }
 
-    out = _select_active_thesis_themes(state, limit=4)
+    out = _select_active_thesis_themes(state, limit=5)
 
-    assert out == ["new-core", "old-core", "new-emerging", "stable"]
-    assert "candidate" not in out
+    assert out == ["new-core", "old-core", "new-emerging", "candidate", "stable"]
+    assert "candidate" in out
 
 
 def test_select_active_themes_caps_length() -> None:

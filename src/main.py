@@ -50,6 +50,7 @@ from src.processors import (
     translator,
 )
 from src.processors.llm_client import LLMClient, resolve_latest_flash_model
+from src.processors.thesis import consolidation as thesis_consolidation
 from src.processors.thesis import extractor as thesis_extractor
 from src.processors.thesis import renderer as thesis_renderer
 from src.processors.thesis import rules as thesis_rules
@@ -80,8 +81,9 @@ _FRONTIER_PROCESSING_FALLBACK_NOTE = "前沿动态整理未完成，本期从略
 _ACTIVE_THESIS_STATUS_RANK = {
     "core": 0,
     "emerging": 1,
-    "stable": 2,
-    "dormant": 3,
+    "candidate": 2,
+    "stable": 3,
+    "dormant": 4,
 }
 _ACTIVE_THESIS_THEME_LIMIT = 120
 
@@ -375,6 +377,17 @@ def main() -> int:
 
     logger.info("processors.thesis")
     try:
+        migration = thesis_consolidation.migrate_history_if_needed(
+            _STATE_DIR,
+            today=now_bj.date(),
+        )
+        if migration.applied:
+            logger.info(
+                "thesis.history_migrated evidence=%d changed=%d themes=%d",
+                migration.evidence_count,
+                migration.changed_count,
+                migration.theme_count,
+            )
         # 第一次读 state：获取 active themes 用于注入 prompt（防 theme 漂移）
         state_dict = thesis_state.load_state(_STATE_DIR)
         active_themes = _select_active_thesis_themes(state_dict)
@@ -417,7 +430,10 @@ def main() -> int:
 
         thesis_state.save_state(state_dict, _STATE_DIR)
 
-        judgment_section = thesis_renderer.build_judgment_section(thesis_events)
+        judgment_section = thesis_renderer.build_judgment_section(
+            thesis_events,
+            state=state_dict,
+        )
     except Exception as exc:  # noqa: BLE001 — 任何 thesis 步骤失败都降级到无 judgment_section
         # 与项目其他异常处理对齐:不用 exc_info=True / logger.exception,因 OpenAI SDK 异常
         # traceback 可能带请求 url 或 header 痕迹;只记 type + 截断后的 str。

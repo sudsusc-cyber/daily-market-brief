@@ -9,7 +9,6 @@ LLM evidence 抽取器。
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -22,6 +21,15 @@ from src.processors.llm_client import LLMClient
 
 from .models import ThesisEvidence
 from .prompts import MAX_EVIDENCE_ITEMS, SYSTEM_EXTRA, build_user_prompt
+from .theme_taxonomy import (
+    canonicalize_theme as _canonicalize_theme,
+)
+from .theme_taxonomy import (
+    make_evidence_id as _make_evidence_id,
+)
+from .theme_taxonomy import (
+    normalize_text as _normalize_text,
+)
 
 logger = logging.getLogger("thesis.extractor")
 
@@ -37,30 +45,12 @@ _REQUIRED_FIELDS = {
     "direction", "strength", "horizon", "text", "why_it_matters",
 }
 
-# 公司前缀剥离清单
-_COMPANY_PREFIXES = (
-    "openai-", "anthropic-", "msft-", "goog-", "nvda-",
-    "tsm-", "aapl-", "cost-", "mco-", "ko-", "axp-", "brk-",
-)
-
-
 # ─── theme canonicalization ───────────────────────────────────────
 
 
 def canonicalize_theme(raw: str) -> str:
-    """规整 LLM 生成的 theme key（表层规整，不做语义聚类）。"""
-    s = raw.strip().lower()
-    s = re.sub(r"[\s_]+", "-", s)  # 空格/下划线 → 连字符
-    s = re.sub(r"-+", "-", s)      # 连续连字符合并
-    s = s.strip("-")
-
-    # 公司前缀剥离
-    for prefix in _COMPANY_PREFIXES:
-        if s.startswith(prefix):
-            s = s[len(prefix):]
-            break
-
-    return s
+    """规整 theme key，并合并生产账本中已确认的近义主题。"""
+    return _canonicalize_theme(raw)
 
 
 # ─── evidence_id ──────────────────────────────────────────────────
@@ -68,21 +58,11 @@ def canonicalize_theme(raw: str) -> str:
 
 def normalize_text(text: str) -> str:
     """collapse whitespace + strip + lowercase，用于 evidence_id 稳定性。"""
-    return re.sub(r"\s+", " ", text.strip()).lower()
+    return _normalize_text(text)
 
 
 def make_evidence_id(ev: ThesisEvidence) -> str:
-    parts = [
-        ev.date,
-        ev.source_section,
-        ev.source_name,
-        ev.url or "",
-        ev.theme,
-        normalize_text(ev.text),
-    ]
-    return hashlib.sha1(
-        "|".join(parts).encode("utf-8"), usedforsecurity=False,
-    ).hexdigest()[:16]
+    return _make_evidence_id(ev)
 
 
 # ─── JSON parsing ─────────────────────────────────────────────────
