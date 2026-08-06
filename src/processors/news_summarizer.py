@@ -310,8 +310,7 @@ def _rebuild_safe_summary(
     sep_style = "color:#D9D2BE; margin:0 6px;"
     row_style = (
         "margin:0 0 10px 0; padding:0;"
-        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',"
-        "Charter,Cambria,Georgia,serif;"
+        "font-family:'Noto Serif SC','Songti SC','SimSun',Georgia,serif;"
         "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
     )
 

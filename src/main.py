@@ -49,7 +49,7 @@ from src.processors import (
     sentiment_judge,
     translator,
 )
-from src.processors.llm_client import LLMClient, resolve_latest_flash_model
+from src.processors.llm_client import LLMClient
 from src.processors.thesis import consolidation as thesis_consolidation
 from src.processors.thesis import extractor as thesis_extractor
 from src.processors.thesis import renderer as thesis_renderer
@@ -249,7 +249,10 @@ def main() -> int:
     )
 
     # ---------- LLM 处理(M4) ----------
-    deepseek_model = resolve_latest_flash_model(settings.deepseek_api_key)
+    # 生产邮件只使用经人工验收的固定版本。/models 中出现新 Flash
+    # 不再会静默切换版式行为;升级时显式修改 DEEPSEEK_MODEL 并跑回归测试。
+    deepseek_model = settings.deepseek_model
+    logger.info("llm.model_pinned model=%s", deepseek_model)
     llm = LLMClient(api_key=settings.deepseek_api_key, model=deepseek_model)
 
     logger.info("translate.titles")
@@ -407,7 +410,7 @@ def main() -> int:
                 "长期判断证据提取失败：本次未写入新的判断证据。"
             )
         # extractor 只 return；写入由 state.py 统一负责（内部按 evidence_id 去重）
-        thesis_state.append_evidence(evidence_today, _STATE_DIR)
+        thesis_state.append_evidence(evidence_today, _STATE_DIR, today=now_bj.date())
 
         recent_evidence = thesis_state.load_recent_evidence(
             _STATE_DIR, days=90, today=now_bj.date(),

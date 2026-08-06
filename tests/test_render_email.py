@@ -14,7 +14,12 @@ from src.collectors.jiangsu_fuel import JiangsuFuelAlert
 from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
 from src.processors.thesis.renderer import JudgmentSection
-from src.renderer.render import _build_sentiment_gauge, render_email
+from src.renderer.render import (
+    _EMAIL_HTML_BUDGET_BYTES,
+    _build_sentiment_gauge,
+    _compact_inline_styles,
+    render_email,
+)
 
 
 def _one_figure_bundle() -> FigureBundle:
@@ -30,6 +35,19 @@ def _one_signal() -> StockSignal:
         delta_120=None, delta_200=None,
         signal="NONE", error="test_fixture",
     )
+
+
+def test_inline_style_compaction_preserves_body_and_media_css() -> None:
+    raw = (
+        '<div style=" color : #7A1F2B ; margin : 0  4px ; ">正文 空格保留</div>'
+        '<style>.x { color: red; }</style>'
+    )
+
+    compacted = _compact_inline_styles(raw)
+
+    assert 'style="color:#7A1F2B;margin:0  4px"' in compacted
+    assert "正文 空格保留" in compacted
+    assert "<style>.x { color: red; }</style>" in compacted
 
 
 def test_render_email_with_minimum_data_does_not_raise() -> None:
@@ -168,7 +186,7 @@ def test_render_email_header_keeps_full_two_to_one_frame() -> None:
     assert '<img src="cid:header_image"\n                 width="100%"' in html
     assert 'height="320"' not in html
     assert 'height="200"' not in html
-    assert "width:100%; max-width:640px; height:auto" in html
+    assert "width:100%;max-width:640px;height:auto" in html
 
 
 def test_render_email_mobile_layout_never_forces_desktop_canvas() -> None:
@@ -181,7 +199,7 @@ def test_render_email_mobile_layout_never_forces_desktop_canvas() -> None:
     assert 'class="email-shell"' in html
     assert 'class="email-container" role="presentation" width="100%"' in html
     assert 'class="email-container" role="presentation" width="640"' not in html
-    assert "width:100%; max-width:640px" in html
+    assert "width:100%;max-width:640px" in html
     # 640px 只允许出现在 Outlook 专用条件注释中，普通 QQ/iOS/Android
     # 客户端不能把它当作内容的硬最小宽度。
     fixed_width_table = html.index('<table role="presentation" width="640"')
@@ -190,7 +208,7 @@ def test_render_email_mobile_layout_never_forces_desktop_canvas() -> None:
     assert mso_open < fixed_width_table < mso_close
     assert html.count('width="640"') == 1
     assert 'class="holdings-table" width="100%"' in html
-    assert "width:100%; max-width:590px; table-layout:fixed" in html
+    assert "width:100%;max-width:590px;table-layout:fixed" in html
     assert '<table width="590"' not in html
     assert "@media only screen and (max-width:520px)" in html
     assert ".email-shell { padding-left:6px !important; padding-right:6px !important; }" in html
@@ -213,7 +231,7 @@ def test_render_email_dynamic_source_links_can_wrap_on_narrow_screens() -> None:
 
     assert long_source in html
     assert 'class="source-link"' in html
-    assert "white-space:normal; overflow-wrap:anywhere; word-break:break-word" in html
+    assert "white-space:normal;overflow-wrap:anywhere;word-break:break-word" in html
     assert ".source-link { white-space:normal !important;" in html
     assert f"white-space:nowrap;\">[1] {long_source}" not in html
 
@@ -262,12 +280,12 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert 'data-sentiment-pointer-position="14"' in html
     assert 'data-sentiment-score-bubble="true"' in html
     assert 'data-sentiment-score-face="continuous-corner"' in html
-    assert "-webkit-border-radius:12px; border-radius:12px" in html
+    assert "-webkit-border-radius:12px;border-radius:12px" in html
     assert 'data-sentiment-score-tail-track="true"' in html
-    assert 'display:inline-block; vertical-align:bottom' in html
+    assert 'display:inline-block;vertical-align:bottom' in html
     assert 'data-sentiment-score-tail="true"' in html
     assert "&#9660;" in html
-    assert 'color:#A96D4F;"><span data-sentiment-score-tail="true">' in html
+    assert 'color:#A96D4F"><span data-sentiment-score-tail="true">' in html
     assert 'data-sentiment-label="true"' not in html
     assert "极度恐慌" in html
     assert "极度贪婪" in html
@@ -282,7 +300,7 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert "border:1px solid #C8C1B5" in html
     assert "border-radius:999px" in html
     assert ".sentiment-glass-tube { border-radius:999px 0 0 999px !important; }" in html
-    assert "width:100%; max-width:100%; table-layout:fixed" in html
+    assert "width:100%;max-width:100%;table-layout:fixed" in html
     assert "clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%" in html
     assert "padding:1px 4px 1px 1px" in html
     assert "background-color:rgba(248,245,238,0.42)" in html
@@ -564,3 +582,164 @@ def test_template_does_not_render_fuel_forecast_metadata() -> None:
     assert "媒体&lt;script&gt;" not in html
     assert "javascript:alert(1)" not in html
     assert "onmouseover=\"alert(1)" not in html
+
+
+def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
+    """全模块同时出现也低于 96 KiB,并保留章节底部的完整来源链接。"""
+    signals = [
+        StockSignal(
+            holding=holding,
+            last_close=100.0 + index,
+            sma_120=95.0 + index,
+            sma_200=85.0 + index,
+            delta_120=0.0526,
+            delta_200=0.1765,
+            signal=("DCA" if index % 5 == 0 else "NONE"),
+        )
+        for index, holding in enumerate(HOLDINGS)
+    ]
+    sentiment = SimpleNamespace(metrics=[
+        SimpleNamespace(
+            name=name,
+            unit=unit,
+            stale_from=None,
+            error=None,
+            current=current,
+            prior=current - 1.0,
+            delta=1.0,
+        )
+        for name, unit, current in (
+            ("CNN Fear & Greed", "", 68.0),
+            ("VIX", "", 18.5),
+            ("DXY", "", 99.2),
+            ("Shiller PE", "", 36.4),
+            ("高收益债利差", "bp", 288.0),
+        )
+    ])
+
+    def long_url(section: str, index: int) -> str:
+        return (
+            f"https://example.com/{section}/{index}/"
+            + "source-archive-and-verification-path-" * 3
+        )
+
+    row_style = (
+        "margin:0 0 10px 0;padding:0;"
+        "font-family:'Noto Serif SC','Songti SC','SimSun',Georgia,serif;"
+        "font-size:16px;line-height:1.9;color:#1A1A1A;letter-spacing:0.02em"
+    )
+    company_rows: list[str] = []
+    company_footnotes: list[SimpleNamespace] = []
+    for index, holding in enumerate(HOLDINGS, start=1):
+        url = long_url("company", index)
+        company_rows.append(
+            f'<div style="{row_style}"><span style="color:#7A1F2B">'
+            f'{holding.name}</span><span style="color:#D9D2BE;margin:0 6px">│</span>'
+            f'公司更新了一项与长期竞争力和资本配置相关的关键进展，尚需跟踪后续执行与财务影响。'
+            f'<sup><a href="{url}" style="color:#0563C1;text-decoration:none">'
+            f'[{index}]</a></sup></div>'
+        )
+        company_footnotes.append(SimpleNamespace(
+            index=index,
+            url=url,
+            source="Reuters Financial Times 来源存档",
+        ))
+
+    macro_rows: list[str] = []
+    macro_footnotes: list[SimpleNamespace] = []
+    for index, theme in enumerate(("美联储", "地缘政治", "通胀数据"), start=1):
+        url = long_url("macro", index)
+        macro_rows.append(
+            '<p style="margin:0 0 14px 0;font-size:16px;line-height:1.9">'
+            f'<span style="color:#7A1F2B;font-weight:600">{theme}。</span>'
+            + "全球市场出现了一项需要持续跟踪的宏观变化，政策路径、风险偏好与资产定价之间的传导尚未完全结束，后续数据将决定影响的持续时间。"
+            f'<sup><a href="{url}" style="color:#0563C1;text-decoration:none">'
+            f'[{index}]</a></sup></p>'
+        )
+        macro_footnotes.append(SimpleNamespace(
+            index=index,
+            url=url,
+            source="Financial Times 宏观来源存档",
+        ))
+
+    figure_summaries = []
+    figure_footnotes = []
+    for index, person in enumerate(("巴菲特", "黄仁勋", "纳德拉"), start=1):
+        url = long_url("voices", index)
+        figure_summaries.append(SimpleNamespace(
+            person=person,
+            items=[SimpleNamespace(
+                text="管理层强调长期资本配置将继续围绕可持续回报与业务护城河展开。",
+                footnote_index=index,
+                source_url=url,
+            )],
+        ))
+        figure_footnotes.append(SimpleNamespace(
+            index=index,
+            url=url,
+            source="Reuters 人物采访存档",
+        ))
+
+    frontier_items = [
+        SimpleNamespace(
+            lab=lab,
+            text="新模型更新了推理效率与企业部署能力，可能影响云与算力需求。",
+            source_url=long_url("frontier", index),
+            source_name="官方发布与 Reuters 核验",
+        )
+        for index, lab in enumerate(("OpenAI", "Anthropic"), start=1)
+    ]
+    judgment = JudgmentSection(items=[
+        {
+            "thesis": "AI 基础设施投资周期仍由企业现金流、能源与先进制程供给共同约束",
+            "updated": True,
+            "marker": "新证据",
+        },
+        {
+            "thesis": "平台企业的长期定价权取决于用户黏性与持续再投资回报",
+            "updated": True,
+            "marker": "新变量",
+        },
+        {
+            "thesis": "保险浮存金的稳定性仍是伯克希尔跨周期资本配置的核心基础",
+            "updated": False,
+            "marker": "",
+        },
+    ])
+
+    html = render_email(
+        signals=signals,
+        generated_at=datetime(2026, 8, 6, 7, 0, tzinfo=UTC),
+        header_image_url="cid:header_image",
+        holdings_intro="价格与长期均线的距离仍需结合企业基本面与资本配置纪律一并观察。",
+        sentiment=sentiment,
+        sentiment_verdict={
+            "verdict": "今日情绪 · 偏热",
+            "argument": "风险偏好回升，但信用利差与波动率尚未同步转向。",
+            "score": 68.0,
+        },
+        company_news=[SimpleNamespace()],
+        company_news_summary=SimpleNamespace(
+            summary_html="".join(company_rows),
+            footnotes=company_footnotes,
+        ),
+        frontier_labs_items=frontier_items,
+        figures=[SimpleNamespace()],
+        figure_summaries=figure_summaries,
+        figure_footnotes=figure_footnotes,
+        macro_news=[SimpleNamespace()],
+        macro_news_summary=SimpleNamespace(
+            summary_html="".join(macro_rows),
+            footnotes=macro_footnotes,
+        ),
+        judgment_section=judgment,
+        buffett_13f=_mock_13f_new(),
+        jiangsu_fuel_alert=_mock_jiangsu_fuel(),
+    )
+
+    assert all(section in html for section in (
+        "持仓信号", "情绪温度计", "昨日动态", "关键发言", "宏观视野", "长 期 判 断", "油价预告",
+    ))
+    assert html.count(long_url("company", 1)) == 1
+    assert "Reuters Financial Times 来源存档" in html
+    assert len(html.encode("utf-8")) <= _EMAIL_HTML_BUDGET_BYTES

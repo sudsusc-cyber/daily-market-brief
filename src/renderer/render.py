@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from datetime import datetime
@@ -29,6 +30,13 @@ from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
+_EMAIL_HTML_BUDGET_BYTES = 98_304  # 96 KiB, 给客户端 100 KiB 裁剪线留余量
+_INLINE_FOOTNOTE_LINK_RE = re.compile(
+    r'<sup><a\b[^>]*>(?P<label>\[\d+\])</a></sup>',
+    re.IGNORECASE,
+)
+
+logger = logging.getLogger(__name__)
 
 _SENTIMENT_GAUGE_SEGMENTS = (
     # (档位, 色带颜色, 徽章/档位文字颜色)。
@@ -257,6 +265,27 @@ def _build_env() -> Environment:
     return env
 
 
+def _compact_inline_styles(html: str) -> str:
+    """压缩双引号 inline style,不改动正文、URL 或 <style> 里的媒体查询。"""
+
+    def _compact(match: re.Match[str]) -> str:
+        style = re.sub(r"\s*([:;,])\s*", r"\1", match.group("body").strip())
+        style = re.sub(r";+$", "", style)
+        return f'style="{style}"'
+
+    return re.sub(r'style="(?P<body>[^"]*)"', _compact, html)
+
+
+def _compact_oversize_source_links(html: str) -> str:
+    """体积超限时移除正文内重复 href,保留章节底部的完整来源链接。"""
+    compacted = _INLINE_FOOTNOTE_LINK_RE.sub(
+        lambda match: f'<sup>{match.group("label")}</sup>',
+        html,
+    )
+    # 邮件客户端自行决定外链打开方式;noopener 只对浏览器新窗口有意义。
+    return compacted.replace(' target="_blank" rel="noopener"', "")
+
+
 def render_email(
     *,
     signals: list[StockSignal],
@@ -332,5 +361,25 @@ def render_email(
         frontier_labs_fallback_note=frontier_labs_fallback_note,
         judgment_section=judgment_section,
     )
-    # 邮件客户端按解码后的 HTML 体积裁剪；只删除标签之间的排版空白，不碰正文。
-    return re.sub(r"(?<=>)\s+(?=<)", "", html).strip()
+    # 邮件客户端按解码后的 HTML 体积裁剪。inline style 是模板中
+    # 最大的重复项;只压缩属性内 CSS 分隔符与标签间排版空白,不碰正文。
+    compacted = _compact_inline_styles(html)
+    compacted = re.sub(r"(?<=>)\s+(?=<)", "", compacted).strip()
+    size_bytes = len(compacted.encode("utf-8"))
+    if size_bytes > _EMAIL_HTML_BUDGET_BYTES:
+        original_size = size_bytes
+        compacted = _compact_oversize_source_links(compacted)
+        size_bytes = len(compacted.encode("utf-8"))
+        logger.info(
+            "render.email_html_source_links_compacted before=%d after=%d budget=%d",
+            original_size,
+            size_bytes,
+            _EMAIL_HTML_BUDGET_BYTES,
+        )
+    if size_bytes > _EMAIL_HTML_BUDGET_BYTES:
+        logger.warning(
+            "render.email_html_oversize bytes=%d budget=%d",
+            size_bytes,
+            _EMAIL_HTML_BUDGET_BYTES,
+        )
+    return compacted

@@ -54,6 +54,18 @@ class Settings(EmailSettings):
 
     # M3 补丁(用户要求中文标题):DeepSeek 调用用于标题翻译;M4 起 processors/ 接管
     deepseek_api_key: str = Field(..., description="DeepSeek API Key")
+    deepseek_model: str = Field(
+        default="deepseek-v4-flash",
+        description="经验收后固定的 DeepSeek 模型 ID;不在生产运行时自动升级",
+    )
+
+    @field_validator("deepseek_model")
+    @classmethod
+    def _deepseek_model_nonempty(cls, v: str) -> str:
+        model = (v or "").strip()
+        if not model:
+            raise ValueError("DEEPSEEK_MODEL 必须是非空的已验收模型 ID")
+        return model
 
     model_config = SettingsConfigDict(
         env_file=".env",

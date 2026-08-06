@@ -264,24 +264,12 @@ def test_rolling_evidence_capped():
 # ─── year rolling ───────────────────────────────────────────────────
 
 
-def test_year_rolling_file_naming(monkeypatch):
-    """2026-12-31 写入 _2026.jsonl，2027-01-01 写入 _2027.jsonl。"""
+def test_year_rolling_defaults_to_evidence_beijing_date():
+    """未显式传 today 时由证据日期决定年文件,不受 GitHub UTC 跨年影响。"""
     with tempfile.TemporaryDirectory() as tmp:
         state_dir = Path(tmp)
 
-        # Mock date.today()
-        class MockDate:
-            @staticmethod
-            def today():
-                return date(2026, 12, 31)
-
-        import src.processors.thesis.state as mod
-        original = mod.date
-        mod.date = MockDate
-        try:
-            append_evidence([_make_evidence("2026-12-31")], state_dir)
-        finally:
-            mod.date = original
+        append_evidence([_make_evidence("2026-12-31")], state_dir)
 
         assert (state_dir / "thesis_evidence_2026.jsonl").exists()
         assert not (state_dir / "thesis_evidence_2027.jsonl").exists()

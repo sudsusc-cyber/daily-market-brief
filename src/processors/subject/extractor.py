@@ -171,11 +171,16 @@ def _extract_first_news(summary: Any) -> str | None:
     if not summary or not getattr(summary, "summary_html", ""):
         return None
     html = summary.summary_html
-    # 取第一个 <div>...</div> 块,然后去 tags
-    m = re.search(r"<div[^>]*>(.+?)</div>", html, re.DOTALL)
+    # 个股摘要使用 <div>,宏观摘要使用 <p>。两者都是受控 HTML,
+    # 但标签契约不同;若只读 div,邮件主题会静默丢失宏观首条。
+    m = re.search(
+        r"<(?P<tag>div|p)\b[^>]*>(?P<body>.+?)</(?P=tag)\s*>",
+        html,
+        re.DOTALL | re.IGNORECASE,
+    )
     if not m:
         return None
-    text = _strip_tags(m.group(1))
+    text = _strip_tags(m.group("body"))
     # 摘要太长截到 80 字
     if len(text) > 80:
         text = text[:80].rstrip("。!?,;: ") + "…"

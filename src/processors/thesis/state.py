@@ -70,11 +70,19 @@ def append_evidence(
     *,
     today: date | None = None,
 ) -> int:
-    """原子追加 evidence 到当年 jsonl，内部按 evidence_id 去重。返回新写入条数。"""
+    """原子追加 evidence 到当年 jsonl，内部按 evidence_id 去重。返回新写入条数。
+
+    主流程必须传北京日期。兼容旧调用时优先从 evidence 本身的 ISO 日期
+    推导年份,避免 GitHub UTC 跨年窗口把 1 月 1 日证据写入上一年。
+    """
     if not evidence_list:
         return 0
     if today is None:
-        today = date.today()
+        try:
+            today = max(date.fromisoformat(item.date) for item in evidence_list)
+        except (TypeError, ValueError):
+            logger.warning("evidence.invalid_date_fallback_to_system_today")
+            today = date.today()
     path = _evidence_path(state_dir, today.year)
 
     # 1) 读现有：逐行解析，保留有效行 + 收集 evidence_id；坏行自动丢弃

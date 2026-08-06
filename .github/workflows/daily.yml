@@ -42,6 +42,7 @@ jobs:
       GH_EVENT_NAME:      ${{ github.event_name }}
       DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
       QUALITY_ALERT_PATH: ${{ github.workspace }}/.quality-alert.txt
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5

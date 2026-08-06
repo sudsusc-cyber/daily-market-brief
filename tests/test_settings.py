@@ -16,11 +16,12 @@ def _env(monkeypatch, **overrides) -> None:
         "FINNHUB_API_KEY": "x",
         "FRED_API_KEY": "x",
         "DEEPSEEK_API_KEY": "x",
+        "DEEPSEEK_MODEL": "deepseek-v4-flash",
     }
     base.update({k.upper(): v for k, v in overrides.items()})
     for k in (
         "QQ_EMAIL_ADDRESS", "QQ_EMAIL_AUTH_CODE", "EMAIL_RECIPIENT",
-        "FINNHUB_API_KEY", "FRED_API_KEY", "DEEPSEEK_API_KEY",
+        "FINNHUB_API_KEY", "FRED_API_KEY", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL",
     ):
         monkeypatch.delenv(k, raising=False)
     for k, v in base.items():
@@ -33,6 +34,18 @@ def test_normal_settings_load(monkeypatch) -> None:
     s = Settings()
     assert s.qq_email_address == "test@qq.com"
     assert "a@example.com" in s.email_recipient
+    assert s.deepseek_model == "deepseek-v4-flash"
+
+
+def test_deepseek_model_can_be_explicitly_pinned(monkeypatch) -> None:
+    _env(monkeypatch, deepseek_model="deepseek-v4.1-flash")
+    assert Settings().deepseek_model == "deepseek-v4.1-flash"
+
+
+def test_empty_deepseek_model_raises(monkeypatch) -> None:
+    _env(monkeypatch, deepseek_model="   ")
+    with pytest.raises(ValidationError, match="DEEPSEEK_MODEL"):
+        Settings()
 
 
 def test_empty_email_recipient_raises(monkeypatch) -> None:

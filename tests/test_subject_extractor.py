@@ -124,6 +124,21 @@ class TestExtractFirstNews:
         text = _extract_first_news(s)
         assert text and len(text) <= 81  # 80 字 + "…"
 
+    def test_macro_paragraph_format(self) -> None:
+        """宏观加工器输出 <p>,邮件主题也必须能读到首条。"""
+        s = MockSummary(summary_html=(
+            '<p style="margin:0"><span style="color:#7A1F2B">美联储。</span>'
+            '决策者维持利率不变。<sup><a href="https://example.com">[1]</a></sup></p>'
+            '<p>第二条不该被取到</p>'
+        ))
+
+        text = _extract_first_news(s)
+
+        assert text is not None
+        assert "美联储" in text
+        assert "维持利率不变" in text
+        assert "第二条不该被取到" not in text
+
     def test_empty(self) -> None:
         assert _extract_first_news(None) is None
         assert _extract_first_news(MockSummary(summary_html="")) is None
@@ -145,7 +160,7 @@ class TestExtractSubjectData:
                 '<div><span>苹果</span><span>│</span>App Store 案上诉至最高法院。</div>'
             ),
             macro_news_summary=MockSummary(
-                '<div>布伦特原油创战后新高,布伦特价格突破 130 美元。</div>'
+                '<p>布伦特原油创战后新高,布伦特价格突破 130 美元。</p>'
             ),
             email_html="<html><body><h1>朝闻录</h1><p>正文段落很长很长...</p></body></html>",
         )
