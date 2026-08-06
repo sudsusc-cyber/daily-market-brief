@@ -665,7 +665,7 @@
             <div style="font-size:15px; line-height:2; color:{{ color_ink }}; text-align:center;">
               {% for item in judgment_section.items %}
               <div style="{% if not loop.last %}margin-bottom:14px;{% endif %}">
-                <span style="color:{{ color_accent }};">「{{ item.thesis }}」</span>{% if item.updated %}<span style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; letter-spacing:0.08em; white-space:nowrap;"> · 新证据</span>{% endif %}
+                <span style="color:{{ color_accent }};">「{{ item.thesis }}」</span>{% if item.marker %}<span style="font-family:{{ serif_body }}; font-size:11.5px; color:{{ color_muted }}; letter-spacing:0.08em; white-space:nowrap;"> · {{ item.marker }}</span>{% endif %}
               </div>
               {% endfor %}
             </div>

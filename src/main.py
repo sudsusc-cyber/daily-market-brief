@@ -433,6 +433,8 @@ def main() -> int:
         judgment_section = thesis_renderer.build_judgment_section(
             thesis_events,
             state=state_dict,
+            evidence_today=evidence_today,
+            today=now_bj.date(),
         )
     except Exception as exc:  # noqa: BLE001 — 任何 thesis 步骤失败都降级到无 judgment_section
         # 与项目其他异常处理对齐:不用 exc_info=True / logger.exception,因 OpenAI SDK 异常

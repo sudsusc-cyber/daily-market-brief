@@ -385,8 +385,16 @@ def test_sentiment_gauge_label_is_derived_from_score() -> None:
 
 _MOCK_JUDGMENT = JudgmentSection(
     items=[
-        {"thesis": "AI基础设施资本开支将持续十年以上", "updated": True},
-        {"thesis": "保险定价权在经济周期中持续增强", "updated": False},
+        {
+            "thesis": "AI基础设施资本开支将持续十年以上",
+            "updated": True,
+            "marker": "新证据",
+        },
+        {
+            "thesis": "保险定价权在经济周期中持续增强",
+            "updated": False,
+            "marker": "",
+        },
     ],
 )
 

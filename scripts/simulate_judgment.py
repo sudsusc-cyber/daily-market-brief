@@ -203,7 +203,7 @@ def main():
     print("═" * 66)
     if section:
         for i, item in enumerate(section.items, 1):
-            marker = " · 新证据" if item["updated"] else ""
+            marker = f" · {item['marker']}" if item["marker"] else ""
             print(f"  [{i}] 「{item['thesis']}」{marker}")
     else:
         print("  (尚无成熟的长期判断)")

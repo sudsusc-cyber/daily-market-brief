@@ -121,7 +121,7 @@ V1 渲染经历了多次迭代（详见 commits `1746579` → `2f1175f` → `42d
 
 校准期(2026-05 起)：`company_news` / `macro_news` 引入 7 天 hash + 同日模糊去重后,evidence 流入量较此前下降约一半。这是历史去重缺失导致的虚高归正,**不调整 EMERGING/CORE 阈值**,让 90 天滚动窗口自然将虚高 evidence 滚出。预期 30-90 天内会有一波 core → stable 降级,日志 `thesis.demotions_today` 跟踪。
 
-### 2026-08 — V2 主题归并与持续展示
+### 2026-08 — V2 主题归并与事件驱动展示
 
 生产检查发现，防 theme 漂移的 active-theme 选择器排除了
 `candidate`，而新主题又全部从 `candidate` 开始。结果是模型每天看不到前一天
@@ -133,6 +133,10 @@ V2 做如下修正：
 - active themes 包含近期 `candidate`，新 evidence 可复用现有 key。
 - 使用版本化的高置信 alias taxonomy 一次性归并历史近义主题，重算
   `evidence_id`，并按历史日期重放状态机。
-- 邮件持续展示当前 `core` / `emerging` / `stable` 判断，不再只有当日
-  `substantiate` 事件时才出现。
-- 恢复“长期判断 / LONG-TERM VIEW”标题；当日强支持仅标记为“新证据”。
+- 恢复“长期判断 / LONG-TERM VIEW”标题，但不在每天重复展示未变化的判断。
+- 周一至周五、周日仅在发生重要变化时展示：新进入 `core` 标记为
+  “新核心”，通过 21 天 cooldown 的强支持标记为“新证据”。
+- 当日 `strength >= 4` 的 `risk` 或 `new_variable` 不受 support cooldown
+  限制，分别即时标记为“风险”或“新变量”；风险优先级最高。
+- 每周六固定回顾最多 3 条 `core` / `emerging` / `stable` 判断；没有新变化
+  时只展示判断本身，不附加标记。
