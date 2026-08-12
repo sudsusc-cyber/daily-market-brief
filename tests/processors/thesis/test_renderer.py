@@ -44,10 +44,16 @@ def make_state(theme="test-theme", status="core", thesis="测试断言",
     )
 
 
-def make_evidence(theme="test-theme", direction="risk", strength=4, url=None):
+def make_evidence(
+    theme="test-theme",
+    direction="risk",
+    strength=4,
+    url=None,
+    on=_WEEKDAY,
+):
     return ThesisEvidence(
         evidence_id=f"{theme}-{direction}",
-        date=_WEEKDAY.isoformat(),
+        date=on.isoformat(),
         source_section="company_news",
         source_name="Reuters",
         url=url,
@@ -142,7 +148,7 @@ def test_event_marks_persistent_item_updated():
     assert result.items[0]["url"] == "https://example.com/update"
 
 
-def test_material_risk_renders_immediately_without_support_event():
+def test_material_risk_is_not_rendered_in_email():
     state = {"test-theme": make_state()}
     evidence = make_evidence(url="https://example.com/risk")
 
@@ -150,9 +156,7 @@ def test_material_risk_renders_immediately_without_support_event():
         [], state=state, evidence_today=[evidence], today=_WEEKDAY,
     )
 
-    assert result is not None
-    assert result.items[0]["marker"] == "风险"
-    assert result.items[0]["url"] == "https://example.com/risk"
+    assert result is None
 
 
 def test_material_new_variable_renders_emerging_theme_immediately():
@@ -169,7 +173,7 @@ def test_material_new_variable_renders_emerging_theme_immediately():
     assert result.items[0]["marker"] == "新变量"
 
 
-def test_risk_wins_over_new_variable_and_keeps_risk_url():
+def test_risk_is_hidden_but_new_variable_still_renders():
     state = {"test-theme": make_state()}
     risk = make_evidence(url="https://example.com/risk")
     variable = make_evidence(
@@ -185,8 +189,17 @@ def test_risk_wins_over_new_variable_and_keeps_risk_url():
     )
 
     assert result is not None
-    assert result.items[0]["marker"] == "风险"
-    assert result.items[0]["url"] == "https://example.com/risk"
+    assert result.items[0]["marker"] == "新变量"
+    assert result.items[0]["url"] == "https://example.com/variable"
+
+
+def test_material_risk_is_hidden_during_saturday_review():
+    state = {"test-theme": make_state()}
+    evidence = make_evidence(on=_SATURDAY)
+
+    assert build_judgment_section(
+        [], state=state, evidence_today=[evidence], today=_SATURDAY,
+    ) is None
 
 
 def test_weak_risk_does_not_create_weekday_noise():

@@ -13,10 +13,9 @@ from .models import ThesisEvent, ThesisEvidence, ThesisState
 _HEADLINE_FALLBACK_RE = re.compile(r"^(?:[^：]+：)?「([^」]+)」(.+)$")
 _MATERIAL_STRENGTH = 4
 _MARKER_PRIORITY = {
-    "风险": 0,
-    "新核心": 1,
-    "新变量": 2,
-    "新证据": 3,
+    "新核心": 0,
+    "新变量": 1,
+    "新证据": 2,
 }
 
 
@@ -53,14 +52,12 @@ def _build_markers(
     urls: dict[str, str | None] = {}
     today_str = today.isoformat()
 
-    # 重大 risk / new_variable 不受 support cooldown 限制。
+    # 风险证据继续留在状态机中参与降级与审计，但不再进入邮件展示。
+    # 重大 new_variable 不受 support cooldown 限制。
     for evidence in evidence_today:
         if evidence.date != today_str or evidence.strength < _MATERIAL_STRENGTH:
             continue
-        if evidence.direction == "risk":
-            if _set_marker(markers, evidence.theme, "风险"):
-                urls[evidence.theme] = evidence.url
-        elif (
+        if (
             evidence.direction == "new_variable"
             and _set_marker(markers, evidence.theme, "新变量")
         ):
@@ -105,11 +102,21 @@ def build_judgment_section(
             today,
         )
         weekly_review = today.weekday() == 5
+        material_risk_themes = {
+            evidence.theme
+            for evidence in evidence_today
+            if evidence.date == today.isoformat()
+            and evidence.strength >= _MATERIAL_STRENGTH
+            and evidence.direction == "risk"
+        }
         status_rank = {"core": 0, "emerging": 1, "stable": 2}
         active = [
             st for st in state.values()
             if st.status in status_rank and st.one_line_thesis.strip()
             and (weekly_review or st.theme in markers)
+            # 周六固定回顾也不能让纯风险触发的主题绕过隐藏策略；若同主题
+            # 同时有新变量/新证据，则仍按非风险类别正常展示。
+            and not (st.theme in material_risk_themes and st.theme not in markers)
         ]
         active.sort(key=lambda st: st.theme)
         active.sort(key=lambda st: st.last_evidence_date, reverse=True)

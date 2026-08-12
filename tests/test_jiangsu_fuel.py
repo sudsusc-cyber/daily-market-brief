@@ -63,7 +63,51 @@ def test_forecast_word_wins_over_historic_move_in_same_title(monkeypatch) -> Non
 
     assert alert is not None
     assert alert.direction == "下调"
-    assert alert.detail == "汽柴油约 -120 元/吨"
+    assert alert.detail == "汽油约 -0.09 元/升；柴油约 -0.1 元/升"
+
+
+def test_per_ton_forecast_is_converted_to_rmb_per_liter() -> None:
+    assert jiangsu_fuel._detail_from_text(
+        "预计下调380元/吨",
+        "下调",
+    ) == "汽油约 -0.28 元/升；柴油约 -0.32 元/升"
+
+    assert jiangsu_fuel._detail_from_text(
+        "预计上调200元/吨",
+        "上调",
+    ) == "汽油约 +0.15 元/升；柴油约 +0.17 元/升"
+
+
+def test_per_ton_forecast_ignores_previous_round_with_opposite_direction() -> None:
+    assert jiangsu_fuel._detail_from_text(
+        "上轮下调200元/吨，本轮预计上调，幅度待定",
+        "上调",
+    ) == "预计上调，具体幅度待更新"
+
+    assert jiangsu_fuel._detail_from_text(
+        "上轮下调200元/吨，本轮预计上调300元/吨",
+        "上调",
+    ) == "汽油约 +0.22 元/升；柴油约 +0.25 元/升"
+
+
+def test_per_ton_forecast_accepts_thousands_separators() -> None:
+    assert jiangsu_fuel._detail_from_text(
+        "预计上调1,000元/吨",
+        "上调",
+    ) == "汽油约 +0.74 元/升；柴油约 +0.84 元/升"
+
+    assert jiangsu_fuel._detail_from_text(
+        "预计下调1，000元/吨",
+        "下调",
+    ) == "汽油约 -0.74 元/升；柴油约 -0.84 元/升"
+
+
+def test_tiny_per_ton_forecast_never_renders_signed_zero() -> None:
+    detail = jiangsu_fuel._detail_from_text("预计下调1元/吨", "下调")
+
+    assert detail == "汽油约 0 元/升；柴油约 0 元/升"
+    assert "+0 元/升" not in detail
+    assert "-0 元/升" not in detail
 
 
 def test_exact_target_date_beats_newer_low_relevance_candidate(monkeypatch) -> None:

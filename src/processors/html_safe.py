@@ -48,7 +48,7 @@ def footnote_idx(match: re.Match[str]) -> int:
 # 与 FOOTNOTE_RE 一并集中,避免 news_summarizer / macro_filter / figure_filter
 # 各自硬编码同样的 style 字符串。
 FOOTNOTE_ANCHOR_STYLE = (
-    "color:#0563C1;text-decoration:none;font-size:11px;"
+    "color:#0563C1!important;text-decoration:none!important;font-size:11px;"
     "font-family:Charter,Georgia,serif;margin-left:1px;"
 )
 

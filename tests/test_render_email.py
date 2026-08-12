@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from bs4 import BeautifulSoup
+
 from src.collectors.buffett_13f import BuffettBundle, Filing13F
 from src.collectors.figures import FigureBundle
 from src.collectors.jiangsu_fuel import JiangsuFuelAlert
@@ -449,10 +451,12 @@ def test_template_renders_judgment_only() -> None:
         judgment_section=_MOCK_JUDGMENT,
     )
     assert "❀" in html
-    assert "长 期 判 断" in html
-    assert "LONG-TERM VIEW" in html
+    assert "长 期 判 断" not in html
+    assert "LONG-TERM VIEW" not in html
     assert "AI基础设施资本开支将持续十年以上" in html
-    assert html.count("· 新证据") == 1
+    assert 'data-judgment-marker="true"' in html
+    assert "&nbsp;&nbsp;新证据" in html
+    assert "· 新证据" not in html
     assert "获得新证据支持" not in html
     assert "伯克希尔本季度 13F" not in html
 
@@ -585,7 +589,7 @@ def test_template_does_not_render_fuel_forecast_metadata() -> None:
 
 
 def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
-    """全模块同时出现也低于 96 KiB,并保留章节底部的完整来源链接。"""
+    """全模块超限压缩后仍低于 96 KiB,且所有正文角标保持蓝色可点击。"""
     signals = [
         StockSignal(
             holding=holding,
@@ -636,7 +640,8 @@ def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
             f'<div style="{row_style}"><span style="color:#7A1F2B">'
             f'{holding.name}</span><span style="color:#D9D2BE;margin:0 6px">│</span>'
             f'公司更新了一项与长期竞争力和资本配置相关的关键进展，尚需跟踪后续执行与财务影响。'
-            f'<sup><a href="{url}" style="color:#0563C1;text-decoration:none">'
+            f'<sup><a href="{url}" style="color:#0563C1!important;'
+            f'text-decoration:none!important">'
             f'[{index}]</a></sup></div>'
         )
         company_footnotes.append(SimpleNamespace(
@@ -653,7 +658,8 @@ def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
             '<p style="margin:0 0 14px 0;font-size:16px;line-height:1.9">'
             f'<span style="color:#7A1F2B;font-weight:600">{theme}。</span>'
             + "全球市场出现了一项需要持续跟踪的宏观变化，政策路径、风险偏好与资产定价之间的传导尚未完全结束，后续数据将决定影响的持续时间。"
-            f'<sup><a href="{url}" style="color:#0563C1;text-decoration:none">'
+            f'<sup><a href="{url}" style="color:#0563C1!important;'
+            f'text-decoration:none!important">'
             f'[{index}]</a></sup></p>'
         )
         macro_footnotes.append(SimpleNamespace(
@@ -738,8 +744,24 @@ def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
     )
 
     assert all(section in html for section in (
-        "持仓信号", "情绪温度计", "昨日动态", "关键发言", "宏观视野", "长 期 判 断", "油价预告",
+        "持仓信号", "情绪温度计", "昨日动态", "关键发言", "宏观视野", "油价预告",
     ))
-    assert html.count(long_url("company", 1)) == 1
-    assert "Reuters Financial Times 来源存档" in html
+    assert "长 期 判 断" not in html
+    assert "LONG-TERM VIEW" not in html
     assert len(html.encode("utf-8")) <= _EMAIL_HTML_BUDGET_BYTES
+
+    # 超限时可以删掉章节底部重复来源清单,但每一处正文角标必须保住真实 href；
+    # 这正是 2026-08-08 邮件曾退化为黑色不可点击 [N] 的回归边界。
+    soup = BeautifulSoup(html, "html.parser")
+    inline_anchors = {anchor.get("href"): anchor for anchor in soup.select("sup a[href]")}
+    expected_inline_urls = {
+        *(long_url("company", index) for index in range(1, len(HOLDINGS) + 1)),
+        *(long_url("macro", index) for index in range(1, 4)),
+        *(long_url("voices", index) for index in range(1, 4)),
+        *(long_url("frontier", index) for index in range(1, 3)),
+    }
+    assert expected_inline_urls <= inline_anchors.keys()
+    for url in expected_inline_urls:
+        style = inline_anchors[url].get("style", "")
+        assert "color:#0563C1!important" in style
+        assert "text-decoration:none!important" in style

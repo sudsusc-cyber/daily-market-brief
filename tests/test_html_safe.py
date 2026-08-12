@@ -181,6 +181,7 @@ def test_news_summarizer_keeps_safe_url() -> None:
     assert summary is not None
     assert 'href="https://reuters.com/article/abc"' in summary.summary_html
     assert "<sup>" in summary.summary_html
+    assert "color:#0563C1!important" in summary.summary_html
 
 
 def test_news_summarizer_neutralizes_xss_in_summary() -> None:
@@ -267,6 +268,7 @@ def test_macro_filter_keeps_safe_https_link() -> None:
     assert summary is not None
     assert 'href="https://reuters.com/x"' in summary.summary_html
     assert "<sup>" in summary.summary_html
+    assert "color:#0563C1!important" in summary.summary_html
 
 
 def test_macro_filter_strips_unknown_tags() -> None:

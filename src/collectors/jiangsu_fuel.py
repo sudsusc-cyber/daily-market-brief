@@ -40,6 +40,10 @@ _CALENDAR_USER_AGENT = "daily-market-brief/0.1"
 _MAX_CALENDAR_BYTES = 1024 * 1024
 _CRUDE_PROXY_SYMBOLS = ("BZ=F", "CL=F")
 _CRUDE_DIRECTION_THRESHOLD = 0.003
+# 吨价换算为终端更直观的元/升。成品油密度会随油号、温度和批次变化，
+# 因此这里只做预告展示用的近似换算，不冒充加油站最终挂牌价。
+_GASOLINE_KG_PER_LITER = 0.74
+_DIESEL_KG_PER_LITER = 0.84
 
 # 2026 年公开调价日历。窗口均于当日 24 时开启；实际可因机制触发暂停、延迟或搁浅。
 _WINDOWS_BY_YEAR: dict[int, tuple[tuple[int, int], ...]] = {
@@ -77,6 +81,7 @@ _TRUSTED_SOURCES = {
 
 _DIRECTION_WORDS = ("上调", "下调", "上涨", "下跌", "提高", "降低", "涨", "跌")
 _LOWER_WORDS = {"下调", "下跌", "降低", "跌"}
+_AMOUNT_RE = r"(?:\d{1,3}(?:[,，]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
 
 
 @dataclass(frozen=True)
@@ -240,11 +245,30 @@ def _direction_from_text(text: str) -> str | None:
     return "下调" if word in _LOWER_WORDS else "上调"
 
 
-def _signed_amount(direction: str, amount: str, unit: str) -> str:
-    value = float(amount)
-    rendered = f"{value:.2f}".rstrip("0").rstrip(".")
-    sign = "-" if direction == "下调" else "+"
+def _amount_value(amount: str | float) -> float:
+    if isinstance(amount, str):
+        amount = amount.replace(",", "").replace("，", "")
+    return float(amount)
+
+
+def _signed_amount(direction: str, amount: str | float, unit: str) -> str:
+    value = _amount_value(amount)
+    rounded = round(value, 2)
+    rendered = f"{rounded:.2f}".rstrip("0").rstrip(".")
+    # 极小金额换算后可能四舍五入为零；此时不显示误导性的 +0 / -0。
+    sign = "" if rounded == 0 else ("-" if direction == "下调" else "+")
     return f"{sign}{rendered} 元/{unit}"
+
+
+def _ton_amount_as_per_liter(direction: str, amount: str | float) -> str:
+    """把元/吨按汽油、柴油常用近似密度换算为人民币元/升。"""
+    amount_per_ton = _amount_value(amount)
+    gasoline = amount_per_ton * _GASOLINE_KG_PER_LITER / 1000
+    diesel = amount_per_ton * _DIESEL_KG_PER_LITER / 1000
+    return (
+        f"汽油约 {_signed_amount(direction, gasoline, '升')}；"
+        f"柴油约 {_signed_amount(direction, diesel, '升')}"
+    )
 
 
 def _detail_from_text(text: str, direction: str) -> str:
@@ -254,9 +278,9 @@ def _detail_from_text(text: str, direction: str) -> str:
     details: list[str] = []
     # 支持“92号汽油每升下调0.18元”和“92号汽油下调0.18元/升”两种顺序。
     grade_pattern = re.compile(
-        r"(89|92|95|98|0)\s*[号#]?(?:汽油|柴油)?.{0,12}?"
+        r"(?<!\d)(?<!\d[,，.])(89|92|95|98|0)\s*[号#]?(?:汽油|柴油)?.{0,12}?"
         r"(?:每升)?(?:预计|或)?\s*(上调|下调|上涨|下跌|提高|降低|涨|跌)"
-        r"\s*(\d+(?:\.\d+)?)\s*元(?:/升)?"
+        rf"\s*({_AMOUNT_RE})\s*元(?:/升)?"
     )
     for grade, word, amount in grade_pattern.findall(text):
         item_direction = "下调" if word in _LOWER_WORDS else "上调"
@@ -269,15 +293,20 @@ def _detail_from_text(text: str, direction: str) -> str:
         if detail not in details:
             details.append(detail)
 
-    ton_match = re.search(
+    ton_pattern = re.compile(
         r"(?:预计|或)?\s*(上调|下调|上涨|下跌|提高|降低|涨|跌)"
-        r".{0,8}?(\d+(?:\.\d+)?)\s*元(?:/|每)吨",
-        text,
+        rf".{{0,8}}?({_AMOUNT_RE})\s*元(?:/|每)吨",
     )
-    if ton_match and not details:
-        word, amount = ton_match.groups()
-        item_direction = "下调" if word in _LOWER_WORDS else "上调"
-        details.append(f"汽柴油约 {_signed_amount(item_direction, amount, '吨')}")
+    if not details:
+        for ton_match in ton_pattern.finditer(text):
+            word, amount = ton_match.groups()
+            item_direction = "下调" if word in _LOWER_WORDS else "上调"
+            # 新闻常同时回顾上一轮价格并预告本轮价格；只换算与本轮总方向
+            # 一致的吨价，避免旧轮次金额覆盖当前预测。
+            if item_direction != direction:
+                continue
+            details.append(_ton_amount_as_per_liter(item_direction, amount))
+            break
 
     if details:
         return "；".join(details[:3])
