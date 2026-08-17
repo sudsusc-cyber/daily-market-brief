@@ -207,6 +207,24 @@ class TestSentimentJudge:
             "VIX closes at 18.5."
         )
 
+    def test_summary_does_not_split_english_initialism(self) -> None:
+        assert one_sentence_summary("U.S. stocks remain firm. Keep watching.") == (
+            "U.S. stocks remain firm."
+        )
+
+    def test_summary_does_not_split_common_title_or_single_initial(self) -> None:
+        assert one_sentence_summary("Dr. Smith remains cautious. Keep watching.") == (
+            "Dr. Smith remains cautious."
+        )
+        assert one_sentence_summary("J. Powell remains cautious. Keep watching.") == (
+            "J. Powell remains cautious."
+        )
+
+    def test_summary_does_not_split_eg_initialism(self) -> None:
+        assert one_sentence_summary("Risk assets, e.g. stocks, remain firm. Keep watching.") == (
+            "Risk assets, e.g. stocks, remain firm."
+        )
+
 
 class TestScoreSentiment:
     """确定性加权打分 — 同输入永远同输出"""

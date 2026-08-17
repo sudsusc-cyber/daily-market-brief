@@ -173,6 +173,32 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
 # ──────────────────  LLM 写 argument(verdict 已固定,LLM 只解释)  ──────────────────
 
 _SENTENCE_END_RE = re.compile(r"[。！？!?](?:[”’」』】])?")
+_ENGLISH_INITIALISM_RE = re.compile(r"(?:\b[A-Za-z]\.){2,}$")
+_ENGLISH_TITLE_RE = re.compile(r"\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|No|Fig)\.$", re.IGNORECASE)
+
+
+def _is_nonterminal_english_period(text: str, index: int) -> bool:
+    """识别小数或英文缩写内部的点，避免输出 ``U.`` 一类残句。
+
+    英文缩写的句末语义存在歧义；这里采取保守策略：只要缩写后仍有正文，
+    就继续寻找下一个明确句点。多保留文字比截出无法阅读的半个缩写安全。
+    """
+    before = text[index - 1] if index > 0 else ""
+    after = text[index + 1] if index + 1 < len(text) else ""
+    if before.isdigit() and after.isdigit():
+        return True
+    if before.isalpha() and after.isalpha():
+        return True
+
+    remaining = text[index + 1:]
+    if not remaining.strip():
+        return False
+    prefix = text[:index + 1]
+    return bool(
+        _ENGLISH_INITIALISM_RE.search(prefix)
+        or _ENGLISH_TITLE_RE.search(prefix)
+        or re.search(r"\b[A-Za-z]\.$", prefix)
+    )
 
 
 def one_sentence_summary(value: object) -> str:
@@ -184,11 +210,9 @@ def one_sentence_summary(value: object) -> str:
     if match:
         return text[:match.end()].strip()
 
-    # 英文句点也可作为句末，但不能把 VIX 18.5 一类小数从中间切断。
+    # 英文句点也可作为句末，但小数和缩写内部的点不能截断。
     for match in re.finditer(r"\.", text):
-        before = text[match.start() - 1] if match.start() > 0 else ""
-        after = text[match.end()] if match.end() < len(text) else ""
-        if not (before.isdigit() and after.isdigit()):
+        if not _is_nonterminal_english_period(text, match.start()):
             return text[:match.end()].strip()
     return text
 
