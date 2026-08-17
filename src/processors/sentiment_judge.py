@@ -3,7 +3,8 @@
 
 verdict(温度档位)由**确定性加权打分**得出,同样输入永远同样档位:
   - 5 指标各打 0-100 分(0=极度恐慌,100=极度贪婪)
-  - 加权平均(失败指标从权重中剔除并重新归一化)
+  - 核心-辅助加权(CNN + VIX 决定主方向,其余指标只小幅校正)
+  - 失败指标从权重中剔除并重新归一化;无核心指标时不生成结论
   - 阈值切档:<25 极度恐慌 / 25-40 偏冷 / 40-60 中性 / 60-75 偏热 / >75 极度贪婪
 
 argument(一句总结)仍由 LLM 撰写,prompt 强制 verdict 已固定,LLM 只能解释"为什么是这个档位"。
@@ -31,16 +32,16 @@ _ARGUMENT_FALLBACK = "指标仍按确定性规则计算，文字说明本期从�
 # ──────────────────  确定性打分  ──────────────────
 
 _WEIGHTS: dict[str, float] = {
-    # 在 PR #38 去 RSI 后的权重(0.284/0.318/0.250/0.057/0.091)基础上,
-    # 应用 codex 2d4c490 的"Shiller PE 降权 50%"意图:
-    # Shiller 0.057 → 0.030,腾出的 0.027 按现有比例分摊给其余 4 项后归一化。
-    "CNN Fear & Greed": 0.290,
-    "VIX": 0.325,
-    "高收益债利差": 0.260,
-    "Shiller PE": 0.030,
-    "DXY": 0.095,
+    # 核心层85%:直接反映美股市场情绪与 30 天隐含波动率。
+    "CNN Fear & Greed": 0.45,
+    "VIX": 0.40,
+    # 辅助层15%:用于交叉验证,不得单独决定当日情绪。
+    "高收益债利差": 0.08,
+    "DXY": 0.05,
+    "Shiller PE": 0.02,
 }
 
+_PRIMARY_METRICS = frozenset({"CNN Fear & Greed", "VIX"})
 _MIN_EFFECTIVE_WEIGHT = 0.50
 _MIN_VALID_METRICS = 2
 _STALE_WEIGHT_FACTOR = 0.50
@@ -120,6 +121,7 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
     weighted_sum = 0.0
     weight_total = 0.0
     valid_count = 0
+    valid_primary_count = 0
     stale_count = 0
     for m in bundle.metrics:
         if m.error:
@@ -137,13 +139,19 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
         weighted_sum += s * effective_weight
         weight_total += effective_weight
         valid_count += 1
+        valid_primary_count += int(m.name in _PRIMARY_METRICS)
         stale_count += int(bool(m.stale_from))
         breakdown.append((m.name, round(s, 1), effective_weight))
 
-    if valid_count < _MIN_VALID_METRICS or weight_total < _MIN_EFFECTIVE_WEIGHT:
+    if (
+        valid_primary_count == 0
+        or valid_count < _MIN_VALID_METRICS
+        or weight_total < _MIN_EFFECTIVE_WEIGHT
+    ):
         logger.warning(
-            "sentiment.insufficient_coverage valid=%d effective_weight=%.3f stale=%d",
-            valid_count, weight_total, stale_count,
+            "sentiment.insufficient_coverage valid=%d primary=%d "
+            "effective_weight=%.3f stale=%d",
+            valid_count, valid_primary_count, weight_total, stale_count,
         )
         return None
 
@@ -154,6 +162,7 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
         "breakdown": breakdown,
         "coverage": {
             "valid_metrics": valid_count,
+            "valid_primary_metrics": valid_primary_count,
             "total_metrics": len(_WEIGHTS),
             "effective_weight_pct": round(weight_total * 100),
             "stale_metrics": stale_count,
@@ -189,7 +198,7 @@ _TASK_INSTRUCTION = """\
 档位由确定性加权算法已经决定,你**不得**改变它。你的工作是:
 - 只写一句完整中文总结,建议 35-60 个汉字,句末使用句号;不得拆成第二句
 - 在这一句话中解释为什么算法会落到这个档位,引用关键指标的具体数字与方向
-- 重点引用 CNN Fear & Greed / VIX / 高收益债利差 这类更贴近日频风险偏好的指标
+- 重点引用 CNN Fear & Greed 与 VIX;高收益债利差、DXY 只能作为辅助印证
 - Shiller PE 是慢变量,只能作为长期估值背景轻轻带过;除非它有显著日度变化,不得作为每日情绪判断的主论据
 - 没有真实历史分位/区间数据时,不得写"历史极值""历史高位""极端估值""接近泡沫"等绝对化表述
 - Shiller PE 允许的最强表述是:"Shiller PE 偏高,提示长期预期收益需克制"

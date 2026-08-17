@@ -30,6 +30,7 @@ from src.processors.macro_filter import _format_input as macro_format
 from src.processors.news_summarizer import _format_input as news_format
 from src.processors.sentiment_judge import (
     _TASK_INSTRUCTION,
+    _WEIGHTS,
     one_sentence_summary,
     score_sentiment,
 )
@@ -210,6 +211,13 @@ class TestSentimentJudge:
 class TestScoreSentiment:
     """确定性加权打分 — 同输入永远同输出"""
 
+    def test_core_satellite_weights_are_intentional(self) -> None:
+        assert sum(_WEIGHTS.values()) == 1.0
+        assert _WEIGHTS["CNN Fear & Greed"] == 0.45
+        assert _WEIGHTS["VIX"] == 0.40
+        assert _WEIGHTS["Shiller PE"] == 0.02
+        assert round(_WEIGHTS["CNN Fear & Greed"] + _WEIGHTS["VIX"], 2) == 0.85
+
     def _bundle(self, **vals) -> SentimentBundle:
         names = {
             "fg": "CNN Fear & Greed", "vix": "VIX", "hy": "高收益债利差",
@@ -265,8 +273,19 @@ class TestScoreSentiment:
         ], fetched_at=_utc(2026, 4, 30))
         out = score_sentiment(b)
         assert out is not None
-        # CNN F&G(70 → ~70 score, w=0.25)+ VIX(14 → ~80 score, w=0.25)归一化后 ≈ 75
+        # 两个核心指标的有效权重 0.85,归一化后仍由它们决定。
         assert out["score"] > 60
+
+    def test_auxiliary_metrics_cannot_override_fearful_core(self) -> None:
+        # 三个辅助指标全部偏贪婪,也不应把两个偏恐慌的核心指标拉回中性。
+        out = score_sentiment(self._bundle(fg=20, vix=30, hy=2, pe=38, dxy=90))
+        assert out is not None
+        assert out["score"] < 40
+        assert out["verdict"] in {"极度恐慌", "偏冷"}
+
+    def test_auxiliary_metrics_alone_never_publish_a_verdict(self) -> None:
+        b = self._bundle(fg=None, vix=None, hy=2, pe=38, dxy=90)
+        assert score_sentiment(b) is None
 
     def test_single_slow_metric_is_insufficient_coverage(self) -> None:
         b = self._bundle(fg=None, vix=None, hy=None, pe=38, dxy=None)
@@ -278,6 +297,7 @@ class TestScoreSentiment:
         out = score_sentiment(b)
         assert out is not None
         assert out["coverage"]["stale_metrics"] == 1
+        assert out["coverage"]["valid_primary_metrics"] == 2
         assert out["coverage"]["effective_weight_pct"] < 100
 
     def test_nonfinite_current_is_ignored(self) -> None:
@@ -300,6 +320,7 @@ class TestScoreSentiment:
         assert "2-3 句" not in _TASK_INSTRUCTION
         assert "Shiller PE 是慢变量" in _TASK_INSTRUCTION
         assert "不得作为每日情绪判断的主论据" in _TASK_INSTRUCTION
+        assert "DXY 只能作为辅助印证" in _TASK_INSTRUCTION
         assert "不得写\"历史极值\"" in _TASK_INSTRUCTION
 
 
