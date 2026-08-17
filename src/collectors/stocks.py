@@ -12,6 +12,7 @@ import math
 from dataclasses import dataclass
 from typing import Literal
 
+import requests
 import yfinance as yf
 
 from src.config import Holding
@@ -36,6 +37,7 @@ class StockSignal:
     delta_200: float | None
     signal: SignalKind
     error: str | None = None
+    data_source: str = ""
 
 
 def _judge_signal(last_close: float, sma_120: float, sma_200: float) -> SignalKind:
@@ -59,6 +61,95 @@ def _yf_history(ticker: yf.Ticker):
     return hist
 
 
+@retry(max_attempts=3, base_delay=2.0, backoff=2.5)
+def _yahoo_chart_weekly(symbol: str) -> tuple[list[float], float | None]:
+    """yfinance 库路径故障时，直连 Yahoo Chart JSON 的备路径。
+
+    两者的底层数据同源，但认证/cookie/库版本链路不同；
+    这能覆盖 yfinance 包回归、crumb 故障和空 DataFrame，同时
+    保持与主路径一致的复权/交易所口径。
+    """
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    resp = requests.get(
+        url,
+        params={
+            "range": "5y",
+            "interval": "1wk",
+            "events": "history",
+            "includeAdjustedClose": "true",
+        },
+        headers={"User-Agent": "Mozilla/5.0 (compatible; daily-market-brief/0.1)"},
+        timeout=(10, 20),
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Yahoo Chart HTTP {resp.status_code}")
+    chart = (resp.json() or {}).get("chart") or {}
+    if chart.get("error"):
+        raise RuntimeError(f"Yahoo Chart API error: {chart['error']}")
+    results = chart.get("result") or []
+    if not results:
+        raise RuntimeError("Yahoo Chart 返回空 result")
+    result = results[0]
+    quotes = ((result.get("indicators") or {}).get("quote") or [{}])[0]
+    closes = [
+        float(value)
+        for value in quotes.get("close") or []
+        if value is not None and math.isfinite(float(value)) and float(value) > 0
+    ]
+    if len(closes) < 200:
+        raise RuntimeError(f"Yahoo Chart 周线仅 {len(closes)} 行")
+    live_raw = (result.get("meta") or {}).get("regularMarketPrice")
+    try:
+        live_price = float(live_raw)
+    except (TypeError, ValueError):
+        live_price = None
+    if live_price is not None and (not math.isfinite(live_price) or live_price <= 0):
+        live_price = None
+    return closes, live_price
+
+
+def _build_signal(
+    holding: Holding,
+    *,
+    closes: list[float],
+    live_price: float | None,
+    data_source: str,
+) -> StockSignal:
+    if len(closes) < 200:
+        raise RuntimeError(f"周线仅 {len(closes)} 行,< 200 周")
+    sma_120 = sum(closes[-120:]) / 120
+    sma_200 = sum(closes[-200:]) / 200
+    weekly_close = closes[-1]
+    if not all(
+        math.isfinite(value) and value > 0
+        for value in (sma_120, sma_200, weekly_close)
+    ):
+        raise RuntimeError("周线价格或均线无效")
+    last_close = live_price if live_price is not None else weekly_close
+    delta_120 = (last_close - sma_120) / sma_120
+    delta_200 = (last_close - sma_200) / sma_200
+    signal = _judge_signal(last_close, sma_120, sma_200)
+    logger.info(
+        "stocks.signal ticker=%s source=%s last=%.2f sma120=%.2f sma200=%.2f signal=%s",
+        holding.ticker,
+        data_source,
+        last_close,
+        sma_120,
+        sma_200,
+        signal,
+    )
+    return StockSignal(
+        holding=holding,
+        last_close=last_close,
+        sma_120=sma_120,
+        sma_200=sma_200,
+        delta_120=delta_120,
+        delta_200=delta_200,
+        signal=signal,
+        data_source=data_source,
+    )
+
+
 def fetch_one(holding: Holding) -> StockSignal:
     """
     拉单只股票的周线并计算信号。
@@ -70,76 +161,60 @@ def fetch_one(holding: Holding) -> StockSignal:
     SMA 计算始终基于周线数据。
     """
     symbol = holding.yfinance_symbol
+    primary_error: Exception | None = None
     try:
         ticker = yf.Ticker(symbol)
         hist = _yf_history(ticker)
+        if hist is None or hist.empty or "Close" not in hist:
+            raise RuntimeError("yfinance 返回空数据")
+        if len(hist) < 200:
+            raise RuntimeError(f"yfinance 周线仅 {len(hist)} 行")
+        closes = [
+            float(value)
+            for value in hist["Close"].tolist()
+            if value is not None and math.isfinite(float(value)) and float(value) > 0
+        ]
+        try:
+            live_price: float | None = float(ticker.fast_info.last_price)
+        except Exception:  # noqa: BLE001 — 取不到 live 价是已知降级路径
+            live_price = None
+        if live_price is not None and (not math.isfinite(live_price) or live_price <= 0):
+            live_price = None
+        return _build_signal(
+            holding,
+            closes=closes,
+            live_price=live_price,
+            data_source="yfinance",
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.error("yfinance.fetch_failed ticker=%s symbol=%s exc_type=%s msg=%s", holding.ticker, symbol, type(exc).__name__, redact_secrets(str(exc))[:200])
-        return _failed(holding, f"yfinance 异常: {type(exc).__name__}: {exc}")
-
-    if hist is None or hist.empty:
-        return _failed(holding, "yfinance 返回空数据(ticker 可能错误或临时不可达)")
-
-    rows = len(hist)
-    if rows < 200:
-        return _failed(
-            holding,
-            f"周线仅 {rows} 行,< 200 周,无法计算 200w SMA(可能是新上市)",
+        primary_error = exc
+        logger.warning(
+            "stocks.primary_failed ticker=%s source=yfinance exc_type=%s msg=%s",
+            holding.ticker,
+            type(exc).__name__,
+            redact_secrets(str(exc))[:200],
         )
 
-    # 周线收盘价（用于 SMA 计算与信号判断基准）
-    close_series = hist["Close"]
-    valid_closes = close_series.dropna()
-    if valid_closes.empty:
-        return _failed(holding, "yfinance Close 列全 NaN(数据源异常)")
-
-    sma_120 = float(close_series.tail(120).mean())
-    sma_200 = float(close_series.tail(200).mean())
-    # pandas .mean() 默认 skipna=True,但若 tail(120/200) 全部 NaN 会返回 NaN。
-    # NaN 透传到 delta = (last - sma) / sma → NaN/inf,渲染层模板会显示 "nan%"
-    # 反复让用户看到脏数据。直接当数据不足处理,记 error 让上层显示降级文案。
-    if not math.isfinite(sma_120) or not math.isfinite(sma_200):
-        return _failed(
-            holding,
-            f"周线尾部数据全 NaN(sma_120={sma_120}, sma_200={sma_200}),无法计算均线",
-        )
-
-    # 优先取 fast_info 当日价展示,拿不到时退回周线最新收盘价。
-    # fast_info.last_price 为 None / 缺失会抛 TypeError;非正数 (<=0) 视为脏数据弃用。
     try:
-        live_price: float | None = float(ticker.fast_info.last_price)
-    except Exception:  # noqa: BLE001 — 取不到 live 价是已知降级路径
-        live_price = None
-    if live_price is not None and (not math.isfinite(live_price) or live_price <= 0):
-        live_price = None
-
-    weekly_close = float(valid_closes.iloc[-1])
-    if not math.isfinite(weekly_close) or weekly_close <= 0:
-        return _failed(holding, f"最新周线收盘价无效: {weekly_close}")
-    last_close = live_price if live_price is not None else weekly_close
-
-    delta_120 = (last_close - sma_120) / sma_120
-    delta_200 = (last_close - sma_200) / sma_200
-    signal = _judge_signal(last_close, sma_120, sma_200)
-
-    logger.info(
-        "stocks.signal ticker=%s last=%.2f sma120=%.2f sma200=%.2f signal=%s",
-        holding.ticker,
-        last_close,
-        sma_120,
-        sma_200,
-        signal,
-    )
-
-    return StockSignal(
-        holding=holding,
-        last_close=last_close,
-        sma_120=sma_120,
-        sma_200=sma_200,
-        delta_120=delta_120,
-        delta_200=delta_200,
-        signal=signal,
-    )
+        closes, live_price = _yahoo_chart_weekly(symbol)
+        signal = _build_signal(
+            holding,
+            closes=closes,
+            live_price=live_price,
+            data_source="yahoo_chart",
+        )
+        logger.warning(
+            "stocks.fallback_used ticker=%s primary=yfinance fallback=yahoo_chart",
+            holding.ticker,
+        )
+        return signal
+    except Exception as fallback_exc:  # noqa: BLE001
+        return _failed(
+            holding,
+            "行情主备链路均失败: "
+            f"yfinance {type(primary_error).__name__}: {primary_error}; "
+            f"Yahoo Chart {type(fallback_exc).__name__}: {fallback_exc}",
+        )
 
 
 def _failed(holding: Holding, reason: str) -> StockSignal:

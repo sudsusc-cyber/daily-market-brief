@@ -89,6 +89,9 @@ def _fetch_rss_entries(url: str) -> list[dict]:
         headers={
             "User-Agent": _BROWSER_UA,
             "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8",
+            # 优先要求标准压缩；部分 Sucuri 站点仍会强制 br，
+            # 项目因此也显式依赖 brotli，保证 requests 可解压。
+            "Accept-Encoding": "gzip, deflate",
         },
         timeout=_REQUEST_TIMEOUT,
     )
@@ -110,7 +113,13 @@ def _fetch_berkshire_entries(url: str) -> list[dict]:
     """抓取 Berkshire 年度新闻 HTML 页面，提取链接列表。"""
     resp = requests.get(
         url,
-        headers={"User-Agent": _BROWSER_UA},
+        headers={
+            "User-Agent": _BROWSER_UA,
+            # Berkshire 的 Sucuri 代理可能忽略此头并强制返回
+            # Brotli；所以 pyproject 同时锁定 brotli 解码器。缺少它时
+            # BeautifulSoup 会将压缩字节当乱码，静默得到 0 条链接。
+            "Accept-Encoding": "gzip, deflate",
+        },
         timeout=_REQUEST_TIMEOUT,
     )
     resp.raise_for_status()

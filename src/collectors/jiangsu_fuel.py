@@ -39,6 +39,7 @@ _CALENDAR_URLS = (
 _CALENDAR_USER_AGENT = "daily-market-brief/0.1"
 _MAX_CALENDAR_BYTES = 1024 * 1024
 _CRUDE_PROXY_SYMBOLS = ("BZ=F", "CL=F")
+_FRED_CRUDE_SERIES = ("DCOILBRENTEU", "DCOILWTICO")
 _CRUDE_DIRECTION_THRESHOLD = 0.003
 # 吨价换算为终端更直观的元/升。成品油密度会随油号、温度和批次变化，
 # 因此这里只做预告展示用的近似换算，不冒充加油站最终挂牌价。
@@ -440,8 +441,57 @@ def _fetch_crude_history(symbol: str):
     return history
 
 
-def _estimate_direction_from_crude(today: date) -> tuple[str, float] | None:
-    """用 Brent/WTI 最近两组 10 日均价估算方向，仅作新闻预测全失效时的兜底。"""
+def _fetch_fred_crude_closes(
+    series_id: str,
+    *,
+    api_key: str,
+) -> list[float]:
+    """FRED 官方日度现货价，作为 Yahoo/yfinance 的独立备源。"""
+    resp = requests.get(
+        "https://api.stlouisfed.org/fred/series/observations",
+        params={
+            "series_id": series_id,
+            "api_key": api_key,
+            "file_type": "json",
+            "sort_order": "desc",
+            "limit": 60,
+        },
+        timeout=(8, 15),
+    )
+    # 不用 raise_for_status：HTTPError 的 URL 会把 api_key 写进 retry 日志。
+    if resp.status_code != 200:
+        raise RuntimeError(f"FRED {series_id} HTTP {resp.status_code}")
+    observations = (resp.json() or {}).get("observations") or []
+    closes: list[float] = []
+    for item in reversed(observations):
+        try:
+            value = float(item.get("value"))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(value) and value > 0:
+            closes.append(value)
+    if len(closes) < 20:
+        raise RuntimeError(f"FRED {series_id} 有效观测仅 {len(closes)} 条")
+    return closes
+
+
+def _ten_day_change(closes: list[float]) -> float | None:
+    if len(closes) < 20:
+        return None
+    previous = sum(closes[-20:-10]) / 10
+    current = sum(closes[-10:]) / 10
+    return (current - previous) / previous
+
+
+def _estimate_direction_from_crude(
+    today: date,
+    fred_api_key: str = "",
+) -> tuple[str, float] | None:
+    """用 Brent/WTI 最近两组 10 日均价估算方向。
+
+    Yahoo/yfinance 两个期货符号均失败时，切换到 FRED 的
+    Brent/WTI 官方日度现货序列。
+    """
     changes: list[float] = []
     for symbol in _CRUDE_PROXY_SYMBOLS:
         try:
@@ -457,11 +507,28 @@ def _estimate_direction_from_crude(today: date) -> tuple[str, float] | None:
                 symbol, type(exc).__name__, redact_secrets(str(exc))[:120],
             )
             continue
-        if len(closes) < 20:
-            continue
-        previous = sum(closes[-20:-10]) / 10
-        current = sum(closes[-10:]) / 10
-        changes.append((current - previous) / previous)
+        if (change := _ten_day_change(closes)) is not None:
+            changes.append(change)
+
+    if not changes and fred_api_key:
+        for series_id in _FRED_CRUDE_SERIES:
+            try:
+                closes = _fetch_fred_crude_closes(series_id, api_key=fred_api_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "jiangsu_fuel.fred_crude_failed series=%s exc_type=%s msg=%s",
+                    series_id,
+                    type(exc).__name__,
+                    redact_secrets(str(exc))[:120],
+                )
+                continue
+            if (change := _ten_day_change(closes)) is not None:
+                changes.append(change)
+        if changes:
+            logger.warning(
+                "jiangsu_fuel.crude_fallback_used primary=yfinance fallback=fred series_count=%d",
+                len(changes),
+            )
 
     if not changes:
         return None
@@ -482,7 +549,7 @@ def _is_alert_delivery_day(today: date, target: date) -> bool:
     return days_until == 3 and target.weekday() == 1 and today.weekday() == 5
 
 
-def fetch(*, today: date) -> JiangsuFuelAlert | None:
+def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
     """在调价窗口前返回预告；任何预测源故障都不会让应显示的模块消失。"""
     target = (
         _next_known_window(today)
@@ -517,7 +584,11 @@ def fetch(*, today: date) -> JiangsuFuelAlert | None:
         best = None
 
     if best is None:
-        crude_estimate = _estimate_direction_from_crude(today)
+        crude_estimate = (
+            _estimate_direction_from_crude(today, fred_api_key)
+            if fred_api_key
+            else _estimate_direction_from_crude(today)
+        )
         if crude_estimate is not None and crude_estimate[0] != "待定":
             direction, change = crude_estimate
             logger.info(

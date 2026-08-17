@@ -187,13 +187,64 @@ def _fetch_yfinance_close(ticker: str, period: str = "2mo") -> list[float]:
     return closes
 
 
+@retry(max_attempts=3, base_delay=2.0, backoff=2.5)
+def _fetch_yahoo_chart_close(ticker: str, period: str = "2mo") -> list[float]:
+    """yfinance 包/cookie 链路故障时的 Yahoo Chart JSON 备路径。"""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+    chart_range = "3mo" if period == "2mo" else period
+    resp = requests.get(
+        url,
+        params={"range": chart_range, "interval": "1d", "events": "history"},
+        headers={"User-Agent": "Mozilla/5.0 (compatible; daily-market-brief/0.1)"},
+        timeout=(10, 20),
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Yahoo Chart HTTP {resp.status_code}")
+    chart = (resp.json() or {}).get("chart") or {}
+    if chart.get("error"):
+        raise RuntimeError(f"Yahoo Chart API error: {chart['error']}")
+    results = chart.get("result") or []
+    if not results:
+        raise RuntimeError(f"{ticker} Yahoo Chart 返回空 result")
+    quotes = (((results[0].get("indicators") or {}).get("quote")) or [{}])[0]
+    closes = [
+        value
+        for raw in quotes.get("close") or []
+        if (value := _finite_float(raw)) is not None
+    ]
+    if not closes:
+        raise RuntimeError(f"{ticker} Yahoo Chart Close 列无有效数据")
+    return closes
+
+
 def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> SentimentMetric:
     try:
         closes = _fetch_yfinance_close(ticker)
     except Exception as exc:  # noqa: BLE001
-        logger.error("sentiment.yf_failed ticker=%s exc_type=%s msg=%s", ticker, type(exc).__name__, redact_secrets(str(exc))[:200])
-        return SentimentMetric(name=display_name, current=None, prior=None, rating=None,
-                              unit=unit, error=f"{type(exc).__name__}: {exc}")
+        logger.warning(
+            "sentiment.primary_failed ticker=%s source=yfinance exc_type=%s msg=%s",
+            ticker,
+            type(exc).__name__,
+            redact_secrets(str(exc))[:200],
+        )
+        try:
+            closes = _fetch_yahoo_chart_close(ticker)
+            logger.warning(
+                "sentiment.fallback_used ticker=%s primary=yfinance fallback=yahoo_chart",
+                ticker,
+            )
+        except Exception as fallback_exc:  # noqa: BLE001
+            return SentimentMetric(
+                name=display_name,
+                current=None,
+                prior=None,
+                rating=None,
+                unit=unit,
+                error=(
+                    f"yfinance {type(exc).__name__}: {exc}; Yahoo Chart "
+                    f"{type(fallback_exc).__name__}: {fallback_exc}"
+                ),
+            )
     if not closes:
         return SentimentMetric(name=display_name, current=None, prior=None, rating=None,
                               unit=unit, error="无数据")

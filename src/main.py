@@ -218,12 +218,16 @@ def main() -> int:
 
     logger.info("collect.figures")
     figures_state_path = _STATE_DIR / "pushed_figures.json"
-    fig_bundles, figures_pending_pushed = figures.fetch_all(state_path=figures_state_path)
+    fig_bundles, figures_pending_pushed = figures.fetch_all(
+        state_path=figures_state_path,
+        finnhub_api_key=settings.finnhub_api_key,
+    )
 
     logger.info("collect.frontier_labs")
     frontier_labs_state_path = _STATE_DIR / "pushed_frontier_labs.json"
     frontier_labs_bundles, frontier_labs_pending_pushed = frontier_labs.fetch_all(
         state_path=frontier_labs_state_path,
+        finnhub_api_key=settings.finnhub_api_key,
     )
 
     logger.info("collect.buffett_13f")
@@ -231,7 +235,10 @@ def main() -> int:
     buffett_bundle, buffett_13f_pending_save = buffett_13f.fetch(state_path=buffett_13f_state_path)
 
     logger.info("collect.jiangsu_fuel")
-    jiangsu_fuel_alert = jiangsu_fuel.fetch(today=now_bj.date())
+    jiangsu_fuel_alert = jiangsu_fuel.fetch(
+        today=now_bj.date(),
+        fred_api_key=settings.fred_api_key,
+    )
     if (
         jiangsu_fuel_alert is not None
         and jiangsu_fuel_alert.forecast_method == "schedule_only"

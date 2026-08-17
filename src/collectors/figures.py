@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import finnhub  # type: ignore[import-untyped]
+
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
 from src.utils.retry import retry
@@ -77,6 +79,39 @@ FIGURES: list[tuple[str, str, str, str]] = [
     ("但斌",     '"但斌"',                                 "zh", "Dan Bin"),   # 东方港湾董事长
 ]
 
+# Google News 报错时，用 Finnhub 公司新闻作独立供应商备份。
+# 同一 ticker 在单次运行内只请求一次，避免巴菲特/阿贝尔、
+# 皮叉/Dario/哈萨比斯重复消耗 Finnhub 限额。
+_FINNHUB_FALLBACK_TICKERS: dict[str, str] = {
+    "黄仁勋": "NVDA",
+    "巴菲特": "BRK.B",
+    "苏妈": "AMD",
+    "魏哲家": "TSM",
+    "Hock Tan": "AVGO",
+    "Christophe Fouquet": "ASML",
+    "纳德拉": "MSFT",
+    "皮叉": "GOOGL",
+    "阿贝尔": "BRK.B",
+    "奥特曼": "MSFT",
+    "Dario Amodei": "GOOGL",
+    "哈萨比斯": "GOOGL",
+}
+
+_FINNHUB_FALLBACK_ALIASES: dict[str, tuple[str, ...]] = {
+    "黄仁勋": ("Jensen Huang", "Huang"),
+    "巴菲特": ("Warren Buffett", "Buffett"),
+    "苏妈": ("Lisa Su",),
+    "魏哲家": ("C.C. Wei", "C. C. Wei"),
+    "Hock Tan": ("Hock Tan",),
+    "Christophe Fouquet": ("Christophe Fouquet", "Fouquet"),
+    "纳德拉": ("Satya Nadella", "Nadella"),
+    "皮叉": ("Sundar Pichai", "Pichai"),
+    "阿贝尔": ("Greg Abel", "Abel"),
+    "奥特曼": ("Sam Altman", "Altman"),
+    "Dario Amodei": ("Dario Amodei", "Amodei"),
+    "哈萨比斯": ("Demis Hassabis", "Hassabis"),
+}
+
 # 规则筛选动词:英文 + 中文双语,任一命中即视为候选
 _VERB_RE = re.compile(
     # 英文
@@ -111,6 +146,53 @@ def _fetch_google_news(query: str, lang: str = "en") -> list[FigureMention]:
             published_at=pub,
             url=str(getattr(e, "link", "") or ""),
             source=str(getattr(getattr(e, "source", None), "title", "") or "Google News"),
+        ))
+    return items
+
+
+@retry(max_attempts=3, base_delay=1.5)
+def _fetch_finnhub_company_news(
+    client: finnhub.Client,
+    ticker: str,
+    date_from: str,
+    date_to: str,
+) -> list[dict]:
+    return client.company_news(ticker, _from=date_from, to=date_to)
+
+
+def _finnhub_mentions_for_person(
+    raw: list[dict],
+    *,
+    person: str,
+    name_en: str,
+) -> list[FigureMention]:
+    """Finnhub 公司新闻中只保留明确点名该人物的内容。"""
+    aliases = {
+        person.lower(),
+        name_en.lower(),
+        *(alias.lower() for alias in _FINNHUB_FALLBACK_ALIASES.get(person, ())),
+    }
+    items: list[FigureMention] = []
+    for entry in raw or []:
+        title = str(entry.get("headline") or "").strip()
+        snippet = str(entry.get("summary") or "").strip()
+        text = f"{title}\n{snippet}".lower()
+        if not any(alias and alias in text for alias in aliases):
+            continue
+        try:
+            timestamp = int(entry.get("datetime"))
+            published_at = datetime.fromtimestamp(timestamp, tz=UTC)
+        except (TypeError, ValueError, OSError, OverflowError):
+            continue
+        url = str(entry.get("url") or "").strip()
+        if not title or not url:
+            continue
+        items.append(FigureMention(
+            title=title,
+            snippet=snippet,
+            published_at=published_at,
+            url=url,
+            source=str(entry.get("source") or "Finnhub").strip(),
         ))
     return items
 
@@ -198,7 +280,11 @@ def _purge_expired(pushed: dict[str, str], now: datetime, days: int = 7) -> dict
 
 
 # ---------- 入口 ----------
-def fetch_all(state_path: Path) -> tuple[list[FigureBundle], dict[str, str]]:
+def fetch_all(
+    state_path: Path,
+    *,
+    finnhub_api_key: str = "",
+) -> tuple[list[FigureBundle], dict[str, str]]:
     """采集所有监控人物的过去 24h 候选发言,完成第一道筛选 + 7 天去重。
 
     返回 (bundles, pending_pushed):
@@ -216,16 +302,67 @@ def fetch_all(state_path: Path) -> tuple[list[FigureBundle], dict[str, str]]:
     new_pushed = dict(pushed)  # 含已存在 + 本次新增
 
     bundles: list[FigureBundle] = []
+    finnhub_client = finnhub.Client(api_key=finnhub_api_key) if finnhub_api_key else None
+    finnhub_cache: dict[str, list[dict]] = {}
+    google_consecutive_failures = 0
     for person, query, lang, name_en in FIGURES:
         try:
+            if google_consecutive_failures >= 2:
+                raise RuntimeError("Google News circuit open after consecutive failures")
             raw = _fetch_google_news(query, lang=lang)
+            google_consecutive_failures = 0
         except Exception as exc:  # noqa: BLE001
-            logger.error("figures.fetch_failed person=%s exc_type=%s msg=%s", person, type(exc).__name__, redact_secrets(str(exc))[:200])
-            bundles.append(FigureBundle(
-                person=person, query=query, person_en=name_en,
-                error=f"{type(exc).__name__}: {exc}",
-            ))
-            continue
+            google_consecutive_failures += 1
+            google_error = f"{type(exc).__name__}: {redact_secrets(str(exc))[:200]}"
+            ticker = _FINNHUB_FALLBACK_TICKERS.get(person)
+            if finnhub_client is None or ticker is None:
+                logger.error(
+                    "figures.fetch_failed person=%s primary=google_news fallback=unavailable msg=%s",
+                    person,
+                    google_error,
+                )
+                bundles.append(FigureBundle(
+                    person=person, query=query, person_en=name_en,
+                    error=google_error,
+                ))
+                continue
+            try:
+                if ticker not in finnhub_cache:
+                    finnhub_cache[ticker] = _fetch_finnhub_company_news(
+                        finnhub_client,
+                        ticker,
+                        start_utc.strftime("%Y-%m-%d"),
+                        end_utc.strftime("%Y-%m-%d"),
+                    )
+                raw = _finnhub_mentions_for_person(
+                    finnhub_cache[ticker],
+                    person=person,
+                    name_en=name_en,
+                )
+                logger.warning(
+                    "figures.fallback_used person=%s primary=google_news fallback=finnhub ticker=%s count=%d",
+                    person,
+                    ticker,
+                    len(raw),
+                )
+            except Exception as fallback_exc:  # noqa: BLE001
+                fallback_error = (
+                    f"{type(fallback_exc).__name__}: "
+                    f"{redact_secrets(str(fallback_exc))[:200]}"
+                )
+                logger.error(
+                    "figures.fetch_failed person=%s primary_error=%s fallback_error=%s",
+                    person,
+                    google_error,
+                    fallback_error,
+                )
+                bundles.append(FigureBundle(
+                    person=person,
+                    query=query,
+                    person_en=name_en,
+                    error=f"Google News {google_error}; Finnhub {fallback_error}",
+                ))
+                continue
         kept: list[FigureMention] = []
         for item in raw:
             if not (start_utc <= item.published_at < end_utc):

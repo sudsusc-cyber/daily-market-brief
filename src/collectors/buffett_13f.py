@@ -42,6 +42,7 @@ ATOM_URL = (
     f"https://www.sec.gov/cgi-bin/browse-edgar"
     f"?action=getcompany&CIK={CIK}&type=13F-HR&dateb=&owner=include&count=5&output=atom"
 )
+SUBMISSIONS_URL = f"https://data.sec.gov/submissions/CIK{CIK}.json"
 
 
 @dataclass
@@ -95,6 +96,82 @@ def _fetch_atom() -> list[Filing13F]:
     return out
 
 
+@retry(max_attempts=3, base_delay=1.5)
+def _fetch_submissions_json() -> list[Filing13F]:
+    """SEC 官方 submissions JSON，作为旧 Atom 端点的备路径。"""
+    resp = requests.get(
+        SUBMISSIONS_URL,
+        headers={
+            "User-Agent": SEC_UA,
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+    recent = ((resp.json() or {}).get("filings") or {}).get("recent") or {}
+    forms = recent.get("form") or []
+    accessions = recent.get("accessionNumber") or []
+    filing_dates = recent.get("filingDate") or []
+    primary_documents = recent.get("primaryDocument") or []
+
+    out: list[Filing13F] = []
+    for index, form in enumerate(forms):
+        if form not in {"13F-HR", "13F-HR/A"}:
+            continue
+        if index >= len(accessions) or index >= len(filing_dates):
+            continue
+        try:
+            filed_at = datetime.fromisoformat(str(filing_dates[index])).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        suffix = " / Amend" if form == "13F-HR/A" else ""
+        if index < len(primary_documents) and primary_documents[index]:
+            suffix += f" / {primary_documents[index]}"
+        out.append(Filing13F(
+            accession_no=str(accessions[index]).strip(),
+            filed_at=filed_at,
+            title=f"{form}{suffix}",
+        ))
+        if len(out) >= 5:
+            break
+    out.sort(key=lambda item: item.filed_at, reverse=True)
+    return out
+
+
+def _fetch_filings_with_fallback() -> list[Filing13F]:
+    """Atom 主路径失败或空结果时，切到 SEC 官方 JSON。"""
+    atom_error: Exception | None = None
+    try:
+        filings = _fetch_atom()
+        if filings:
+            return filings
+        atom_error = RuntimeError("EDGAR atom 无条目")
+    except Exception as exc:  # noqa: BLE001
+        atom_error = exc
+        logger.warning(
+            "buffett_13f.primary_failed source=atom exc_type=%s msg=%s",
+            type(exc).__name__,
+            redact_secrets(str(exc))[:200],
+        )
+
+    try:
+        filings = _fetch_submissions_json()
+        if filings:
+            logger.warning(
+                "buffett_13f.fallback_used primary=atom fallback=submissions_json count=%d",
+                len(filings),
+            )
+            return filings
+        raise RuntimeError("EDGAR submissions JSON 无13F条目")
+    except Exception as fallback_exc:  # noqa: BLE001
+        raise RuntimeError(
+            "SEC Atom 与 submissions JSON 均不可用: "
+            f"{type(atom_error).__name__}: {redact_secrets(str(atom_error))[:120]}; "
+            f"{type(fallback_exc).__name__}: {redact_secrets(str(fallback_exc))[:120]}"
+        ) from fallback_exc
+
+
 def _load_last_seen(state_path: Path) -> str | None:
     """state/last_13f.json:{ "accession_no": "...", "first_seen_at": "ISO8601" }"""
     if not state_path.exists():
@@ -124,13 +201,13 @@ def fetch(
     很难补救。延后到邮件成功才提交,失败时下次 run 还能重新评估。
     """
     try:
-        filings = _fetch_atom()
+        filings = _fetch_filings_with_fallback()
     except Exception as exc:  # noqa: BLE001
         logger.error("buffett_13f.fetch_failed exc_type=%s msg=%s", type(exc).__name__, redact_secrets(str(exc))[:200])
         return BuffettBundle(error=f"{type(exc).__name__}: {exc}"), None
 
     if not filings:
-        return BuffettBundle(error="EDGAR atom 无条目"), None
+        return BuffettBundle(error="SEC 13F 主备端点均无条目"), None
 
     latest = filings[0]
     last_accession = _load_last_seen(state_path)

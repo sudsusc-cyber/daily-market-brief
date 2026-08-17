@@ -17,14 +17,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+import finnhub  # type: ignore[import-untyped]
+
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
 from src.utils.retry import retry
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
 
-SourceType = Literal["official", "google_news"]
+SourceType = Literal["official", "google_news", "finnhub"]
 
 
 @dataclass(frozen=True)
@@ -145,6 +148,41 @@ def _fetch_google_news(query: str, lab: FrontierLab) -> list[FrontierItem]:
     return items
 
 
+@retry(max_attempts=3, base_delay=1.5)
+def _fetch_finnhub_general_news(client: finnhub.Client) -> list[dict]:
+    """Google News 整域故障时的独立新闻聚合备份。"""
+    return client.general_news("general", min_id=0)
+
+
+def _finnhub_items_for_lab(raw: list[dict], lab: FrontierLab) -> list[FrontierItem]:
+    needle = lab.name.lower()
+    items: list[FrontierItem] = []
+    for entry in raw or []:
+        title = str(entry.get("headline") or "").strip()
+        snippet = str(entry.get("summary") or "").strip()
+        if needle not in f"{title}\n{snippet}".lower():
+            continue
+        try:
+            timestamp = int(entry.get("datetime"))
+            published_at = datetime.fromtimestamp(timestamp, tz=UTC)
+        except (TypeError, ValueError, OSError, OverflowError):
+            continue
+        url = str(entry.get("url") or "").strip()
+        if not title or not url:
+            continue
+        items.append(FrontierItem(
+            lab=lab.name,
+            title=title,
+            snippet=snippet,
+            published_at=published_at,
+            url=url,
+            source=str(entry.get("source") or "Finnhub").strip(),
+            source_type="finnhub",
+            related_tickers=list(lab.related_tickers),
+        ))
+    return items
+
+
 def _normalize_title(title: str) -> str:
     title = (title or "").lower()
     title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
@@ -235,6 +273,7 @@ def fetch_all(
     state_path: Path,
     *,
     max_items_per_lab: int = 8,
+    finnhub_api_key: str = "",
 ) -> tuple[list[FrontierBundle], dict[str, str]]:
     """Fetch last-24h OpenAI/Anthropic candidates.
 
@@ -246,6 +285,9 @@ def fetch_all(
     pending_pushed = dict(pushed)
 
     bundles: list[FrontierBundle] = []
+    finnhub_client = finnhub.Client(api_key=finnhub_api_key) if finnhub_api_key else None
+    finnhub_general_cache: list[dict] | None = None
+    finnhub_general_error: Exception | None = None
     for lab in FRONTIER_LABS:
         raw: list[FrontierItem] = []
         errors: list[str] = []
@@ -267,14 +309,40 @@ def fetch_all(
             try:
                 raw.extend(_fetch_google_news(query, lab))
             except Exception as exc:  # noqa: BLE001
-                msg = f"google_news {type(exc).__name__}: {exc}"
-                errors.append(msg)
                 logger.warning(
                     "frontier_labs.google_news_fetch_failed lab=%s query=%s exc=%s",
                     lab.name,
                     query,
                     exc,
                 )
+                if finnhub_client is None:
+                    errors.append(f"google_news {type(exc).__name__}: {exc}")
+                    continue
+                try:
+                    if finnhub_general_cache is None and finnhub_general_error is None:
+                        try:
+                            finnhub_general_cache = _fetch_finnhub_general_news(finnhub_client)
+                        except Exception as fallback_exc:  # noqa: BLE001
+                            finnhub_general_error = fallback_exc
+                    if finnhub_general_error is not None:
+                        raise finnhub_general_error
+                    fallback_items = _finnhub_items_for_lab(
+                        finnhub_general_cache or [],
+                        lab,
+                    )
+                    raw.extend(fallback_items)
+                    logger.warning(
+                        "frontier_labs.fallback_used lab=%s primary=google_news fallback=finnhub count=%d",
+                        lab.name,
+                        len(fallback_items),
+                    )
+                except Exception as fallback_exc:  # noqa: BLE001
+                    fallback_message = redact_secrets(str(fallback_exc))[:200]
+                    errors.append(
+                        "google_news "
+                        f"{type(exc).__name__}: {exc}; finnhub "
+                        f"{type(fallback_exc).__name__}: {fallback_message}"
+                    )
 
         in_window = [
             item

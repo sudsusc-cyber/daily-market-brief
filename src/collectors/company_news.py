@@ -59,7 +59,7 @@ class CompanyNewsBundle:
     holding: Holding
     items: list[NewsItem] = field(default_factory=list)
     error: str | None = None
-    data_source: str = ""  # "finnhub" / "google_news_cn"
+    data_source: str = ""  # "finnhub" / "google_news_cn" / "google_news_en"
 
 
 # 相关性过滤:Finnhub 的 /company-news 把"同板块 / 竞品 / 大盘"都贴上 ticker 标签
@@ -159,12 +159,15 @@ def _collect_via_finnhub(client: finnhub.Client, holding: Holding) -> CompanyNew
     return CompanyNewsBundle(holding=holding, items=items, data_source="finnhub")
 
 
-# ---------- Google News 中文(港股降级) ----------
+# ---------- Google News(港股主路径 / Finnhub 故障时的美股备路径) ----------
 @retry(max_attempts=3, base_delay=1.5)
-def _fetch_google_news_zh(query: str) -> list[NewsItem]:
-    """中文 Google News RSS,过去 24 小时"""
+def _fetch_google_news(query: str, *, lang: str) -> list[NewsItem]:
+    """Google News RSS,过去 24 小时。"""
     q = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    if lang == "zh":
+        url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+    else:
+        url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=en-US&gl=US&ceid=US:en"
     feed = fetch_rss(url)
     items: list[NewsItem] = []
     for e in feed.entries or []:
@@ -179,6 +182,11 @@ def _fetch_google_news_zh(query: str) -> list[NewsItem]:
             source=str(getattr(getattr(e, "source", None), "title", "") or "Google News"),
         ))
     return items
+
+
+def _fetch_google_news_zh(query: str) -> list[NewsItem]:
+    """保留原有入口，便于旧调用方与测试继续 monkeypatch。"""
+    return _fetch_google_news(query, lang="zh")
 
 
 _HK_QUERY_FALLBACK = {
@@ -220,11 +228,24 @@ def _dedupe_fuzzy(items: list[NewsItem]) -> list[NewsItem]:
     return kept
 
 
-def _collect_via_google_news(holding: Holding) -> CompanyNewsBundle:
-    query = _HK_QUERY_FALLBACK.get(holding.ticker, holding.name)
+def _collect_via_google_news(
+    holding: Holding,
+    *,
+    lang: str | None = None,
+) -> CompanyNewsBundle:
+    is_hk = holding.ticker.endswith(".HK")
+    if lang is None:
+        lang = "zh" if is_hk else "en"
+    query = _HK_QUERY_FALLBACK.get(
+        holding.ticker,
+        f'"{holding.name}" OR "{holding.ticker}"',
+    )
     start_utc, end_utc = last_24h_window()
     try:
-        all_items = _fetch_google_news_zh(query)
+        if lang == "zh":
+            all_items = _fetch_google_news_zh(query)
+        else:
+            all_items = _fetch_google_news(query, lang=lang)
     except Exception as exc:  # noqa: BLE001
         safe_msg = redact_secrets(str(exc))[:200]
         logger.error(
@@ -233,12 +254,15 @@ def _collect_via_google_news(holding: Holding) -> CompanyNewsBundle:
         )
         return CompanyNewsBundle(
             holding=holding, error=f"Google News 异常: {type(exc).__name__}: {safe_msg}",
-            data_source="google_news_cn",
+            data_source=f"google_news_{lang}",
         )
     items = [n for n in all_items if start_utc <= n.published_at < end_utc]
+    if not is_hk:
+        # 美股备路径仍执行与 Finnhub 一致的公司相关性门。
+        items = [item for item in items if _is_relevant(item, holding.ticker)]
     items.sort(key=lambda x: x.published_at, reverse=True)
     items = _dedupe_fuzzy(items)
-    return CompanyNewsBundle(holding=holding, items=items, data_source="google_news_cn")
+    return CompanyNewsBundle(holding=holding, items=items, data_source=f"google_news_{lang}")
 
 
 # ---------- 状态持久化(7 天去重) ----------
@@ -304,11 +328,43 @@ def _purge_expired_news(pushed: dict[str, str], now: datetime, days: int = 7) ->
 
 # ---------- 入口 ----------
 def fetch_one(holding: Holding, finnhub_client: finnhub.Client) -> CompanyNewsBundle:
-    """根据 ticker 选择对应数据源采集单只持仓的昨日新闻"""
+    """根据 ticker 采集单只持仓的昨日新闻。
+
+    两个提供商交叉降级：
+    - 美股 / ADR: Finnhub 主 → Google News 英文备
+    - 港股: Google News 中文主 → Finnhub 备
+
+    只在主源明确报错时切换；“成功但无新闻”仍是合法结果，
+    不用备源噪声填充真实的安静日。
+    """
     if holding.ticker.endswith(".HK"):
         bundle = _collect_via_google_news(holding)
+        if bundle.error:
+            primary_error = bundle.error
+            fallback = _collect_via_finnhub(finnhub_client, holding)
+            if not fallback.error:
+                logger.warning(
+                    "company_news.fallback_used ticker=%s primary=google_news_cn fallback=finnhub",
+                    holding.ticker,
+                )
+                bundle = fallback
+            else:
+                bundle.error = f"{primary_error}; 备用 {fallback.error}"
+                bundle.data_source = "google_news_cn+finnhub"
     else:
         bundle = _collect_via_finnhub(finnhub_client, holding)
+        if bundle.error:
+            primary_error = bundle.error
+            fallback = _collect_via_google_news(holding, lang="en")
+            if not fallback.error:
+                logger.warning(
+                    "company_news.fallback_used ticker=%s primary=finnhub fallback=google_news_en",
+                    holding.ticker,
+                )
+                bundle = fallback
+            else:
+                bundle.error = f"{primary_error}; 备用 {fallback.error}"
+                bundle.data_source = "finnhub+google_news_en"
     logger.info(
         "company_news ticker=%s source=%s count=%d error=%s",
         holding.ticker, bundle.data_source, len(bundle.items), bundle.error,
