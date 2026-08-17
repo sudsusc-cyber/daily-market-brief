@@ -95,9 +95,10 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
         bubble_align = "center"
     bubble_right = 100.0 - bubble_left - bubble_region_width
 
-    # 两个箭头使用同一个 2% 宽的标记格。中段标记格中心严格等于
-    # score%;0/100 分时吸附边界,避免字形被邮件客户端裁掉。
-    pointer_region_width = 2.0
+    # 两个箭头使用同一个 5% 宽的标记格。5% 在窄屏邮件中也足够容纳
+    # 14px 的彩色尾巴，避免字形溢出后由客户端产生不对称的视觉偏移。
+    # 中段标记格中心严格等于 score%;0/100 分时吸附边界。
+    pointer_region_width = 5.0
     if score <= pointer_region_width / 2.0:
         pointer_left = 0.0
         pointer_align = "left"

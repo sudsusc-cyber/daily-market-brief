@@ -316,16 +316,19 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert 'data-sentiment-pointer-position="67.5"' in html
     assert 'data-sentiment-pointer-glyph="true"' in html
     assert "width:57.5%" in html  # 20% 气泡容器以 67.5% 为中心
-    assert "width:66.5%" in html  # 2% 箭头容器以 67.5% 为中心
+    assert "width:65.0%" in html  # 5% 箭头容器以 67.5% 为中心
     assert 'data-sentiment-score-bubble="true"' in html
     assert 'data-sentiment-score-face="continuous-corner"' in html
     assert "-webkit-border-radius:12px;border-radius:12px" in html
     assert 'data-sentiment-score-tail-track="true"' in html
+    assert 'data-sentiment-pointer-axis="true"' in html
     assert 'display:inline-block;vertical-align:bottom' in html
     assert 'data-sentiment-score-tail="true"' in html
     assert "&#9660;" in html
     assert "color:#A96D4F" in html
-    assert 'data-sentiment-score-tail="true" style="display:block;width:100%;text-align:center"' in html
+    assert "height:8px;text-align:center;font-size:14px" in html
+    assert 'data-sentiment-tail-position="67.5" data-sentiment-pointer-position="67.5"' in html
+    assert html.count('data-sentiment-pointer-axis="true"') == 1
     assert 'data-sentiment-label="true"' not in html
     assert "极度恐慌" in html
     assert "极度贪婪" in html
@@ -387,9 +390,9 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
     assert neutral is not None
     assert neutral["pointer_percent"] == "50"
     assert neutral["pointer_layout"] == {
-        "left_width": 49.0,
-        "region_width": 2.0,
-        "right_width": 49.0,
+        "left_width": 47.5,
+        "region_width": 5.0,
+        "right_width": 47.5,
         "align": "center",
     }
     assert neutral["bubble_layout"] == {
