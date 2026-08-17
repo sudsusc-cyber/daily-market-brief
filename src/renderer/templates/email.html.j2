@@ -52,7 +52,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+{# 移动端按 640px 正文 + 左右各 16px 页边距的桌面画布整体缩放；不做窄屏重排。 #}
+<meta name="viewport" content="width=672" />
 <meta name="x-apple-disable-message-reformatting" />
 <meta name="color-scheme" content="light" />
 <meta name="supported-color-schemes" content="light" />
@@ -62,27 +63,6 @@
      再启用透明玻璃尖角。忽略 @supports 的客户端仍得到不溢出的完整色带。 */
   @supports ((clip-path:polygon(0 0,100% 50%,0 100%)) or (-webkit-clip-path:polygon(0 0,100% 50%,0 100%))) {
     .sentiment-glass-tube { border-radius:999px 0 0 999px !important; }
-  }
-  /* iOS / Android QQ 邮箱不能承受 590px 的硬最小宽度：它会把整封 640px
-     邮件当成桌面页缩小。桌面仍保持原列距；窄屏只收紧必要尺寸，公司名保留。 */
-  @media only screen and (max-width:520px) {
-    .email-shell { padding-left:6px !important; padding-right:6px !important; }
-    .email-container { width:100% !important; max-width:100% !important; }
-    .holdings-wrap { padding-left:4px !important; padding-right:4px !important; }
-    .holdings-table { width:100% !important; max-width:100% !important; table-layout:fixed !important; }
-    .holding-head { padding-left:2px !important; font-size:8.5px !important; letter-spacing:0.12em !important; }
-    .holding-logo-cell { width:24px !important; padding-right:4px !important; }
-    .holding-logo, .holding-logo-fallback { width:20px !important; height:20px !important; }
-    .holding-logo-fallback { line-height:20px !important; font-size:7px !important; }
-    .holding-ticker { font-size:12px !important; letter-spacing:0 !important; }
-    .holding-name { display:block !important; font-size:8.5px !important; margin-top:2px !important; line-height:1.15 !important; }
-    .holding-price { font-size:12px !important; }
-    .holding-average { padding-left:2px !important; }
-    .holding-average-main { font-size:10.5px !important; }
-    .holding-average-delta { font-size:8px !important; letter-spacing:0 !important; }
-    .holding-signal { padding-left:2px !important; }
-    .holding-signal-badge { padding:3px !important; font-size:7.5px !important; letter-spacing:0.04em !important; }
-    .source-link { white-space:normal !important; overflow-wrap:anywhere !important; word-break:break-word !important; }
   }
 </style>
 <!--[if mso]>
@@ -106,23 +86,21 @@
   <tr>
     <td class="email-shell" align="center" style="padding:{% if header_image_url %}16px{% else %}48px{% endif %} 16px 56px 16px;">
 
-      {# Fluid-hybrid container: non-Outlook clients must never see a 640px HTML
-         width attribute, because QQ Mail may use it as a hard minimum and scale
-         the whole message down. Desktop Outlook gets its fixed canvas only via
-         the MSO conditional wrapper. #}
+      {# 所有客户端共用同一张 640px 桌面画布。移动端通过 672px viewport
+         将正文与左右页边距整体缩放，保留桌面端的栏宽、字号比例和章节位置。 #}
       <!--[if mso]>
       <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td>
       <![endif]-->
-      <table class="email-container" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ color_paper }}; width:100%; max-width:640px; font-family:{{ serif_body }}; {{ numeric_features }}">
+      <table class="email-container" data-email-layout="fixed-desktop" role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ color_paper }}; width:640px; min-width:640px; max-width:640px; font-family:{{ serif_body }}; {{ numeric_features }}">
 
         {# ──────────────────────────  刊头图  ─────────────────────────── #}
         {%- if header_image_url %}
         <tr>
           <td style="padding:0; line-height:0; font-size:0; border-bottom:2px solid {{ color_accent }};">
             <img src="{{ header_image_url }}"
-                 width="100%"
+                 width="640"
                  alt="刊头图"
-                 style="display:block; width:100%; max-width:640px; height:auto; border:0; line-height:0; -ms-interpolation-mode:bicubic;" />
+                 style="display:block; width:640px; min-width:640px; max-width:640px; height:auto; border:0; line-height:0; -ms-interpolation-mode:bicubic;" />
           </td>
         </tr>
         {%- endif %}

@@ -207,47 +207,41 @@ def test_render_email_decorative_logo_has_empty_alt() -> None:
 
 
 def test_render_email_header_keeps_full_two_to_one_frame() -> None:
-    """刊头图保持完整 2:1 内容，并使用流式宽度避免撑开移动端。"""
+    """刊头图保持完整 2:1 内容，并与固定桌面画布等宽。"""
     html = render_email(
         signals=[_one_signal()],
         generated_at=datetime.now(UTC),
         header_image_url="cid:header_image",
     )
-    assert '<img src="cid:header_image"\n                 width="100%"' in html
+    assert '<img src="cid:header_image"\n                 width="640"' in html
     assert 'height="320"' not in html
     assert 'height="200"' not in html
-    assert "width:100%;max-width:640px;height:auto" in html
+    assert "width:640px;min-width:640px;max-width:640px;height:auto" in html
 
 
-def test_render_email_mobile_layout_never_forces_desktop_canvas() -> None:
-    """窄屏 QQ 邮箱不得因持仓表硬宽度而把整封邮件缩成桌面比例。"""
+def test_render_email_mobile_uses_scaled_desktop_canvas() -> None:
+    """移动端必须缩放同一张桌面画布，不得启用窄屏重排。"""
     html = render_email(
         signals=[_one_signal()],
         generated_at=datetime.now(UTC),
     )
 
+    assert '<meta name="viewport" content="width=672" />' in html
     assert 'class="email-shell"' in html
-    assert 'class="email-container" role="presentation" width="100%"' in html
-    assert 'class="email-container" role="presentation" width="640"' not in html
-    assert "width:100%;max-width:640px" in html
-    # 640px 只允许出现在 Outlook 专用条件注释中，普通 QQ/iOS/Android
-    # 客户端不能把它当作内容的硬最小宽度。
-    fixed_width_table = html.index('<table role="presentation" width="640"')
-    mso_open = html.rfind("<!--[if mso]>", 0, fixed_width_table)
-    mso_close = html.index("<![endif]-->", fixed_width_table)
-    assert mso_open < fixed_width_table < mso_close
-    assert html.count('width="640"') == 1
+    assert 'class="email-container" data-email-layout="fixed-desktop" role="presentation" width="640"' in html
+    assert "width:640px;min-width:640px;max-width:640px" in html
+    assert 'class="email-container" role="presentation" width="100%"' not in html
     assert 'class="holdings-table" width="100%"' in html
     assert "width:100%;max-width:590px;table-layout:fixed" in html
     assert '<table width="590"' not in html
-    assert "@media only screen and (max-width:520px)" in html
-    assert ".email-shell { padding-left:6px !important; padding-right:6px !important; }" in html
-    assert '.holding-name { display:block !important;' in html
+    assert "@media only screen" not in html
+    assert ".email-shell {" not in html
+    assert '.holding-name { display:block !important;' not in html
     assert ".holding-name { display:none" not in html
 
 
-def test_render_email_dynamic_source_links_can_wrap_on_narrow_screens() -> None:
-    """动态来源名再长也不能把 QQ 邮箱整封邮件撑成桌面画布。"""
+def test_render_email_dynamic_source_links_wrap_inside_desktop_canvas() -> None:
+    """动态来源名再长也应在固定桌面画布内换行。"""
     long_source = "ExtremelyLongUnbrokenDynamicSourceName" * 8
     html = render_email(
         signals=[_one_signal()],
@@ -262,7 +256,7 @@ def test_render_email_dynamic_source_links_can_wrap_on_narrow_screens() -> None:
     assert long_source in html
     assert 'class="source-link"' in html
     assert "white-space:normal;overflow-wrap:anywhere;word-break:break-word" in html
-    assert ".source-link { white-space:normal !important;" in html
+    assert ".source-link {" not in html
     assert f"white-space:nowrap;\">[1] {long_source}" not in html
 
 
