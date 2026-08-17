@@ -17,6 +17,10 @@ on:
         description: "Force send even if already sent (true/false)"
         required: false
         default: "false"
+      recipient_override:
+        description: "Manual-run recipient override (single address; blank uses production recipients)"
+        required: false
+        default: ""
 
 # 防止 cron-job.org 与 GH schedule 兜底几乎同秒触发时双跑挤压幂等窗口。
 # 不取消正在跑的(发邮件 ≠ 可取消的纯计算),只串行化新触发。
@@ -85,7 +89,9 @@ jobs:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
           QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
-          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+          # 仅 workflow_dispatch 可传 recipient_override；schedule 事件没有该输入，
+          # 因而自动回落到生产收件人 secret，不改变每天定时发送行为。
+          EMAIL_RECIPIENT: ${{ github.event.inputs.recipient_override || secrets.EMAIL_RECIPIENT }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 邮件仍使用受控占位语发送，但在 Actions 页面明确标注内容质量降级。
