@@ -64,7 +64,7 @@ def test_render_email_with_minimum_data_does_not_raise() -> None:
 
 
 def test_render_email_uses_one_editorial_number_system_everywhere() -> None:
-    """全邮件统一 Georgia 数字骨架，并启用齐高、等宽数字。"""
+    """全邮件统一齐高数字骨架，并启用等宽数字。"""
     signal = StockSignal(
         holding=HOLDINGS[0],
         last_close=1234.56,
@@ -82,6 +82,8 @@ def test_render_email_uses_one_editorial_number_system_everywhere() -> None:
 
     assert f"font-family:{EMAIL_EDITORIAL_SERIF}" in html
     assert EMAIL_NUMERIC_FEATURES.rstrip(";") in html
+    assert EMAIL_EDITORIAL_SERIF.startswith("Cambria,'Times New Roman'")
+    assert not EMAIL_EDITORIAL_SERIF.startswith("Georgia")
     assert "font-family:Charter,Georgia" not in html
     assert "font-family:'Noto Serif SC','Songti SC','SimSun',Georgia" not in html
     assert "letter-spacing:0" in html  # 数值本身不再被额外拉开字距
