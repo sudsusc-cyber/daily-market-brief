@@ -22,6 +22,7 @@ from src.renderer.render import (
     _compact_inline_styles,
     render_email,
 )
+from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEATURES
 
 
 def _one_figure_bundle() -> FigureBundle:
@@ -60,6 +61,31 @@ def test_render_email_with_minimum_data_does_not_raise() -> None:
     )
     assert "<html" in html.lower()
     assert len(html.encode("utf-8")) > 1000  # 至少有完整模板骨架
+
+
+def test_render_email_uses_one_editorial_number_system_everywhere() -> None:
+    """全邮件统一 Georgia 数字骨架，并启用齐高、等宽数字。"""
+    signal = StockSignal(
+        holding=HOLDINGS[0],
+        last_close=1234.56,
+        sma_120=1100.0,
+        sma_200=900.0,
+        delta_120=0.1223,
+        delta_200=0.3717,
+        signal="NONE",
+    )
+    html = render_email(
+        signals=[signal],
+        generated_at=datetime(2026, 8, 17, 7, 0, tzinfo=UTC),
+        jiangsu_fuel_alert=_mock_jiangsu_fuel(),
+    )
+
+    assert f"font-family:{EMAIL_EDITORIAL_SERIF}" in html
+    assert EMAIL_NUMERIC_FEATURES.rstrip(";") in html
+    assert "font-family:Charter,Georgia" not in html
+    assert "font-family:'Noto Serif SC','Songti SC','SimSun',Georgia" not in html
+    assert "letter-spacing:0" in html  # 数值本身不再被额外拉开字距
+    assert "1,234.56" in html
 
 
 def test_render_email_with_silence_note_renders_it() -> None:
@@ -629,7 +655,7 @@ def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
 
     row_style = (
         "margin:0 0 10px 0;padding:0;"
-        "font-family:'Noto Serif SC','Songti SC','SimSun',Georgia,serif;"
+        f"font-family:{EMAIL_EDITORIAL_SERIF};"
         "font-size:16px;line-height:1.9;color:#1A1A1A;letter-spacing:0.02em"
     )
     company_rows: list[str] = []

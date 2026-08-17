@@ -18,6 +18,8 @@ import html
 import re
 from urllib.parse import urlparse
 
+from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
+
 # 仅允许的 URL scheme(其它如 javascript: / data: / file: / vbscript: 一律拒绝)
 _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 
@@ -49,7 +51,7 @@ def footnote_idx(match: re.Match[str]) -> int:
 # 各自硬编码同样的 style 字符串。
 FOOTNOTE_ANCHOR_STYLE = (
     "color:#0563C1!important;text-decoration:none!important;font-size:11px;"
-    "font-family:Charter,Georgia,serif;margin-left:1px;"
+    f"font-family:{EMAIL_EDITORIAL_SERIF};margin-left:1px;"
 )
 
 

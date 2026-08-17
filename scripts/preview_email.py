@@ -27,6 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.collectors.stocks import StockSignal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
+from src.utils.email_typography import EMAIL_EDITORIAL_SERIF  # noqa: E402
 
 LOGOS_DIR = PROJECT_ROOT / "assets" / "logos"
 
@@ -177,7 +178,7 @@ def render_preview(*, inline_assets: bool = True) -> str:
     sep_style = "color:#D9D2BE; margin:0 6px;"
     row_style = (
         "margin:0 0 10px 0; padding:0;"
-        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',Charter,Cambria,Georgia,serif;"
+        f"font-family:{EMAIL_EDITORIAL_SERIF};"
         "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
     )
     body_html = ""

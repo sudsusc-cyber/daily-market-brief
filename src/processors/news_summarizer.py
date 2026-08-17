@@ -29,6 +29,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
+from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +311,7 @@ def _rebuild_safe_summary(
     sep_style = "color:#D9D2BE; margin:0 6px;"
     row_style = (
         "margin:0 0 10px 0; padding:0;"
-        "font-family:'Noto Serif SC','Songti SC','SimSun',Georgia,serif;"
+        f"font-family:{EMAIL_EDITORIAL_SERIF};"
         "font-size:16px; line-height:1.9; color:#1A1A1A; letter-spacing:0.02em;"
     )
 

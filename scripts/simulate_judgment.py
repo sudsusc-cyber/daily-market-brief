@@ -17,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.processors.thesis.models import ThesisEvidence, ThesisState  # noqa: E402
 from src.processors.thesis.renderer import build_judgment_section  # noqa: E402
 from src.processors.thesis.rules import run_state_transitions  # noqa: E402
+from src.utils.email_typography import EMAIL_EDITORIAL_SERIF  # noqa: E402
 
 
 def _d(days_ago: int) -> str:
@@ -118,14 +119,13 @@ def main():
     # 模拟 news_summarizer 真实输出:行内 <sup>[N]</sup> + 底部脚注列表
     row_style = (
         "margin:0 0 10px 0;padding:0;"
-        "font-family:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong',"
-        "Charter,Cambria,Georgia,serif;"
+        f"font-family:{EMAIL_EDITORIAL_SERIF};"
         "font-size:16px;line-height:1.9;color:#1A1A1A;letter-spacing:0.02em;"
     )
     name_style = "color:#7A1F2B;letter-spacing:0.04em;"
     sep_style = "color:#D9D2BE;margin:0 6px;"
     fn_style = (
-        "color:#0563C1;text-decoration:none;font-family:Charter,Georgia,serif;"
+        f"color:#0563C1;text-decoration:none;font-family:{EMAIL_EDITORIAL_SERIF};"
         "font-size:11px;font-style:normal;"
     )
     mock_cn_summary = CompanyNewsSummary(

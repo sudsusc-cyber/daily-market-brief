@@ -28,6 +28,7 @@ from src.processors.html_safe import is_safe_url
 from src.processors.sentiment_judge import VERDICT_THRESHOLDS
 from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
+from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEATURES
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _EMAIL_HTML_BUDGET_BYTES = 98_304  # 96 KiB, 给客户端 100 KiB 裁剪线留余量
@@ -365,6 +366,10 @@ def render_email(
         frontier_labs_items=frontier_labs_items or [],
         frontier_labs_fallback_note=frontier_labs_fallback_note,
         judgment_section=judgment_section,
+        serif_display=EMAIL_EDITORIAL_SERIF,
+        serif_body=EMAIL_EDITORIAL_SERIF,
+        serif_quote=EMAIL_EDITORIAL_SERIF,
+        numeric_features=EMAIL_NUMERIC_FEATURES,
     )
     # 邮件客户端按解码后的 HTML 体积裁剪。inline style 是模板中
     # 最大的重复项;只压缩属性内 CSS 分隔符与标签间排版空白,不碰正文。

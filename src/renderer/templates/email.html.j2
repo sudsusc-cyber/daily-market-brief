@@ -37,12 +37,7 @@
 {%- set month_cn = num_cn(generated_at.month) -%}
 {%- set day_cn = num_cn(generated_at.day) -%}
 {%- set weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'] -%}
-{# Noto 覆盖 Android/Linux,Songti 覆盖 macOS,SimSun 覆盖 Windows,Georgia 作西文退路。
-   三条统一为精简字体链,避免数百次 inline style 重复撑大邮件。 #}
-{%- set serif_display = "'Noto Serif SC','Songti SC','SimSun',Georgia,serif" -%}
-{%- set serif_body = "'Noto Serif SC','Songti SC','SimSun',Georgia,serif" -%}
-{# 引语专用字体与正文统一,确保各平台都有中文宋体退路。 #}
-{%- set serif_quote = "'Noto Serif SC','Songti SC','SimSun',Georgia,serif" -%}
+{# 字体链由 render.py 的共享排版契约传入：Georgia 统一西文/数字，中文回落宋体。 #}
 {%- set color_paper = '#F8F5EE' -%}
 {%- set color_paper_alt = '#F2ECDC' -%}
 {%- set color_ink = '#1A1A1A' -%}
@@ -118,7 +113,7 @@
       <!--[if mso]>
       <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td>
       <![endif]-->
-      <table class="email-container" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ color_paper }}; width:100%; max-width:640px;">
+      <table class="email-container" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ color_paper }}; width:100%; max-width:640px; font-family:{{ serif_body }}; {{ numeric_features }}">
 
         {# ──────────────────────────  刊头图  ─────────────────────────── #}
         {%- if header_image_url %}
@@ -166,7 +161,7 @@
 
             {# 区段标题:无罗马数字,中文用 letter-spacing 拉字距 #}
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">持仓信号</div>
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Position Signals</div>
+            <div style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Position Signals</div>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px; line-height:0; font-size:0;">&nbsp;</div>
 
             {# 引言段:解释这个表格在看什么。M2 实用,M3 起可换成更克制的款式 #}
@@ -195,7 +190,7 @@
            table-layout:fixed 防止 Android QQ 把 ticker 列挤成单字符宽。 #}
         <tr>
           <td class="holdings-wrap" style="padding:8px 24px 8px 24px;">
-            <table class="holdings-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; width:100%; max-width:590px; table-layout:fixed; font-family:{{ serif_body }}; color:{{ color_ink }}; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">
+            <table class="holdings-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; width:100%; max-width:590px; table-layout:fixed; font-family:{{ serif_body }}; color:{{ color_ink }}; {{ numeric_features }}">
               <colgroup>
                 <col style="width:29%;" />
                 <col style="width:15%;" />
@@ -268,18 +263,18 @@
                   </td>
                   {% else %}
                   {# 现价 — tabular-nums 让小数点跨行对齐 #}
-                  <td class="holding-price" valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0.01em; line-height:1.1; white-space:nowrap; overflow:hidden;">
+                  <td class="holding-price" valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0; line-height:1.1; white-space:nowrap; overflow:hidden;">
                     {{ s.last_close | price }}
                   </td>
                   {# 120w — 主数与百分比都加 tabular-nums #}
                   <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
                     <div class="holding-average-main" style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_120 | price }}</div>
-                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap;">{{ s.delta_120 | pct }}</div>
+                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0; white-space:nowrap;">{{ s.delta_120 | pct }}</div>
                   </td>
                   {# 200w #}
                   <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
                     <div class="holding-average-main" style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_200 | price }}</div>
-                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0.02em; white-space:nowrap;">{{ s.delta_200 | pct }}</div>
+                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0; white-space:nowrap;">{{ s.delta_200 | pct }}</div>
                   </td>
                   {# 信号 #}
                   <td class="holding-signal" valign="middle" align="right" style="padding:18px 0 18px 16px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
@@ -319,7 +314,7 @@
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">情绪温度计</div>
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Market Mood</div>
+            <div style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Market Mood</div>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
@@ -340,8 +335,8 @@
                       <td data-sentiment-score-position="{{ sentiment_gauge.pointer_index }}" width="{{ sentiment_gauge.bubble_layout.region_width }}%" height="49" align="{{ sentiment_gauge.bubble_layout.align }}" valign="bottom" style="width:{{ sentiment_gauge.bubble_layout.region_width }}%; height:49px; padding:0; font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1; white-space:nowrap;">
                         <span data-sentiment-score-bubble="true" style="display:inline-block; vertical-align:bottom; white-space:nowrap; text-align:center;">
                           <span data-sentiment-score-face="continuous-corner" style="display:block; padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; -webkit-border-radius:12px; border-radius:12px; white-space:nowrap;">
-                              <span style="font-size:30px; line-height:1; color:#FFFFFF; font-weight:500; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ sentiment_gauge.score_display }}</span>
-                              <span style="font-family:{{ serif_body }}; font-size:11px; line-height:1; color:#FFFFFF; margin-left:4px; letter-spacing:0.08em;">/ 100</span>
+                              <span style="font-size:30px; line-height:1; color:#FFFFFF; font-weight:500; letter-spacing:0; {{ numeric_features }}">{{ sentiment_gauge.score_display }}</span>
+                              <span style="font-family:{{ serif_body }}; font-size:11px; line-height:1; color:#FFFFFF; margin-left:4px; letter-spacing:0;">/ 100</span>
                           </span>
                         </span>
                       </td>
@@ -423,9 +418,9 @@
                   {% if m.error %}
                   <td colspan="3" align="right" valign="middle" style="padding:14px 0; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; font-style:italic;">数据获取失败 · {{ m.error }}</td>
                   {% else %}
-                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_display }}; font-size:16px; color:{{ color_ink }}; font-weight:500; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ m.current | metric_num }}</td>
-                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:13px; color:{{ color_muted }}; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ m.prior | metric_num }}</td>
-                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:12.5px; color:{{ color_muted }}; font-variant-numeric:tabular-nums; font-feature-settings:'tnum';">{{ m.delta | metric_delta }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_display }}; font-size:16px; color:{{ color_ink }}; font-weight:500; letter-spacing:0; {{ numeric_features }}">{{ m.current | metric_num }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:13px; color:{{ color_muted }}; letter-spacing:0; {{ numeric_features }}">{{ m.prior | metric_num }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:12.5px; color:{{ color_muted }}; letter-spacing:0; {{ numeric_features }}">{{ m.delta | metric_delta }}</td>
                   {% endif %}
                 </tr>
                 {% endfor %}
@@ -443,7 +438,7 @@
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">昨日动态</div>
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Yesterday in Holdings</div>
+            <div style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Yesterday in Holdings</div>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
@@ -481,7 +476,7 @@
           <td style="padding:18px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in company_news_summary.footnotes %}
-              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>
+              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -505,7 +500,7 @@
             <p style="margin:{% if loop.first %}0{% else %}6px{% endif %} 0 0 0; font-family:{{ serif_body }}; font-size:12.5px; line-height:1.6; color:{{ color_ink_soft }}; letter-spacing:0.02em;">
               <span style="font-family:{{ serif_display }}; font-size:14px; font-weight:500; color:{{ color_lab_pinned if item.lab in ('OpenAI', 'Anthropic') else color_ink }}; letter-spacing:0.04em;">{{ item.lab }}</span>
               <span style="color:{{ color_muted }}; margin:0 0.7em;">｜</span>
-              {{ item.text | cjk_spaced }}<sup><a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:Charter,Georgia,serif; font-size:11px; font-style:normal;">[{{ loop.index }}]</a></sup>
+              {{ item.text | cjk_spaced }}<sup><a href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11px; font-style:normal;">[{{ loop.index }}]</a></sup>
             </p>
             {% endfor %}
           </td>
@@ -514,7 +509,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for item in frontier_labs_items[:2] %}
-              <a class="source-link" href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ loop.index }}] {{ item.source_name }}</a>
+              <a class="source-link" href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ loop.index }}] {{ item.source_name }}</a>
               {% endfor %}
             </div>
           </td>
@@ -527,7 +522,7 @@
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">关键发言</div>
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Voices</div>
+            <div style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Voices</div>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
@@ -563,7 +558,7 @@
             <blockquote style="margin:0 0 14px 0; padding:2px 0 2px 16px; border-left:2px solid {{ color_accent }};
                                 font-family:{{ serif_quote }}; font-size:17px; font-style:italic;
                                 line-height:1.8; color:{{ color_ink }}; letter-spacing:0.02em;">
-              {{ kp.text | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important;text-decoration:none!important;font-size:11px;font-family:Charter,Georgia,serif;font-style:normal;margin-left:1px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
+              {{ kp.text | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important;text-decoration:none!important;font-size:11px;font-family:{{ serif_body }};font-style:normal;margin-left:1px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
             </blockquote>
             {% endfor %}
             {# Editorial byline:右对齐,中文署名前接 36px 实线短横(用 inline-block
@@ -581,7 +576,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for fn in figure_footnotes %}
-              <a class="source-link" href="{{ fn.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ fn.index }}] {{ fn.source }}</a>
+              <a class="source-link" href="{{ fn.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ fn.index }}] {{ fn.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -595,7 +590,7 @@
         <tr>
           <td style="padding:48px 24px 0 24px;">
             <div style="font-family:{{ serif_display }}; font-size:18px; font-weight:600; color:{{ color_ink }}; letter-spacing:0.4em; line-height:1.2; margin:0; padding:0;">宏观视野</div>
-            <div style="font-family:Charter,Georgia,serif; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Macro Horizon</div>
+            <div style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; letter-spacing:0.3em; text-transform:uppercase; margin:8px 0 0 0;">Macro Horizon</div>
             <div style="border-top:1px solid {{ color_rule }}; margin-top:24px;"></div>
           </td>
         </tr>
@@ -633,7 +628,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in macro_news_summary.footnotes %}
-              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:Charter,Georgia,serif; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>
+              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; margin-right:18px; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -667,7 +662,7 @@
             </div>
             {% endif %}
             {% if buffett_13f and buffett_13f.is_new %}
-            <div style="margin-top:{% if judgment_section %}36px{% else %}0{% endif %}; text-align:center; font-family:Charter,Georgia,serif; font-size:13.5px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.02em;">
+            <div style="margin-top:{% if judgment_section %}36px{% else %}0{% endif %}; text-align:center; font-family:{{ serif_body }}; font-size:13.5px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.02em;">
               伯克希尔本季度 13F 已于 {{ buffett_13f.latest.filed_at | bj_date_cn }}披露
               <br/>
               <a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=0001067983&amp;type=13F-HR&amp;dateb=&amp;owner=include&amp;count=40" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-size:12px; letter-spacing:0.06em; border-bottom:0.5px solid #B5D0EC; padding-bottom:1px;">前往 SEC EDGAR 查阅持仓</a>
@@ -705,8 +700,8 @@
             <div style="font-size:11.5px; color:{{ color_ink_soft }}; line-height:1.7; letter-spacing:0.06em;">
               本邮件由开源的私人晨报系统发送
             </div>
-            <div style="margin-top:6px; font-family:Charter,Georgia,serif; font-size:10.5px; color:{{ color_faint }}; letter-spacing:0.18em; text-transform:uppercase;">
-              刊发时间&nbsp;·&nbsp;{{ generated_at.strftime('%Y-%m-%d %H:%M') }}&nbsp;UTC+8
+            <div style="margin-top:6px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_faint }}; letter-spacing:0.18em; text-transform:uppercase;">
+              刊发时间&nbsp;·&nbsp;<span style="letter-spacing:0.04em; white-space:nowrap;">{{ generated_at.strftime('%Y-%m-%d %H:%M') }}&nbsp;UTC+8</span>
             </div>
           </td>
         </tr>
