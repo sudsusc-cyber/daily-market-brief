@@ -6,7 +6,7 @@ verdict(温度档位)由**确定性加权打分**得出,同样输入永远同样
   - 加权平均(失败指标从权重中剔除并重新归一化)
   - 阈值切档:<25 极度恐慌 / 25-40 偏冷 / 40-60 中性 / 60-75 偏热 / >75 极度贪婪
 
-argument(2-3 句论据)仍由 LLM 撰写,prompt 强制 verdict 已固定,LLM 只能解释"为什么是这个档位"。
+argument(一句总结)仍由 LLM 撰写,prompt 强制 verdict 已固定,LLM 只能解释"为什么是这个档位"。
 
 输入:SentimentBundle(5 个指标的 当前 / 前一日 / rating / unit)
 输出:dict { verdict, argument, score, breakdown } 或 None
@@ -163,11 +163,32 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
 
 # ──────────────────  LLM 写 argument(verdict 已固定,LLM 只解释)  ──────────────────
 
+_SENTENCE_END_RE = re.compile(r"[。！？!?](?:[”’」』】])?")
+
+
+def one_sentence_summary(value: object) -> str:
+    """把模型或历史缓存中的多句总结收束为第一句完整结论。"""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return ""
+    match = _SENTENCE_END_RE.search(text)
+    if match:
+        return text[:match.end()].strip()
+
+    # 英文句点也可作为句末，但不能把 VIX 18.5 一类小数从中间切断。
+    for match in re.finditer(r"\.", text):
+        before = text[match.start() - 1] if match.start() > 0 else ""
+        after = text[match.end()] if match.end() < len(text) else ""
+        if not (before.isdigit() and after.isdigit()):
+            return text[:match.end()].strip()
+    return text
+
 _TASK_INSTRUCTION = """\
-任务:基于下列 5 个情绪指标的"当前值 / 前一日值 / 变化",**给定固定档位**写 argument(2-3 句中文论据)。
+任务:基于下列 5 个情绪指标的"当前值 / 前一日值 / 变化",**给定固定档位**写 argument(一句中文总结)。
 
 档位由确定性加权算法已经决定,你**不得**改变它。你的工作是:
-- 用 2-3 句话解释为什么算法会落到这个档位,引用关键指标的具体数字与方向
+- 只写一句完整中文总结,建议 35-60 个汉字,句末使用句号;不得拆成第二句
+- 在这一句话中解释为什么算法会落到这个档位,引用关键指标的具体数字与方向
 - 重点引用 CNN Fear & Greed / VIX / 高收益债利差 这类更贴近日频风险偏好的指标
 - Shiller PE 是慢变量,只能作为长期估值背景轻轻带过;除非它有显著日度变化,不得作为每日情绪判断的主论据
 - 没有真实历史分位/区间数据时,不得写"历史极值""历史高位""极端估值""接近泡沫"等绝对化表述
@@ -179,7 +200,7 @@ _TASK_INSTRUCTION = """\
 
 输出**严格 JSON**(无 markdown 代码块):
 {
-  "argument": "<2-3 句中文论据>"
+  "argument": "<一句中文总结>"
 }
 """
 
@@ -261,7 +282,7 @@ def judge(
         resp = client.chat(
             payload,
             task_extra=task_instruction,
-            max_tokens=1000,
+            max_tokens=320,
             temperature=0.1,
             timeout=20,
             thinking=False,
@@ -269,7 +290,7 @@ def judge(
         if resp.text:
             data = _parse_json(resp.text)
             if data and "argument" in data and str(data["argument"]).strip():
-                argument = str(data["argument"]).strip()
+                argument = one_sentence_summary(data["argument"])
                 break
             last_error = "InvalidJSONOrEmptyArgument"
             logger.warning(

@@ -390,7 +390,7 @@
             {% endif %}
 
             <div style="margin-top:18px; font-family:{{ serif_body }}; font-size:16px; line-height:1.9; color:{{ color_ink }}; letter-spacing:0.02em;">
-              {{ sentiment_verdict.argument | cjk_spaced }}
+              {{ sentiment_verdict.argument | one_sentence | cjk_spaced }}
             </div>
           </td>
         </tr>

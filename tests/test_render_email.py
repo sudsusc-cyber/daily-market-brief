@@ -289,7 +289,7 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
         sentiment=sentiment,
         sentiment_verdict={
             "verdict": "今日情绪 · 偏热",
-            "argument": "风险偏好有所回升。",
+            "argument": "风险偏好有所回升。第二句不应显示。",
             "score": 67.5,
             "coverage": {
                 "valid_metrics": 5,
@@ -301,6 +301,8 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
 
     assert 'data-sentiment-gauge="true"' in html
     assert ">67.5<" in html
+    assert "风险偏好有所回升。" in html
+    assert "第二句不应显示" not in html
     assert "今日情绪" not in html
     assert "background-color:#A96D4F" in html
     assert "background-color:#D97757" not in html

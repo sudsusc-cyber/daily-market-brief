@@ -28,7 +28,11 @@ from src.processors.figure_filter import _format_input as fig_format
 from src.processors.figure_filter import _parse_output as fig_parse
 from src.processors.macro_filter import _format_input as macro_format
 from src.processors.news_summarizer import _format_input as news_format
-from src.processors.sentiment_judge import _TASK_INSTRUCTION, score_sentiment
+from src.processors.sentiment_judge import (
+    _TASK_INSTRUCTION,
+    one_sentence_summary,
+    score_sentiment,
+)
 from src.processors.sentiment_judge import _format_input as sent_format
 from src.processors.sentiment_judge import _parse_json as sent_parse_json
 from src.processors.translator import _is_chinese, _parse_lines
@@ -193,6 +197,15 @@ class TestSentimentJudge:
     def test_parse_invalid_returns_none(self) -> None:
         assert sent_parse_json("hello world") is None
 
+    def test_summary_keeps_only_first_complete_sentence(self) -> None:
+        text = "VIX 回落至 18.5，风险偏好保持中性。第二句不应进入邮件。"
+        assert one_sentence_summary(text) == "VIX 回落至 18.5，风险偏好保持中性。"
+
+    def test_summary_does_not_split_decimal_point(self) -> None:
+        assert one_sentence_summary("VIX closes at 18.5. Keep watching.") == (
+            "VIX closes at 18.5."
+        )
+
 
 class TestScoreSentiment:
     """确定性加权打分 — 同输入永远同输出"""
@@ -282,6 +295,9 @@ class TestScoreSentiment:
         assert score_sentiment(b) is None
 
     def test_sentiment_prompt_downplays_shiller_pe(self) -> None:
+        assert "只写一句完整中文总结" in _TASK_INSTRUCTION
+        assert "不得拆成第二句" in _TASK_INSTRUCTION
+        assert "2-3 句" not in _TASK_INSTRUCTION
         assert "Shiller PE 是慢变量" in _TASK_INSTRUCTION
         assert "不得作为每日情绪判断的主论据" in _TASK_INSTRUCTION
         assert "不得写\"历史极值\"" in _TASK_INSTRUCTION

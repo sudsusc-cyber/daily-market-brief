@@ -25,7 +25,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.collectors.stocks import StockSignal
 from src.processors.html_safe import is_safe_url
-from src.processors.sentiment_judge import VERDICT_THRESHOLDS
+from src.processors.sentiment_judge import VERDICT_THRESHOLDS, one_sentence_summary
 from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEATURES
@@ -263,6 +263,7 @@ def _build_env() -> Environment:
     env.filters["iso_date_md"] = _filter_iso_date_md
     env.filters["safe_url"] = _filter_safe_url
     env.filters["cjk_spaced"] = add_cjk_spacing
+    env.filters["one_sentence"] = one_sentence_summary
     return env
 
 

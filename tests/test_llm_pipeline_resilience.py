@@ -224,6 +224,18 @@ def test_sentiment_keeps_deterministic_result_when_both_llm_attempts_fail() -> N
     assert all(call["thinking"] is False for call in client.calls)
 
 
+def test_sentiment_keeps_only_one_sentence_from_llm() -> None:
+    client = _SequenceClient([
+        _response('{"argument":"VIX 回落至 18.5，风险偏好维持中性。第二句不应保留。"}'),
+    ])
+
+    result = judge(_sentiment_bundle(), client=client)
+
+    assert result is not None
+    assert result["argument"] == "VIX 回落至 18.5，风险偏好维持中性。"
+    assert client.calls[0]["max_tokens"] == 320
+
+
 def test_holdings_intro_and_subject_disable_thinking() -> None:
     intro_client = _SequenceClient([
         _response(None, "timeout"),
