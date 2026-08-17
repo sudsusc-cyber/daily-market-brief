@@ -287,6 +287,26 @@ class TestScoreSentiment:
         b = self._bundle(fg=None, vix=None, hy=2, pe=38, dxy=90)
         assert score_sentiment(b) is None
 
+    def test_real_fear_observation_reaches_extreme_even_with_opposing_credit(self) -> None:
+        # 2025-04-08 的 CNN/VIX/DXY/Shiller 真实观测;债利差故意设为
+        # 最贪婪的 2%,验证辅助项不能把真实极端恐慌拉回普通区间。
+        out = score_sentiment(self._bundle(
+            fg=2.9, vix=52.33, hy=2.0, pe=32.63, dxy=102.96,
+        ))
+        assert out is not None
+        assert out["score"] == 12.2
+        assert out["verdict"] == "极度恐慌"
+
+    def test_real_greed_observation_reaches_extreme_even_with_opposing_credit(self) -> None:
+        # 2023-12-19 的 CNN/VIX/DXY/Shiller 真实观测;债利差故意设为
+        # 最恐慌的 8%,仍必须能进入极度贪婪区间。
+        out = score_sentiment(self._bundle(
+            fg=82.9714285714, vix=12.53, hy=8.0, pe=31.45, dxy=102.17,
+        ))
+        assert out is not None
+        assert out["score"] == 76.4
+        assert out["verdict"] == "极度贪婪"
+
     def test_single_slow_metric_is_insufficient_coverage(self) -> None:
         b = self._bundle(fg=None, vix=None, hy=None, pe=38, dxy=None)
         assert score_sentiment(b) is None
