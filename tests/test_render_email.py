@@ -308,8 +308,15 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert "background-color:#D97757" not in html
     assert "color:#FFFFFF" in html
     assert 'data-sentiment-score-track="true"' in html
-    assert 'data-sentiment-score-position="14"' in html
-    assert 'data-sentiment-pointer-position="14"' in html
+    assert 'data-sentiment-coordinate-frame="true"' in html
+    assert 'data-sentiment-label-coordinate-frame="true"' in html
+    assert "padding:0 2px" in html
+    assert 'data-sentiment-score-position="67.5"' in html
+    assert 'data-sentiment-tail-position="67.5"' in html
+    assert 'data-sentiment-pointer-position="67.5"' in html
+    assert 'data-sentiment-pointer-glyph="true"' in html
+    assert "width:57.5%" in html  # 20% 气泡容器以 67.5% 为中心
+    assert "width:66.5%" in html  # 2% 箭头容器以 67.5% 为中心
     assert 'data-sentiment-score-bubble="true"' in html
     assert 'data-sentiment-score-face="continuous-corner"' in html
     assert "-webkit-border-radius:12px;border-radius:12px" in html
@@ -317,7 +324,8 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert 'display:inline-block;vertical-align:bottom' in html
     assert 'data-sentiment-score-tail="true"' in html
     assert "&#9660;" in html
-    assert 'color:#A96D4F"><span data-sentiment-score-tail="true">' in html
+    assert "color:#A96D4F" in html
+    assert 'data-sentiment-score-tail="true" style="display:block;width:100%;text-align:center"' in html
     assert 'data-sentiment-label="true"' not in html
     assert "极度恐慌" in html
     assert "极度贪婪" in html
@@ -334,7 +342,7 @@ def test_render_email_renders_daily_sentiment_gauge() -> None:
     assert ".sentiment-glass-tube { border-radius:999px 0 0 999px !important; }" in html
     assert "width:100%;max-width:100%;table-layout:fixed" in html
     assert "clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%" in html
-    assert "padding:1px 4px 1px 1px" in html
+    assert "padding:1px;line-height:0;font-size:0;border-radius:999px" in html
     assert "background-color:rgba(248,245,238,0.42)" in html
     assert "0 2px 8px rgba(26,26,26,0.10)" in html
     assert "background-color:#4F6870" in html  # 渐变不支持时仍保留纯色色带
@@ -377,9 +385,13 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
 
     neutral = _build_sentiment_gauge({"score": 50.0, "verdict": "今日情绪 · 中性"})
     assert neutral is not None
-    assert len(neutral["pointer_cells"]) == 21
-    assert neutral["pointer_cells"][10]["active"] is True
-    assert sum(cell["active"] for cell in neutral["pointer_cells"]) == 1
+    assert neutral["pointer_percent"] == "50"
+    assert neutral["pointer_layout"] == {
+        "left_width": 49.0,
+        "region_width": 2.0,
+        "right_width": 49.0,
+        "align": "center",
+    }
     assert neutral["bubble_layout"] == {
         "left_width": 40.0,
         "region_width": 20.0,
@@ -390,12 +402,25 @@ def test_sentiment_gauge_badge_color_follows_current_heat_band() -> None:
     extreme_greed = _build_sentiment_gauge({"score": 100.0, "verdict": "极度贪婪"})
     assert extreme_fear is not None
     assert extreme_greed is not None
-    assert extreme_fear["pointer_index"] == 0
     assert extreme_fear["bubble_layout"]["left_width"] == 0.0
     assert extreme_fear["bubble_layout"]["align"] == "left"
-    assert extreme_greed["pointer_index"] == 20
+    assert extreme_fear["pointer_layout"]["left_width"] == 0.0
+    assert extreme_fear["pointer_layout"]["align"] == "left"
     assert extreme_greed["bubble_layout"]["right_width"] == 0.0
     assert extreme_greed["bubble_layout"]["align"] == "right"
+    assert extreme_greed["pointer_layout"]["right_width"] == 0.0
+    assert extreme_greed["pointer_layout"]["align"] == "right"
+
+
+def test_sentiment_gauge_number_and_arrows_share_exact_percent_coordinate() -> None:
+    """非边缘分数下,气泡与箭头容器的几何中心必须等于 score%。"""
+    for score in (25.0, 37.5, 50.0, 67.5, 75.0):
+        gauge = _build_sentiment_gauge({"score": score, "verdict": "ignored"})
+        assert gauge is not None
+        pointer = gauge["pointer_layout"]
+        bubble = gauge["bubble_layout"]
+        assert pointer["left_width"] + pointer["region_width"] / 2 == score
+        assert bubble["left_width"] + bubble["region_width"] / 2 == score
 
 
 def test_sentiment_gauge_uses_judge_thresholds_at_boundaries() -> None:

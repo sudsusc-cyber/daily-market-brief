@@ -328,11 +328,14 @@
             <table data-sentiment-gauge="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:0; border-collapse:collapse; background-color:{{ color_paper }};">
               <tr>
                 <td style="padding:18px 18px 14px 18px;">
-                  {# 气泡主体在中段跟随指针，两端吸附边界；尾巴始终停在真实分数档位。 #}
+                  {# 气泡/箭头坐标帧与色带内缘同样左右缩进 2px（管壁 1px + 内衬 1px）。 #}
+                  <table data-sentiment-coordinate-frame="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                    <tr><td style="padding:0 2px;">
+                  {# 气泡主体与箭头共用真实 score% 坐标;两端仅为防溢出而吸附。 #}
                   <table data-sentiment-score-track="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                     <tr>
                       {% if sentiment_gauge.bubble_layout.left_width > 0 %}<td width="{{ sentiment_gauge.bubble_layout.left_width }}%" style="width:{{ sentiment_gauge.bubble_layout.left_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
-                      <td data-sentiment-score-position="{{ sentiment_gauge.pointer_index }}" width="{{ sentiment_gauge.bubble_layout.region_width }}%" height="49" align="{{ sentiment_gauge.bubble_layout.align }}" valign="bottom" style="width:{{ sentiment_gauge.bubble_layout.region_width }}%; height:49px; padding:0; font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1; white-space:nowrap;">
+                      <td data-sentiment-score-position="{{ sentiment_gauge.pointer_percent }}" width="{{ sentiment_gauge.bubble_layout.region_width }}%" height="49" align="{{ sentiment_gauge.bubble_layout.align }}" valign="bottom" style="width:{{ sentiment_gauge.bubble_layout.region_width }}%; height:49px; padding:0; font-family:{{ serif_display }}; color:{{ color_ink }}; line-height:1; white-space:nowrap;">
                         <span data-sentiment-score-bubble="true" style="display:inline-block; vertical-align:bottom; white-space:nowrap; text-align:center;">
                           <span data-sentiment-score-face="continuous-corner" style="display:block; padding:10px 14px 9px 14px; background-color:{{ sentiment_gauge.active_color }}; -webkit-border-radius:12px; border-radius:12px; white-space:nowrap;">
                               <span style="font-size:30px; line-height:1; color:#FFFFFF; font-weight:500; letter-spacing:0; {{ numeric_features }}">{{ sentiment_gauge.score_display }}</span>
@@ -344,28 +347,30 @@
                     </tr>
                   </table>
 
-                  {# 尾巴独立使用真实指针格；边缘时在吸附后的气泡底部移动而非带框越界。 #}
+                  {# 尾巴与下方黑色箭头复用同一 pointer_layout,中心就是 score%。 #}
                   <table data-sentiment-score-tail-track="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
                     <tr>
-                      {% for cell in sentiment_gauge.pointer_cells %}
-                      <td height="8" align="center" valign="top" style="height:8px; padding:0; font-family:Arial,sans-serif; font-size:14px; line-height:8px; color:{{ sentiment_gauge.active_color }};">{% if cell.active %}<span data-sentiment-score-tail="true">&#9660;</span>{% else %}&nbsp;{% endif %}</td>
-                      {% endfor %}
+                      {% if sentiment_gauge.pointer_layout.left_width > 0 %}<td width="{{ sentiment_gauge.pointer_layout.left_width }}%" style="width:{{ sentiment_gauge.pointer_layout.left_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
+                      <td data-sentiment-tail-position="{{ sentiment_gauge.pointer_percent }}" width="{{ sentiment_gauge.pointer_layout.region_width }}%" height="8" align="{{ sentiment_gauge.pointer_layout.align }}" valign="top" style="width:{{ sentiment_gauge.pointer_layout.region_width }}%; height:8px; padding:0; font-family:Arial,sans-serif; font-size:14px; line-height:8px; color:{{ sentiment_gauge.active_color }};"><span data-sentiment-score-tail="true" style="display:block; width:100%; text-align:center;">&#9660;</span></td>
+                      {% if sentiment_gauge.pointer_layout.right_width > 0 %}<td width="{{ sentiment_gauge.pointer_layout.right_width }}%" style="width:{{ sentiment_gauge.pointer_layout.right_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
                     </tr>
                   </table>
 
-                  {# 指针行：21 个等宽位置对应每 5 分；50 分恰好落在正中央。 #}
+                  {# 黑色指针行：与尾巴共用精确百分比坐标,不再按 21 格另行换算。 #}
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px; table-layout:fixed; border-collapse:collapse;">
                     <tr>
-                      {% for cell in sentiment_gauge.pointer_cells %}
-                      <td{% if cell.active %} data-sentiment-pointer-position="{{ loop.index0 }}"{% endif %} height="12" align="center" valign="bottom" style="height:12px; padding:0; font-family:Arial,sans-serif; font-size:10px; line-height:10px; color:{{ color_ink }};">{% if cell.active %}▼{% else %}&nbsp;{% endif %}</td>
-                      {% endfor %}
+                      {% if sentiment_gauge.pointer_layout.left_width > 0 %}<td width="{{ sentiment_gauge.pointer_layout.left_width }}%" style="width:{{ sentiment_gauge.pointer_layout.left_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
+                      <td data-sentiment-pointer-position="{{ sentiment_gauge.pointer_percent }}" width="{{ sentiment_gauge.pointer_layout.region_width }}%" height="12" align="{{ sentiment_gauge.pointer_layout.align }}" valign="bottom" style="width:{{ sentiment_gauge.pointer_layout.region_width }}%; height:12px; padding:0; font-family:Arial,sans-serif; font-size:10px; line-height:10px; color:{{ color_ink }};"><span data-sentiment-pointer-glyph="true" style="display:block; width:100%; text-align:center;">▼</span></td>
+                      {% if sentiment_gauge.pointer_layout.right_width > 0 %}<td width="{{ sentiment_gauge.pointer_layout.right_width }}%" style="width:{{ sentiment_gauge.pointer_layout.right_width }}%; padding:0; font-size:0; line-height:0;">&nbsp;</td>{% endif %}
                     </tr>
+                  </table>
+                    </td></tr>
                   </table>
                   {# 玻璃温度计管：纯色为邮件客户端保底；支持 CSS 渐变时叠加管壁高光与底部暗部。 #}
                   <table class="sentiment-glass-tube" data-sentiment-glass-tube="true" data-sentiment-glass-style="quiet-capsule" data-sentiment-glass-tip="curved-clear" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                          style="width:100%; max-width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; background-color:#F3F0EA; background-color:rgba(248,245,238,0.42); background-image:linear-gradient(180deg,rgba(255,255,255,0.82) 0%,rgba(255,255,255,0.22) 46%,rgba(26,26,26,0.05) 100%); border:1px solid #C8C1B5; border-radius:999px; -webkit-clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%,calc(100% - 2px) 32%,100% 50%,calc(100% - 2px) 68%,calc(100% - 6px) 88%,calc(100% - 12px) 100%,0 100%); clip-path:polygon(0 0,calc(100% - 12px) 0,calc(100% - 6px) 12%,calc(100% - 2px) 32%,100% 50%,calc(100% - 2px) 68%,calc(100% - 6px) 88%,calc(100% - 12px) 100%,0 100%); box-shadow:0 2px 8px rgba(26,26,26,0.10),inset 0 1px 0 rgba(255,255,255,0.92),inset 0 -1px 0 rgba(26,26,26,0.08);">
                     <tr>
-                      <td data-sentiment-glass-rim="true" style="padding:1px 4px 1px 1px; line-height:0; font-size:0; border-radius:999px 0 0 999px; background-color:#F3F0EA; background-color:rgba(248,245,238,0.32);">
+                      <td data-sentiment-glass-rim="true" style="padding:1px; line-height:0; font-size:0; border-radius:999px; background-color:#F3F0EA; background-color:rgba(248,245,238,0.32);">
                         <table data-sentiment-color-bar="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;">
                           <tr>
                             {% for cell in sentiment_gauge.cells %}
@@ -377,12 +382,16 @@
                     </tr>
                   </table>
 
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px; table-layout:fixed; border-collapse:collapse;">
-                    <tr>
-                      {% for segment in sentiment_gauge.segments %}
-                      <td width="{{ segment.width }}%" align="{% if loop.first %}left{% elif loop.last %}right{% else %}center{% endif %}" style="width:{{ segment.width }}%; padding:0; font-family:{{ serif_body }}; font-size:9px; line-height:1.4; color:{{ color_muted }}; white-space:nowrap;">{{ segment.label }}</td>
-                      {% endfor %}
-                    </tr>
+                  <table data-sentiment-label-coordinate-frame="true" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                    <tr><td style="padding:0 2px;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px; table-layout:fixed; border-collapse:collapse;">
+                        <tr>
+                          {% for segment in sentiment_gauge.segments %}
+                          <td width="{{ segment.width }}%" align="{% if loop.first %}left{% elif loop.last %}right{% else %}center{% endif %}" style="width:{{ segment.width }}%; padding:0; font-family:{{ serif_body }}; font-size:9px; line-height:1.4; color:{{ color_muted }}; white-space:nowrap;">{{ segment.label }}</td>
+                          {% endfor %}
+                        </tr>
+                      </table>
+                    </td></tr>
                   </table>
                 </td>
               </tr>

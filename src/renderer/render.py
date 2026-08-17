@@ -65,10 +65,11 @@ def _finite_number(value: float | None) -> float | None:
 
 
 def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
-    """把 0-100 情绪分数转换成邮件兼容的 20 格静态仪表。
+    """把 0-100 情绪分数转换成邮件兼容的静态仪表。
 
-    不使用 CSS 定位或远程图片：表格单元格在 QQ、Outlook 和移动端邮件
-    客户端中的表现更稳定。20 格对应每格 5 分，正文仍显示精确分数。
+    不使用 CSS 定位或远程图片：数字气泡、尾巴、黑色箭头与色带共用
+    同一个 0-100 百分比坐标。表格单元格在 QQ、Outlook 和移动端邮件中
+    的表现比 absolute positioning 更稳定。
     """
     if not isinstance(verdict, dict):
         return None
@@ -77,26 +78,37 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
         return None
 
     score = max(0.0, min(100.0, score))
-    active_index = min(19, int(score / 5.0))
     active_label = next(
         label for upper, label in VERDICT_THRESHOLDS if score < upper
     )
-    # 21 个位置（每 5 分一档）兼顾精度与邮件 HTML 体积；50 分仍严格居中。
-    pointer_index = min(20, max(0, round(score / 5.0)))
-    pointer_percent = (pointer_index + 0.5) / 21.0 * 100.0
+
+    # 气泡的 20% 容器以真实分数为中心;只在两端吸附边界防止溢出。
     bubble_region_width = 20.0
-    # 气泡主体在两端吸附于色带边界，小尾巴仍留在真实 pointer_index。
-    # 前/后四档覆盖 640px 桌面邮件与约 320px 移动端的气泡固有宽度。
-    if pointer_index <= 3:
+    if score <= bubble_region_width / 2.0:
         bubble_left = 0.0
         bubble_align = "left"
-    elif pointer_index >= 17:
+    elif score >= 100.0 - bubble_region_width / 2.0:
         bubble_left = 100.0 - bubble_region_width
         bubble_align = "right"
     else:
-        bubble_left = pointer_percent - bubble_region_width / 2.0
+        bubble_left = score - bubble_region_width / 2.0
         bubble_align = "center"
     bubble_right = 100.0 - bubble_left - bubble_region_width
+
+    # 两个箭头使用同一个 2% 宽的标记格。中段标记格中心严格等于
+    # score%;0/100 分时吸附边界,避免字形被邮件客户端裁掉。
+    pointer_region_width = 2.0
+    if score <= pointer_region_width / 2.0:
+        pointer_left = 0.0
+        pointer_align = "left"
+    elif score >= 100.0 - pointer_region_width / 2.0:
+        pointer_left = 100.0 - pointer_region_width
+        pointer_align = "right"
+    else:
+        pointer_left = score - pointer_region_width / 2.0
+        pointer_align = "center"
+    pointer_right = 100.0 - pointer_left - pointer_region_width
+
     cells = []
     for index in range(20):
         cell_score = index * 5.0
@@ -105,7 +117,6 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
         )
         cells.append({
             "color": _SENTIMENT_COLOR_BY_LABEL[cell_label][0],
-            "active": index == active_index,
         })
 
     score_display = f"{score:.1f}".rstrip("0").rstrip(".")
@@ -116,17 +127,19 @@ def _build_sentiment_gauge(verdict: dict | None) -> dict | None:
         "label": active_label,
         "active_color": _SENTIMENT_COLOR_BY_LABEL[active_label][1],
         "coverage": verdict.get("coverage") if isinstance(verdict.get("coverage"), dict) else None,
-        "pointer_index": pointer_index,
+        "pointer_percent": score_display,
         "bubble_layout": {
             "left_width": bubble_left,
             "region_width": bubble_region_width,
             "right_width": bubble_right,
             "align": bubble_align,
         },
-        "pointer_cells": [
-            {"active": index == pointer_index}
-            for index in range(21)
-        ],
+        "pointer_layout": {
+            "left_width": pointer_left,
+            "region_width": pointer_region_width,
+            "right_width": pointer_right,
+            "align": pointer_align,
+        },
         "cells": cells,
         "segments": [
             {
