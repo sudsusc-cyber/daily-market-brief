@@ -298,9 +298,8 @@
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
                 <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-                  数据源&nbsp;Yahoo&nbsp;Finance&nbsp;周频收盘价。120 / 200 周已合并显示，均为对应周频收盘均价的算术平均。
-                  括号内百分比表示现价相对该均线的位置——负值即现价低于均线。
-                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值取 Morningstar 最新公开研究值，并保留来源发布日期或最近公开证据日期；数据经过标的、币种、双读一致性与数量级校验，公开来源短时故障时仅允许沿用 48 小时内最后一次已验证快照。IRR 仍由原有逐股固定模型按当前价格独立反推，不由公允价值换算，均非收益承诺。数据检索截至北京时间&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 v2 先按逐股固定基本面公式复算，再用跨周期区间抑制单期现金流失真：NVDA、TSM、泡泡玛特以 250 日均线为校准锚，其余标的以 120 周均线为校准锚，基本面原值决定锚点上下 10% 区间内的位置。IRR 为当前价格反推的长期模型内部收益率，均非收益承诺。官方财务资料检索截至北京时间&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
+                  现价 / 均线：Yahoo Finance；括号为现价相对均线幅度。
+                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：Morningstar 最新公开值；1Y IRR＝公允价值 ÷ 现价 − 1（不含股息，仅供参考）。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
                 </td>
               </tr>
             </table>

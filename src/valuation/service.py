@@ -127,8 +127,9 @@ def apply_morningstar_fair_values(
     *,
     fair_values: Mapping[str, MorningstarFairValue],
     failures: Mapping[str, str],
+    prices: Mapping[str, float | None],
 ) -> dict[str, ValuationDisplay]:
-    """只替换价值栏；原逐股模型算出的 IRR 保持不变。"""
+    """用晨星公允价值与现价统一生成 1Y IRR，不沿用旧模型 IRR。"""
     updated = dict(displays)
     for ticker, display in displays.items():
         fair_value = fair_values.get(ticker)
@@ -137,14 +138,25 @@ def apply_morningstar_fair_values(
             updated[ticker] = replace(
                 display,
                 intrinsic_value=None,
+                implied_return=None,
+                hurdle_rate=0.10,
+                return_label="1Y IRR",
                 value_label="公允价值",
                 warnings=(*display.warnings, reason),
             )
             continue
+        current_price = prices.get(ticker)
+        implied_return = (
+            fair_value.fair_value / current_price - 1
+            if current_price is not None and current_price > 0
+            else None
+        )
         warning = (fair_value.warning,) if fair_value.warning else ()
         updated[ticker] = replace(
             display,
             intrinsic_value=fair_value.fair_value,
+            implied_return=implied_return,
+            hurdle_rate=0.10,
             currency_symbol=_symbol(fair_value.currency),
             financial_as_of=fair_value.fair_value_updated_at,
             source_url=fair_value.source_url,
@@ -152,8 +164,9 @@ def apply_morningstar_fair_values(
                 f"morningstar:{fair_value.provider_code}:"
                 f"{fair_value.fair_value_updated_at}:{fair_value.fair_value:g}"
             ),
-            formula_id="morningstar_fair_value",
-            model_version="morningstar-public-v1",
+            formula_id="morningstar_fair_value_1y_irr",
+            model_version="morningstar-public-v2",
+            return_label="1Y IRR",
             value_label="公允价值",
             warnings=(*display.warnings, *warning),
         )
@@ -280,6 +293,7 @@ def prepare_valuation_displays(
             displays,
             fair_values=fair_values,
             failures=fair_value_failures,
+            prices=prices,
         )
     displays = enforce_jump_guard(displays, state_dir=state_dir)
     current = sum(1 for value in displays.values() if not value.is_pending)

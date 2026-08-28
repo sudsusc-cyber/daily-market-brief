@@ -111,7 +111,7 @@ def test_holdings_table_renders_intrinsic_value_before_signal() -> None:
     assert ">$120.00<" not in html
     assert ">120.00<" in html
     assert "IRR&nbsp;11.2%" in html
-    assert "官方财务资料检索截至" in html
+    assert "内在价值 / IRR：逐股固定模型，仅供参考" in html
 
 
 def test_holdings_table_labels_morningstar_value_without_changing_irr() -> None:
@@ -128,9 +128,10 @@ def test_holdings_table_labels_morningstar_value_without_changing_irr() -> None:
         ticker="MSFT",
         status="current",
         intrinsic_value=600.0,
-        implied_return=0.092,
+        implied_return=0.50,
         hurdle_rate=0.10,
         value_label="公允价值",
+        return_label="1Y IRR",
     )
     html = render_email(
         signals=[signal],
@@ -139,11 +140,10 @@ def test_holdings_table_labels_morningstar_value_without_changing_irr() -> None:
     )
     assert '公允价<span style="letter-spacing:0">值</span>' in html
     assert ">600.00<" in html
-    assert "IRR&nbsp;9.2%" in html
-    assert "不由公允价值换算" in html
-    assert "来源发布日期或最近公开证据日期" in html
-    assert "保留原始估值日期" not in html
-    assert "48 小时内最后一次已验证快照" in html
+    assert "1Y IRR&nbsp;50.0%" in html
+    assert "1Y IRR＝公允价值 ÷ 现价 − 1" in html
+    assert "逐股固定模型按当前价格独立反推" not in html
+    assert "48 小时内最后一次已验证快照" not in html
 
 
 def test_holdings_table_pending_never_backfills_approximate_value() -> None:

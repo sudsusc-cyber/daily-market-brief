@@ -119,35 +119,36 @@ def _build_logo_cids() -> dict[str, str]:
 def _build_mock_valuations() -> dict[str, ValuationDisplay]:
     """仅供视觉预览；数值取本次公开 Morningstar 全量复核，不写入生产底稿。"""
     values = {
-        "MSFT": (600.00, 0.091, "$"),
-        "COST": (650.00, 0.074, "$"),
-        "AAPL": (285.00, 0.087, "$"),
-        "NVDA": (280.00, 0.096, "$"),
-        "TSM": (534.00, 0.102, "$"),
-        "MCO": (500.00, 0.094, "$"),
-        "GOOG": (433.00, 0.108, "$"),
-        "BRK.B": (510.00, 0.076, "$"),
-        "KO": (74.00, 0.113, "$"),
-        "AXP": (335.00, 0.107, "$"),
-        "0700.HK": (800.00, 0.121, "HK$"),
-        "9992.HK": (280.00, 0.112, "HK$"),
-        "MA": (550.00, 0.104, "$"),
-        "LIN": (540.00, 0.096, "$"),
+        "MSFT": (600.00, "$"),
+        "COST": (650.00, "$"),
+        "AAPL": (285.00, "$"),
+        "NVDA": (280.00, "$"),
+        "TSM": (534.00, "$"),
+        "MCO": (500.00, "$"),
+        "GOOG": (433.00, "$"),
+        "BRK.B": (510.00, "$"),
+        "KO": (74.00, "$"),
+        "AXP": (335.00, "$"),
+        "0700.HK": (800.00, "HK$"),
+        "9992.HK": (280.00, "HK$"),
+        "MA": (550.00, "$"),
+        "LIN": (540.00, "$"),
     }
+    prices = {signal.holding.ticker: signal.last_close for signal in _build_mock_signals()}
     return {
         ticker: ValuationDisplay(
             ticker=ticker,
             status="current",
             intrinsic_value=value,
-            implied_return=implied,
-            hurdle_rate=(0.12 if ticker == "9992.HK" else 0.11 if ticker in {"TSM", "0700.HK"} else 0.10),
+            implied_return=value / prices[ticker] - 1,
+            hurdle_rate=0.10,
             currency_symbol=symbol,
-            return_label=("5Y SOTP IRR" if ticker == "BRK.B" else "IRR"),
+            return_label="1Y IRR",
             value_label="公允价值",
             financial_as_of="2026-Q2",
             approved_at="2026-08-28",
         )
-        for ticker, (value, implied, symbol) in values.items()
+        for ticker, (value, symbol) in values.items()
     }
 
 
