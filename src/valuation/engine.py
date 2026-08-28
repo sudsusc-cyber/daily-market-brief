@@ -32,6 +32,9 @@ class ValuationSnapshot:
     financial_as_of: str
     approved_at: str
     currency_symbol: str
+    data_provider: str | None = None
+    data_retrieved_at: str | None = None
+    normalization_version: str | None = None
     scenario: str = "base"
     fx_reporting_per_market: float | None = None
     adr_ratio: float | None = None
@@ -102,6 +105,15 @@ def snapshot_from_dict(raw: dict[str, Any]) -> ValuationSnapshot:
         financial_as_of=str(raw["financial_as_of"]).strip(),
         approved_at=str(raw["approved_at"]).strip(),
         currency_symbol=str(raw["currency_symbol"]).strip(),
+        data_provider=(str(raw["data_provider"]).strip() if raw.get("data_provider") else None),
+        data_retrieved_at=(
+            str(raw["data_retrieved_at"]).strip() if raw.get("data_retrieved_at") else None
+        ),
+        normalization_version=(
+            str(raw["normalization_version"]).strip()
+            if raw.get("normalization_version")
+            else None
+        ),
         scenario=str(raw.get("scenario", "base")).strip(),
         fx_reporting_per_market=optional("fx_reporting_per_market"),
         adr_ratio=optional("adr_ratio"),

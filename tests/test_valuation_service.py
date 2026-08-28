@@ -3,8 +3,16 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from src.valuation.models import ValuationDisplay
-from src.valuation.service import commit_published_values, enforce_jump_guard
+from src.collectors.stocks import StockSignal
+from src.config import HOLDINGS
+from src.valuation.engine import ValuationSnapshot
+from src.valuation.models import FreshnessResult, OfficialDocument, ValuationDisplay
+from src.valuation.policy import POLICIES
+from src.valuation.service import (
+    commit_published_values,
+    enforce_jump_guard,
+    prepare_valuation_displays,
+)
 
 
 def _display(value: float, document_id: str = "doc") -> ValuationDisplay:
@@ -56,3 +64,60 @@ def test_commit_keeps_pending_ticker_previous_value(tmp_path) -> None:
     )
     payload = json.loads((tmp_path / "valuation_published.json").read_text())
     assert payload["valuations"]["AAPL"]["intrinsic_value"] == 100.0
+
+
+def test_prepare_uses_automatic_snapshot_without_pending(monkeypatch, tmp_path) -> None:
+    now = datetime(2026, 8, 28, tzinfo=UTC)
+    policy = POLICIES["AAPL"]
+    document = OfficialDocument(
+        document_id="latest",
+        document_type="10-Q",
+        report_period="2026-06-30",
+        published_at=now,
+        discovered_at=now,
+        source_url="https://www.sec.gov/latest",
+        source_domain="sec.gov",
+        content_hash="verified",
+    )
+    initial = FreshnessResult(
+        ticker="AAPL",
+        status="new_filing_pending",
+        checked_at=now,
+        latest_document=document,
+    )
+    snapshot = ValuationSnapshot(
+        ticker="AAPL",
+        formula_id=policy.formula_id,
+        model_version=policy.model_version,
+        method=policy.method,
+        source_document_id="latest",
+        source_url=document.source_url,
+        source_content_hash="verified",
+        financial_as_of="2026-06-30",
+        approved_at="2026-08-28",
+        currency_symbol="$",
+        discount_rate=policy.hurdle_rate,
+        terminal_growth=policy.terminal_growth,
+        cash_flows_per_share=(10.0, 10.5, 11.0, 11.5, 12.0),
+    )
+    holding = next(item for item in HOLDINGS if item.ticker == "AAPL")
+    signal = StockSignal(holding, 100.0, 90.0, 80.0, 0.1, 0.2, "NONE")
+    monkeypatch.setattr("src.valuation.service.POLICIES", {"AAPL": policy})
+    monkeypatch.setattr(
+        "src.valuation.service.check_official_freshness",
+        lambda *args, **kwargs: {"AAPL": initial},
+    )
+    monkeypatch.setattr(
+        "src.valuation.service.refresh_snapshots",
+        lambda **kwargs: ({"AAPL": snapshot}, {}),
+    )
+    displays, freshness = prepare_valuation_displays(
+        signals=[signal],
+        state_dir=tmp_path,
+        config_dir=tmp_path,
+        checked_at=now,
+        download_original=True,
+    )
+    assert freshness["AAPL"].status == "current"
+    assert displays["AAPL"].intrinsic_value is not None
+    assert not displays["AAPL"].is_pending

@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from src.collectors.stocks import StockSignal
+from src.valuation.autosnapshot import refresh_snapshots
 from src.valuation.engine import ValuationInputError, calculate_display, load_snapshots
-from src.valuation.freshness import check_official_freshness
-from src.valuation.models import FreshnessResult, ValuationDisplay
+from src.valuation.freshness import check_official_freshness, evaluate_freshness
+from src.valuation.models import FreshnessResult, OfficialDocument, ValuationDisplay
 from src.valuation.policy import POLICIES
 
 logger = logging.getLogger(__name__)
@@ -123,8 +124,9 @@ def prepare_valuation_displays(
     checked_at: datetime | None = None,
     download_original: bool = True,
     prior_freshness: dict[str, FreshnessResult] | None = None,
+    reviewer: Any | None = None,
 ) -> tuple[dict[str, ValuationDisplay], dict[str, FreshnessResult]]:
-    """读取批准底稿、核验最新文件并由 Python 计算邮件展示值。"""
+    """自动刷新底稿、核验最新文件并由 Python 计算邮件展示值。"""
     if checked_at is None:
         checked_at = datetime.now(UTC)
     try:
@@ -146,6 +148,60 @@ def prepare_valuation_displays(
         download_original=download_original,
         prior_results=prior_freshness,
     )
+    # 第一遍检查下载并哈希官方原文后，使用标准化财务数据自动生成/刷新底稿。
+    # 第二遍仅复查文件编号，不重复访问财务 provider 或改写底稿。
+    refresh_failures: dict[str, str] = {}
+    if download_original:
+        snapshots, refresh_failures = refresh_snapshots(
+            signals=signals,
+            freshness=freshness,
+            existing=snapshots,
+            state_path=state_dir / "valuation_snapshots.json",
+            checked_at=checked_at,
+            reviewer=reviewer,
+        )
+
+    # 用同一次官方发现结果重新核验自动底稿。若 provider 短时失败而已有上一次
+    # 可复算底稿，则继续显示最后已知值并标记 not_due；日志保留失败原因，避免
+    # 因单一第三方短时故障让整列退回“待更新”。
+    reconciled: dict[str, FreshnessResult] = {}
+    for ticker, policy in POLICIES.items():
+        snapshot = snapshots.get(ticker)
+        result = freshness[ticker]
+        if snapshot is None:
+            reconciled[ticker] = result
+            continue
+        latest = result.latest_document
+        if latest is not None and latest.document_id == snapshot.source_document_id:
+            reconciled[ticker] = evaluate_freshness(
+                policy=policy,
+                latest_document=latest,
+                valuation_document_id=snapshot.source_document_id,
+                checked_at=checked_at,
+            )
+            continue
+        reason = refresh_failures.get(ticker) or result.reason or "自动刷新暂不可用"
+        retained_document = OfficialDocument(
+            document_id=snapshot.source_document_id,
+            document_type="LAST_KNOWN_GOOD",
+            report_period=snapshot.financial_as_of,
+            published_at=checked_at,
+            discovered_at=checked_at,
+            source_url=snapshot.source_url,
+            source_domain="retained-official-source",
+            title="上一份可复算官方底稿",
+            content_hash=snapshot.source_content_hash,
+        )
+        reconciled[ticker] = FreshnessResult(
+            ticker=ticker,
+            status="not_due",
+            checked_at=checked_at,
+            latest_document=retained_document,
+            valuation_document_id=snapshot.source_document_id,
+            reason=f"沿用上一份可复算底稿：{reason}",
+        )
+        logger.warning("valuation.last_known_good ticker=%s reason=%s", ticker, reason)
+    freshness = reconciled
     prices = {signal.holding.ticker: signal.last_close for signal in signals}
     displays: dict[str, ValuationDisplay] = {}
     for ticker, policy in POLICIES.items():

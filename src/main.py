@@ -187,6 +187,16 @@ def main() -> int:
     settings = load_settings()
     now_bj = now_beijing()
 
+    # 生产邮件只使用经人工验收的固定版本。估值新财报复核与后续所有文本处理
+    # 共用同一客户端和总 token/时间预算；最终估值始终由 Python 复算。
+    deepseek_model = settings.deepseek_model
+    logger.info("llm.model_pinned model=%s", deepseek_model)
+    llm = LLMClient(
+        api_key=settings.deepseek_api_key,
+        model=deepseek_model,
+        total_timeout_seconds=720.0 if settings.valuation_enabled else 480.0,
+    )
+
     logger.info("main.start  generated_at=%s", now_bj.isoformat(timespec="seconds"))
 
     force_send = os.environ.get("FORCE_SEND", "").strip().lower() in ("1", "true")
@@ -208,8 +218,7 @@ def main() -> int:
     logger.info("collect.stocks count=%d", len(HOLDINGS))
     signals = stocks.fetch_all(HOLDINGS)
 
-    # 估值官方源第一遍检查：尽早发现收盘后刚发布的财报。底稿与视觉验收完成前
-    # VALUATION_ENABLED 默认关闭，不改变现有生产邮件。
+    # 估值官方源第一遍检查：尽早发现收盘后刚发布的财报，并自动刷新可复算底稿。
     valuation_displays: dict[str, ValuationDisplay] | None = None
     valuation_freshness: dict[str, FreshnessResult] | None = None
     if settings.valuation_enabled:
@@ -219,6 +228,7 @@ def main() -> int:
             state_dir=_STATE_DIR,
             config_dir=_PROJECT_ROOT / "config",
             download_original=True,
+            reviewer=llm,
         )
 
     logger.info("collect.company_news")
@@ -271,11 +281,6 @@ def main() -> int:
     )
 
     # ---------- LLM 处理(M4) ----------
-    # 生产邮件只使用经人工验收的固定版本。/models 中出现新 Flash
-    # 不再会静默切换版式行为;升级时显式修改 DEEPSEEK_MODEL 并跑回归测试。
-    deepseek_model = settings.deepseek_model
-    logger.info("llm.model_pinned model=%s", deepseek_model)
-    llm = LLMClient(api_key=settings.deepseek_api_key, model=deepseek_model)
 
     logger.info("translate.titles")
     _translate_all_bundles(
@@ -491,7 +496,8 @@ def main() -> int:
 
     # ---------- 渲染 ----------
     logger.info("render")
-    # 发送前第二遍检查，封住“第一遍检查后、邮件渲染前发布新财报”的竞态窗口。
+    # 发送前第二遍检查，封住“第一遍检查后、邮件渲染前发布新财报”的竞态窗口；
+    # 这里只复核文件编号，不重复刷新财务 provider。
     if settings.valuation_enabled:
         logger.info("valuation.freshness_final_check")
         valuation_displays, valuation_freshness = prepare_valuation_displays(
@@ -500,6 +506,7 @@ def main() -> int:
             config_dir=_PROJECT_ROOT / "config",
             download_original=False,
             prior_freshness=valuation_freshness,
+            reviewer=llm,
         )
         publishable = sum(
             1 for value in (valuation_displays or {}).values() if not value.is_pending

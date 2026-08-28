@@ -1,5 +1,5 @@
 {
   "schema_version": "1.0",
-  "description": "仅存放经人工批准并与最新官方文件绑定的估值底稿。未批准前保持空数组，禁止用占位数进入正式邮件。",
+  "description": "可选人工覆盖底稿；日常运行会从最新标准化财务数据自动生成 state/valuation_snapshots.json，人工覆盖仅用于纠正特殊口径。",
   "snapshots": []
 }

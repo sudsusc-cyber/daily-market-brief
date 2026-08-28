@@ -60,7 +60,7 @@ class Settings(EmailSettings):
     )
     valuation_enabled: bool = Field(
         default=False,
-        description="内在价值列开关；底稿与跨客户端视觉验收完成前保持关闭",
+        description="内在价值列开关；生产仓库变量已启用，本地缺省关闭避免意外联网",
     )
 
     @field_validator("deepseek_model")
