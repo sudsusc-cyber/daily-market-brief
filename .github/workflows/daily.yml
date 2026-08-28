@@ -49,6 +49,8 @@ jobs:
       DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
       # 底稿齐备、双重官方源核验与 QQ/微信视觉验收后才由仓库变量开启。
       VALUATION_ENABLED: ${{ vars.VALUATION_ENABLED || 'false' }}
+      # 无需登录的 Morningstar 公开研究链路；独立开关便于先验收再替换价值栏。
+      MORNINGSTAR_FAIR_VALUE_ENABLED: ${{ vars.MORNINGSTAR_FAIR_VALUE_ENABLED || 'false' }}
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5

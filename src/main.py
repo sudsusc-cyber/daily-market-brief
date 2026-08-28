@@ -64,6 +64,7 @@ from src.utils.holidays import should_send_today
 from src.utils.idempotency import already_sent_today
 from src.utils.secrets import mask_emails
 from src.valuation.models import FreshnessResult, ValuationDisplay
+from src.valuation.morningstar import MorningstarPublicProvider
 from src.valuation.service import commit_published_values, prepare_valuation_displays
 
 logger = logging.getLogger(__name__)
@@ -217,6 +218,11 @@ def main() -> int:
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
     signals = stocks.fetch_all(HOLDINGS)
+    morningstar_provider = (
+        MorningstarPublicProvider()
+        if settings.morningstar_fair_value_enabled
+        else None
+    )
 
     # 估值官方源第一遍检查：尽早发现收盘后刚发布的财报，并自动刷新可复算底稿。
     valuation_displays: dict[str, ValuationDisplay] | None = None
@@ -229,6 +235,7 @@ def main() -> int:
             config_dir=_PROJECT_ROOT / "config",
             download_original=True,
             reviewer=llm,
+            morningstar_provider=morningstar_provider,
         )
 
     logger.info("collect.company_news")
@@ -507,13 +514,15 @@ def main() -> int:
             download_original=False,
             prior_freshness=valuation_freshness,
             reviewer=llm,
+            morningstar_provider=morningstar_provider,
         )
         publishable = sum(
             1 for value in (valuation_displays or {}).values() if not value.is_pending
         )
         if publishable < len(HOLDINGS):
             _record_quality_alert(
-                f"内在价值数据未完全就绪：{publishable}/{len(HOLDINGS)} 只通过官方源与复算闸门。"
+                f"{'公允价值' if settings.morningstar_fair_value_enabled else '内在价值'}"
+                f"数据未完全就绪：{publishable}/{len(HOLDINGS)} 只通过来源与复算闸门。"
             )
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
     # 刊头图统一走 inline CID(Android QQ 邮箱不会自动加载远程图,iOS/桌面正常)。

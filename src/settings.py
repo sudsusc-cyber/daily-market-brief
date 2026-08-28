@@ -62,6 +62,10 @@ class Settings(EmailSettings):
         default=False,
         description="内在价值列开关；生产仓库变量已启用，本地缺省关闭避免意外联网",
     )
+    morningstar_fair_value_enabled: bool = Field(
+        default=False,
+        description="用无需登录的公开 Morningstar 公允价值替换内部估值；须单独显式启用",
+    )
 
     @field_validator("deepseek_model")
     @classmethod

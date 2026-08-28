@@ -368,6 +368,12 @@ def render_email(
         "us": sum(1 for signal in signals if not signal.holding.ticker.endswith(".HK")),
         "hk": sum(1 for signal in signals if signal.holding.ticker.endswith(".HK")),
     }
+    valuation_label = (
+        "公允价值"
+        if valuations
+        and any(value.value_label == "公允价值" for value in valuations.values())
+        else "内在价值"
+    )
     html = template.render(
         signals=signals,
         generated_at=generated_at,
@@ -376,6 +382,7 @@ def render_email(
         holdings_intro=holdings_intro,
         valuations=valuations or {},
         valuation_checked_at=valuation_checked_at,
+        valuation_label=valuation_label,
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         sentiment_gauge=sentiment_gauge,

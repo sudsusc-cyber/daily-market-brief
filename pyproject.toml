@@ -26,6 +26,8 @@ dependencies = [
     "jinja2>=3.1.4",
     "ephem>=4.2.1",
     "brotli>=1.2.0",
+    # 无登录发现 Morningstar 公开研究页的 Google News 原始链接
+    "googlenewsdecoder==0.1.7",
 ]
 
 [tool.pytest.ini_options]

@@ -241,6 +241,7 @@ state/pushed_macro_news.json
 state/thesis_evidence_*.jsonl
 state/thesis_state.json
 state/curation/
+state/morningstar_fair_values.json
 
 # 运行时构建产物
 build/

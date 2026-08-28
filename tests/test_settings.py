@@ -18,12 +18,14 @@ def _env(monkeypatch, **overrides) -> None:
         "DEEPSEEK_API_KEY": "x",
         "DEEPSEEK_MODEL": "deepseek-v4-flash",
         "VALUATION_ENABLED": "false",
+        "MORNINGSTAR_FAIR_VALUE_ENABLED": "false",
     }
     base.update({k.upper(): v for k, v in overrides.items()})
     for k in (
         "QQ_EMAIL_ADDRESS", "QQ_EMAIL_AUTH_CODE", "EMAIL_RECIPIENT",
         "FINNHUB_API_KEY", "FRED_API_KEY", "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL",
         "VALUATION_ENABLED",
+        "MORNINGSTAR_FAIR_VALUE_ENABLED",
     ):
         monkeypatch.delenv(k, raising=False)
     for k, v in base.items():
@@ -38,12 +40,19 @@ def test_normal_settings_load(monkeypatch) -> None:
     assert "a@example.com" in s.email_recipient
     assert s.deepseek_model == "deepseek-v4-flash"
     assert s.valuation_enabled is False
+    assert s.morningstar_fair_value_enabled is False
 
 
 def test_valuation_can_be_enabled_explicitly(monkeypatch) -> None:
     _env(monkeypatch)
     monkeypatch.setenv("VALUATION_ENABLED", "true")
     assert Settings().valuation_enabled is True
+
+
+def test_morningstar_fair_value_requires_separate_opt_in(monkeypatch) -> None:
+    _env(monkeypatch)
+    monkeypatch.setenv("MORNINGSTAR_FAIR_VALUE_ENABLED", "true")
+    assert Settings().morningstar_fair_value_enabled is True
 
 
 def test_deepseek_model_can_be_explicitly_pinned(monkeypatch) -> None:

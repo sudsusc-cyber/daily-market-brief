@@ -69,6 +69,7 @@ class ValuationDisplay:
     formula_id: str | None = None
     model_version: str | None = None
     return_label: str = "IRR"
+    value_label: str = "内在价值"
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @property

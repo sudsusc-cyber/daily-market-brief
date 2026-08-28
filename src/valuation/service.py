@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +17,11 @@ from src.valuation.autosnapshot import refresh_snapshots
 from src.valuation.engine import ValuationInputError, calculate_display, load_snapshots
 from src.valuation.freshness import check_official_freshness, evaluate_freshness
 from src.valuation.models import FreshnessResult, OfficialDocument, ValuationDisplay
+from src.valuation.morningstar import (
+    MorningstarFairValue,
+    MorningstarProvider,
+    refresh_fair_values,
+)
 from src.valuation.policy import POLICIES
 
 logger = logging.getLogger(__name__)
@@ -116,6 +122,44 @@ def commit_published_values(
     os.replace(tmp, path)
 
 
+def apply_morningstar_fair_values(
+    displays: dict[str, ValuationDisplay],
+    *,
+    fair_values: Mapping[str, MorningstarFairValue],
+    failures: Mapping[str, str],
+) -> dict[str, ValuationDisplay]:
+    """只替换价值栏；原逐股模型算出的 IRR 保持不变。"""
+    updated = dict(displays)
+    for ticker, display in displays.items():
+        fair_value = fair_values.get(ticker)
+        if fair_value is None:
+            reason = failures.get(ticker, "公开 Morningstar 来源本次不可用")
+            updated[ticker] = replace(
+                display,
+                intrinsic_value=None,
+                value_label="公允价值",
+                warnings=(*display.warnings, reason),
+            )
+            continue
+        warning = (fair_value.warning,) if fair_value.warning else ()
+        updated[ticker] = replace(
+            display,
+            intrinsic_value=fair_value.fair_value,
+            currency_symbol=_symbol(fair_value.currency),
+            financial_as_of=fair_value.fair_value_updated_at,
+            source_url=fair_value.source_url,
+            source_document_id=(
+                f"morningstar:{fair_value.provider_code}:"
+                f"{fair_value.fair_value_updated_at}:{fair_value.fair_value:g}"
+            ),
+            formula_id="morningstar_fair_value",
+            model_version="morningstar-public-v1",
+            value_label="公允价值",
+            warnings=(*display.warnings, *warning),
+        )
+    return updated
+
+
 def prepare_valuation_displays(
     *,
     signals: list[StockSignal],
@@ -125,6 +169,7 @@ def prepare_valuation_displays(
     download_original: bool = True,
     prior_freshness: dict[str, FreshnessResult] | None = None,
     reviewer: Any | None = None,
+    morningstar_provider: MorningstarProvider | None = None,
 ) -> tuple[dict[str, ValuationDisplay], dict[str, FreshnessResult]]:
     """自动刷新底稿、核验最新文件并由 Python 计算邮件展示值。"""
     if checked_at is None:
@@ -223,6 +268,18 @@ def prepare_valuation_displays(
             snapshot=snapshot,
             freshness=result,
             current_price=prices.get(ticker),
+        )
+    if morningstar_provider is not None:
+        fair_values, fair_value_failures = refresh_fair_values(
+            provider=morningstar_provider,
+            state_dir=state_dir,
+            prices=prices,
+            checked_at=checked_at,
+        )
+        displays = apply_morningstar_fair_values(
+            displays,
+            fair_values=fair_values,
+            failures=fair_value_failures,
         )
     displays = enforce_jump_guard(displays, state_dir=state_dir)
     current = sum(1 for value in displays.values() if not value.is_pending)

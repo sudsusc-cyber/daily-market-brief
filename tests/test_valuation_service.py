@@ -7,8 +7,10 @@ from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
 from src.valuation.engine import ValuationSnapshot
 from src.valuation.models import FreshnessResult, OfficialDocument, ValuationDisplay
+from src.valuation.morningstar import MorningstarFairValue
 from src.valuation.policy import POLICIES
 from src.valuation.service import (
+    apply_morningstar_fair_values,
     commit_published_values,
     enforce_jump_guard,
     prepare_valuation_displays,
@@ -24,6 +26,30 @@ def _display(value: float, document_id: str = "doc") -> ValuationDisplay:
         source_document_id=document_id,
         model_version="1.0",
     )
+
+
+def test_morningstar_replaces_value_but_keeps_independent_irr() -> None:
+    original = _display(200.0)
+    fair_value = MorningstarFairValue(
+        ticker="AAPL",
+        provider_code="XNAS:AAPL",
+        fair_value=290.0,
+        currency="USD",
+        rating_type="published-research",
+        fair_value_updated_at="2026-08-07",
+        retrieved_at="2026-08-28T00:00:00+00:00",
+        source_provider="Morningstar public research",
+        source_url="https://www.morningstar.com/stocks/apple-test",
+    )
+    result = apply_morningstar_fair_values(
+        {"AAPL": original},
+        fair_values={"AAPL": fair_value},
+        failures={},
+    )["AAPL"]
+    assert result.intrinsic_value == 290.0
+    assert result.implied_return == original.implied_return
+    assert result.value_label == "公允价值"
+    assert result.currency_symbol == "$"
 
 
 def test_jump_guard_blocks_unattributed_move(tmp_path) -> None:

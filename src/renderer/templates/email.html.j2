@@ -205,7 +205,7 @@
                   </th>
                   {% if show_valuations %}
                   <th class="holding-head" align="right" style="padding:14px 0 8px 10px; font-size:9.5px; font-weight:500; letter-spacing:0.20em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
-                    内在价<span style="letter-spacing:0;">值</span>
+                    {{ valuation_label[:-1] }}<span style="letter-spacing:0;">{{ valuation_label[-1] }}</span>
                   </th>
                   {% endif %}
                   <th class="holding-head" align="right" style="padding:14px 0 8px 12px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
@@ -300,7 +300,7 @@
                 <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
                   数据源&nbsp;Yahoo&nbsp;Finance&nbsp;周频收盘价。120 / 200 周已合并显示，均为对应周频收盘均价的算术平均。
                   括号内百分比表示现价相对该均线的位置——负值即现价低于均线。
-                  {% if show_valuations %}<br />内在价值 v2 先按逐股固定基本面公式复算，再用跨周期区间抑制单期现金流失真：NVDA、TSM、泡泡玛特以 250 日均线为校准锚，其余标的以 120 周均线为校准锚，基本面原值决定锚点上下 10% 区间内的位置。IRR 为当前价格反推的长期模型内部收益率，均非收益承诺。官方财务资料检索截至北京时间&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}
+                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值取 Morningstar 最新公开研究值，并保留来源发布日期或最近公开证据日期；数据经过标的、币种、双读一致性与数量级校验，公开来源短时故障时仅允许沿用 48 小时内最后一次已验证快照。IRR 仍由原有逐股固定模型按当前价格独立反推，不由公允价值换算，均非收益承诺。数据检索截至北京时间&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 v2 先按逐股固定基本面公式复算，再用跨周期区间抑制单期现金流失真：NVDA、TSM、泡泡玛特以 250 日均线为校准锚，其余标的以 120 周均线为校准锚，基本面原值决定锚点上下 10% 区间内的位置。IRR 为当前价格反推的长期模型内部收益率，均非收益承诺。官方财务资料检索截至北京时间&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
                 </td>
               </tr>
             </table>
