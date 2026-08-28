@@ -389,7 +389,7 @@ requires-dist = [
     { name = "brotli", specifier = ">=1.2.0" },
     { name = "ephem", specifier = ">=4.2.1" },
     { name = "feedparser", specifier = ">=6.0.11" },
-    { name = "finnhub-python", specifier = ">=2.4.20" },
+    { name = "finnhub-python", specifier = ">=2.4.29" },
     { name = "idna", specifier = ">=3.15" },
     { name = "jinja2", specifier = ">=3.1.4" },
     { name = "lxml", specifier = ">=5.2.0" },
@@ -502,14 +502,14 @@ wheels = [
 
 [[package]]
 name = "finnhub-python"
-version = "2.4.28"
+version = "2.4.29"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/df/71b9abeef0490dbd8c77d996f6d34bce976eb7a270a12ea421a2a4f42746/finnhub_python-2.4.28.tar.gz", hash = "sha256:fac2850f0c152eea7c66eede7ba182ac73da1307c5b409a5f244c50d12622973", size = 13681, upload-time = "2026-04-22T07:16:56.102Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/0f/2b6327059da93579183607f662f11ba6d3947604b89ce223e6195a6a86c2/finnhub_python-2.4.29.tar.gz", hash = "sha256:0aaab7c60bd663cb97937fbdd95006e109aae81ed7982a3f97391cf70968533e", size = 13694, upload-time = "2026-06-24T07:14:16.189Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/b1/e5148acb6d99ecc850e60f25b4a71bc1ee49cf80db4c94d61fe15505fcc4/finnhub_python-2.4.28-py3-none-any.whl", hash = "sha256:64ae25a9fc25149d3399aefa5491cb43bdeb9ee1997a99e3abeea7d31c73cf7a", size = 12063, upload-time = "2026-04-22T07:16:54.882Z" },
+    { url = "https://files.pythonhosted.org/packages/07/71/a190a7bd7ba86ed4a1dc2b938a23eca37a34464e409af15e3d46fa6d9cca/finnhub_python-2.4.29-py3-none-any.whl", hash = "sha256:5fbec39b40b9501d4165d94cb6fc7600017059d29719edbb01ae5c1ed13374c5", size = 12092, upload-time = "2026-06-24T07:14:14.138Z" },
 ]
 
 [[package]]
