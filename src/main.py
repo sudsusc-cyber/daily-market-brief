@@ -488,15 +488,6 @@ def main() -> int:
     if signals and holdings_intro_text is None:
         _record_quality_alert("持仓引言加工失败：已使用确定性说明。")
 
-    # token 成本汇总
-    cum = llm.cumulative
-    cost_cny = llm.estimate_cost_cny()
-    logger.info(
-        "llm.summary input=%d output=%d reasoning=%d cache_hit=%d  est_cost=¥%.4f",
-        cum.input_tokens, cum.output_tokens, cum.reasoning_tokens, cum.cache_hit_tokens,
-        cost_cny,
-    )
-
     # ---------- 刊头图(M5) ----------
     logger.info("collect.header_image")
     header = header_image.pick_header_image(now_bj.date())
@@ -580,6 +571,20 @@ def main() -> int:
         email_html=html,
     )
     subject = generate_subject(subject_data, llm=llm, today_bj=now_bj.date(), use_cache=not force_send)
+
+    # 所有 LLM 调用（包括邮件主题）完成后再汇总，避免日用量少计。
+    cum = llm.cumulative
+    cost_cny = llm.estimate_cost_cny()
+    logger.info(
+        "llm.summary input=%d output=%d reasoning=%d cache_hit=%d est_cost=¥%.4f",
+        cum.input_tokens, cum.output_tokens, cum.reasoning_tokens, cum.cache_hit_tokens,
+        cost_cny,
+    )
+    if cost_cny > 0.5:
+        logger.warning(
+            "llm.daily_budget_exceeded est_cost=¥%.4f budget=¥0.5000",
+            cost_cny,
+        )
 
     # ---------- 发送 ----------
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
