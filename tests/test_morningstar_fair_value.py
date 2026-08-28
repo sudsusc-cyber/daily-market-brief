@@ -9,6 +9,7 @@ from src.valuation.morningstar import (
     MorningstarPublicProvider,
     _Candidate,
     _extract_value,
+    _parse_company_report_candidates,
     load_cache,
     refresh_fair_values,
 )
@@ -81,6 +82,23 @@ The bottom line: TWD 3,440 per local share and $534 per ADR.
     assert _extract_value(text, SECURITIES["TSM"]) == (534.0, "USD")
 
 
+def test_parses_latest_official_company_report_listing() -> None:
+    text = """
+### [Tencent Earnings](http://www.morningstar.com/company-reports/1494726-test?listing=x)
+
+Summary.
+
+Ivan Su Aug 12, 2026
+"""
+    candidates = _parse_company_report_candidates(text)
+    assert candidates == [
+        _Candidate(
+            "https://www.morningstar.com/company-reports/1494726-test?listing=x",
+            datetime(2026, 8, 12, tzinfo=UTC),
+        )
+    ]
+
+
 def test_extracts_berkshire_class_b_not_class_a() -> None:
     text = """
 Title: Berkshire Hathaway Outlook
@@ -149,6 +167,61 @@ Morningstar Apple research
         SECURITIES["AAPL"],
     )
     assert result.fair_value == 285.0
+
+
+def test_hk_curated_value_uses_latest_official_research_page() -> None:
+    security = SECURITIES["0700.HK"]
+    page = """
+Title: Tencent Earnings: AI Spending Weighs on Near-Term Cash Flow
+Published Time: 2026-08-12T08:00:00Z
+Morningstar research for Tencent Holdings
+"""
+    provider = MorningstarPublicProvider(
+        reader_min_interval=0,
+        session=_Session([_Response(page)]),
+    )
+    result = provider._read(
+        _Candidate(
+            security.curated_urls[0],
+            datetime(2026, 8, 12, tzinfo=UTC),
+            security.curated_values[0],
+        ),
+        security,
+    )
+    assert result.fair_value == 780.0
+    assert result.currency == "HKD"
+    assert result.fair_value_updated_at == "2026-08-12"
+
+
+def test_hk_does_not_fall_through_when_newest_candidate_is_unverifiable(
+    monkeypatch,
+) -> None:
+    security = SECURITIES["0700.HK"]
+    newest = _Candidate(
+        "https://www.morningstar.com/company-reports/newest",
+        datetime(2026, 8, 20, tzinfo=UTC),
+    )
+    stale = _Candidate(
+        security.curated_urls[0],
+        datetime(2026, 8, 12, tzinfo=UTC),
+        security.curated_values[0],
+    )
+    provider = MorningstarPublicProvider(reader_min_interval=0, session=_Session([]))
+    monkeypatch.setattr(provider, "_discover", lambda _security: [newest, stale])
+    calls: list[_Candidate] = []
+
+    def fake_read(candidate, _security):
+        calls.append(candidate)
+        raise ValueError("最新研究页未暴露可验证数值")
+
+    monkeypatch.setattr(provider, "_read", fake_read)
+    values, failures = provider.fetch_all(
+        {"0700.HK": security},
+        checked_at=datetime(2026, 8, 29, tzinfo=UTC),
+    )
+    assert values == {}
+    assert "0700.HK" in failures
+    assert calls == [newest]
 
 
 def test_live_value_is_saved_with_fixed_currency(tmp_path) -> None:

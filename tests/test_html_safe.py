@@ -271,6 +271,32 @@ def test_macro_filter_keeps_safe_https_link() -> None:
     assert "color:#0563C1!important" in summary.summary_html
 
 
+def test_macro_filter_always_moves_leading_footnotes_to_paragraph_end() -> None:
+    bundle = MacroFeedBundle(
+        source="Reuters",
+        items=[
+            MacroNewsItem(
+                title="one",
+                published_at=_DUMMY_DT,
+                url="https://reuters.com/one",
+                source="Reuters",
+            ),
+            MacroNewsItem(
+                title="two",
+                published_at=_DUMMY_DT,
+                url="https://reuters.com/two",
+                source="Reuters",
+            ),
+        ],
+    )
+    fake = _FakeLLM("<p>[1][2]<strong>能源市场。</strong>原油波动扩大。</p>")
+    summary = macro_filter.summarize([bundle], client=fake)
+    assert summary is not None
+    html = summary.summary_html
+    assert html.index("能源市场") < html.index("[1]") < html.index("[2]")
+    assert html.endswith("</sup></p>")
+
+
 def test_macro_filter_strips_unknown_tags() -> None:
     """LLM 输出 <div onclick> / <iframe> 等任意标签 → 一律剥掉。"""
     bundle = _macro_bundle_https()

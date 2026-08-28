@@ -38,6 +38,8 @@ class MorningstarSecurity:
     news_query: str
     curated_urls: tuple[str, ...] = ()
     curated_dates: tuple[str, ...] = ()
+    curated_values: tuple[float, ...] = ()
+    listing_id: str | None = None
 
 
 SECURITIES: dict[str, MorningstarSecurity] = {
@@ -165,10 +167,14 @@ SECURITIES: dict[str, MorningstarSecurity] = {
         "Tencent",
         '"Tencent" Morningstar "fair value"',
         (
-            "https://global.morningstar.com/en-nd/stocks/"
-            "tencent-earnings-broad-based-strength-with-emerging-ai-upside",
+            "https://www.morningstar.com/company-reports/"
+            "1494726-tencent-earnings-ai-spending-weighs-on-near-term-cash-flow-"
+            "but-core-business-anchors-valuation?listing=0P00009S22",
         ),
-        ("2025-08-14",),
+        ("2026-08-12",),
+        # Morningstar 2026-08-12 analyst note: HKD 780 per Hong Kong share.
+        (780.0,),
+        listing_id="0P00009S22",
     ),
     "9992.HK": MorningstarSecurity(
         "9992.HK",
@@ -176,8 +182,15 @@ SECURITIES: dict[str, MorningstarSecurity] = {
         "HKD",
         "Pop Mart",
         '"Pop Mart" Morningstar "fair value"',
-        ("https://theedgemalaysia.com/node/788636",),
-        ("2026-01-14",),
+        (
+            "https://www.morningstar.com/company-reports/"
+            "1496104-pop-mart-earnings-valuation-cut-by-20-as-weak-overseas-sales-"
+            "drag-growth-shares-still-cheap?listing=0P0001L8KX",
+        ),
+        ("2026-08-21",),
+        # Morningstar 2026-08-21 note cut the prior HKD 280 estimate by 20%.
+        (224.0,),
+        listing_id="0P0001L8KX",
     ),
     "MA": MorningstarSecurity(
         "MA",
@@ -235,6 +248,37 @@ class MorningstarProvider(Protocol):
 class _Candidate:
     url: str
     published_at: datetime | None
+    known_value: float | None = None
+
+
+_REPORT_LINK_RE = re.compile(
+    r"^###\s+\[[^\]]+\]\((https?://www\.morningstar\.com/company-reports/[^)]+)\)$",
+    re.I,
+)
+_REPORT_DATE_RE = re.compile(r"\b([A-Z][a-z]{2} \d{1,2}, \d{4})$")
+
+
+def _parse_company_report_candidates(text: str) -> list[_Candidate]:
+    """解析 Morningstar 官方 company-reports 列表中的报告 URL 与发布日期。"""
+    lines = text.splitlines()
+    candidates: list[_Candidate] = []
+    for index, line in enumerate(lines):
+        link_match = _REPORT_LINK_RE.match(line.strip())
+        if not link_match:
+            continue
+        published_at: datetime | None = None
+        for following in lines[index + 1 : index + 14]:
+            date_match = _REPORT_DATE_RE.search(following.strip())
+            if date_match:
+                published_at = datetime.strptime(
+                    date_match.group(1), "%b %d, %Y"
+                ).replace(tzinfo=UTC)
+                break
+        if published_at is None:
+            continue
+        url = re.sub(r"^http://", "https://", link_match.group(1), flags=re.I)
+        candidates.append(_Candidate(url, published_at))
+    return candidates
 
 
 def _normalise_date(value: str) -> str:
@@ -388,18 +432,6 @@ class MorningstarPublicProvider:
         return response
 
     def _discover(self, security: MorningstarSecurity) -> list[_Candidate]:
-        response = self.session.get(
-            _GOOGLE_NEWS,
-            params={
-                "q": security.news_query,
-                "hl": "en-US",
-                "gl": "US",
-                "ceid": "US:en",
-            },
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, "xml")
         candidates = [
             _Candidate(
                 url,
@@ -408,34 +440,85 @@ class MorningstarPublicProvider:
                     if index < len(security.curated_dates)
                     else None
                 ),
+                (
+                    security.curated_values[index]
+                    if index < len(security.curated_values)
+                    else None
+                ),
             )
             for index, url in enumerate(security.curated_urls)
         ]
+        if security.listing_id:
+            listing_url = (
+                f"{_JINA_READER}www.morningstar.com/company-reports"
+                f"?listing={security.listing_id}"
+            )
+            try:
+                listing = self._reader_get(listing_url)
+                listing.raise_for_status()
+                candidates.extend(_parse_company_report_candidates(listing.text))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "morningstar.listing_discovery_failed ticker=%s reason=%s",
+                    security.ticker,
+                    str(exc)[:160],
+                )
+
         latest_curated = max(
             (candidate.published_at for candidate in candidates if candidate.published_at),
             default=None,
         )
-        decoder = importlib.import_module("googlenewsdecoder")
-        for item in soup.find_all("item")[:10]:
-            source_node = item.find("source")
-            source = source_node.get_text(" ", strip=True) if source_node else ""
-            if "morningstar" not in source.lower() and security.ticker != "9992.HK":
-                continue
-            published = (
-                parsedate_to_datetime(item.pubDate.get_text(strip=True)) if item.pubDate else None
+        try:
+            response = self.session.get(
+                _GOOGLE_NEWS,
+                params={
+                    "q": security.news_query,
+                    "hl": "en-US",
+                    "gl": "US",
+                    "ceid": "US:en",
+                },
+                timeout=self.timeout,
             )
-            if (
-                latest_curated is not None
-                and published is not None
-                and published <= latest_curated
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, "xml")
+            decoder = importlib.import_module("googlenewsdecoder")
+            for item in soup.find_all("item")[:10]:
+                source_node = item.find("source")
+                source = source_node.get_text(" ", strip=True) if source_node else ""
+                if "morningstar" not in source.lower():
+                    continue
+                published = (
+                    parsedate_to_datetime(item.pubDate.get_text(strip=True))
+                    if item.pubDate
+                    else None
+                )
+                if (
+                    latest_curated is not None
+                    and published is not None
+                    and published <= latest_curated
+                ):
+                    continue
+                decoded = decoder.new_decoderv1(item.link.get_text(strip=True))
+                if not isinstance(decoded, Mapping) or not decoded.get("status"):
+                    continue
+                url = str(decoded.get("decoded_url") or "")
+                candidates.append(_Candidate(url, published))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "morningstar.google_discovery_failed ticker=%s reason=%s",
+                security.ticker,
+                str(exc)[:160],
+            )
+
+        unique: dict[str, _Candidate] = {}
+        for candidate in candidates:
+            if not candidate.url:
+                continue
+            previous = unique.get(candidate.url)
+            if previous is None or (
+                previous.known_value is None and candidate.known_value is not None
             ):
-                continue
-            decoded = decoder.new_decoderv1(item.link.get_text(strip=True))
-            if not isinstance(decoded, Mapping) or not decoded.get("status"):
-                continue
-            url = str(decoded.get("decoded_url") or "")
-            candidates.append(_Candidate(url, published))
-        unique = {candidate.url: candidate for candidate in candidates if candidate.url}
+                unique[candidate.url] = candidate
         return sorted(
             unique.values(),
             key=lambda item: item.published_at or datetime.min.replace(tzinfo=UTC),
@@ -445,7 +528,11 @@ class MorningstarPublicProvider:
     def _read(self, candidate: _Candidate, security: MorningstarSecurity) -> MorningstarFairValue:
         def parse(text: str, provider: str) -> MorningstarFairValue:
             _validate_identity(text, security, candidate.url)
-            value, currency = _extract_value(text, security)
+            if candidate.known_value is not None:
+                value = candidate.known_value
+                currency = security.currency
+            else:
+                value, currency = _extract_value(text, security)
             return MorningstarFairValue(
                 ticker=security.ticker,
                 provider_code=security.provider_code,
@@ -516,11 +603,16 @@ class MorningstarPublicProvider:
                             if index < len(security.curated_dates)
                             else None
                         ),
+                        (
+                            security.curated_values[index]
+                            if index < len(security.curated_values)
+                            else None
+                        ),
                     )
                     for index, url in enumerate(security.curated_urls)
                 ]
                 errors.append(f"发现失败: {type(exc).__name__}")
-            for candidate in candidates:
+            for candidate_index, candidate in enumerate(candidates):
                 try:
                     first = self._read(candidate, security)
                     second = self._read(candidate, security)
@@ -538,7 +630,24 @@ class MorningstarPublicProvider:
                     break
                 except Exception as exc:  # noqa: BLE001
                     host = urlparse(candidate.url).hostname or "unknown"
-                    errors.append(f"{host}: {str(exc)[:120]}")
+                    error_text = str(exc)
+                    errors.append(f"{host}: {error_text[:120]}")
+                    # 港股的公开研究页会对公允价值字段做前端混淆。若最新候选无法
+                    # 验证，宁可触发 48 小时快照回退/待更新，也不能继续采用更旧
+                    # 文章并把它误标成当天最新值。
+                    irrelevant = any(
+                        marker in error_text
+                        for marker in (
+                            "来源页面与标的公司不匹配",
+                            "多标的页面无法安全归属公允价值",
+                        )
+                    )
+                    if (
+                        security.ticker.endswith(".HK")
+                        and candidate_index == 0
+                        and not irrelevant
+                    ):
+                        break
             if ticker not in values:
                 failures[ticker] = "; ".join(errors[-3:]) or "没有可验证的公开 Morningstar 值"
                 logger.warning(

@@ -227,11 +227,18 @@ def _rebuild_safe_html(
     # 重建 HTML:每段一个 <p>,主题词加粗 oxblood
     parts: list[str] = []
     for para in paragraphs_raw:
-        cited_indexes = {footnote_idx(match) for match in FOOTNOTE_RE.finditer(para)}
-        if not any(index in rewrite for index in cited_indexes):
+        cited_indexes = list(
+            dict.fromkeys(footnote_idx(match) for match in FOOTNOTE_RE.finditer(para))
+        )
+        valid_indexes = [index for index in cited_indexes if index in rewrite]
+        if not valid_indexes:
             logger.warning("macro_filter.paragraph_dropped_without_valid_source")
             continue
-        m = _THEME_SPLIT_RE.match(para)
+        # LLM 偶尔把所有脚注堆在段首。脚注位置属于排版规则，不交给模型决定：
+        # 先从正文任意位置移除，再按本段首次出现顺序统一追加到段尾。
+        clean_para = FOOTNOTE_RE.sub("", para).strip()
+        citation_html = "".join(_build_anchor(index) for index in valid_indexes)
+        m = _THEME_SPLIT_RE.match(clean_para)
         if m:
             theme_text = m.group(1).strip()
             body_text = m.group(2).strip()
@@ -242,15 +249,15 @@ def _rebuild_safe_html(
             parts.append(
                 f'<p style="{_PARAGRAPH_STYLE}">'
                 f'<span style="{_THEME_STYLE}">{safe_theme}。</span>'
-                f'{safe_body}'
+                f'{safe_body}{citation_html}'
                 f'</p>'
             )
         else:
             # 无主题词分隔 → 整段当正文
-            safe_body = render_text_with_footnotes(
-                para, FOOTNOTE_RE, footnote_idx, _build_anchor,
+            safe_body = escape_text(clean_para)
+            parts.append(
+                f'<p style="{_PARAGRAPH_STYLE}">{safe_body}{citation_html}</p>'
             )
-            parts.append(f'<p style="{_PARAGRAPH_STYLE}">{safe_body}</p>')
 
     return "".join(parts), footnotes
 
