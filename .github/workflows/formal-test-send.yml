@@ -27,6 +27,8 @@ jobs:
       FORCE_SEND: "true"
       PYTHONPATH: .
       DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
+      # 试发必须与正式定时任务使用同一套内在价值开关，避免预览路径漏掉新列。
+      VALUATION_ENABLED: ${{ vars.VALUATION_ENABLED || 'false' }}
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
