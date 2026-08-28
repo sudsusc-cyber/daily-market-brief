@@ -157,3 +157,47 @@ def test_cost_does_not_double_count_reasoning(monkeypatch) -> None:
     client.cumulative = LLMUsage(output_tokens=2048, reasoning_tokens=2048)
 
     assert client.estimate_cost_cny() == 2048 * 4.0e-6
+
+
+def test_web_search_is_forced_and_domain_guard_is_injected(monkeypatch) -> None:
+    captured: dict = {}
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                output_text='{"url":"https://www.sec.gov/example"}',
+                usage=SimpleNamespace(
+                    input_tokens=10,
+                    output_tokens=5,
+                    input_tokens_details=SimpleNamespace(cached_tokens=2),
+                    output_tokens_details=SimpleNamespace(reasoning_tokens=1),
+                ),
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", FakeOpenAI)
+    response = LLMClient(api_key="secret").search_web(
+        "查找最新季度财报",
+        allowed_domains=("sec.gov", "apple.com"),
+    )
+
+    assert response.text is not None
+    assert captured["tools"] == [{"type": "web_search"}]
+    assert captured["tool_choice"] == {"type": "web_search"}
+    assert "只允许返回这些域名" in captured["instructions"]
+    assert "sec.gov" in captured["instructions"]
+    assert response.usage.cache_hit_tokens == 2
+
+
+def test_web_search_requires_domain_allowlist(monkeypatch) -> None:
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", lambda **_kwargs: object())
+    response = LLMClient(api_key="secret").search_web(
+        "查找财报",
+        allowed_domains=(),
+    )
+    assert response.text is None
+    assert response.error == "WebSearchDomainAllowlistRequired"

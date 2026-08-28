@@ -29,6 +29,7 @@ from src.processors.sentiment_judge import VERDICT_THRESHOLDS, one_sentence_summ
 from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEATURES
+from src.valuation.models import ValuationDisplay
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _EMAIL_HTML_BUDGET_BYTES = 98_304  # 96 KiB, 给客户端 100 KiB 裁剪线留余量
@@ -179,6 +180,17 @@ def _filter_pct(value: float | None) -> str:
         return "—"
 
 
+def _filter_rate(value: float | None) -> str:
+    """长期隐含收益率不加正号，避免与均线距离的正负语义混淆。"""
+    value = _finite_number(value)
+    if value is None:
+        return "—"
+    try:
+        return f"{value * 100:.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def _filter_metric_num(value: float | None, unit: str = "") -> str:
     """情绪指标当前值/前一日值。**只输出数字**(单位由模板在指标名旁单独标注),
     使 right-align 列严格小数点对齐。unit 参数保留为兼容,内部忽略。"""
@@ -270,6 +282,7 @@ def _build_env() -> Environment:
     )
     env.filters["price"] = _filter_price
     env.filters["pct"] = _filter_pct
+    env.filters["rate"] = _filter_rate
     env.filters["metric_num"] = _filter_metric_num
     env.filters["metric_delta"] = _filter_metric_delta
     env.filters["bj_time"] = _filter_bj_time
@@ -316,6 +329,8 @@ def render_email(
     header_image_url: str | None = None,
     # M5 LLM 改写的持仓引言(无值时模板退回原 M2 文案)
     holdings_intro: str | None = None,
+    valuations: dict[str, ValuationDisplay] | None = None,
+    valuation_checked_at: datetime | None = None,
     # M3 原始数据(始终渲染指标小表 / 错误兜底)
     sentiment: Any | None = None,            # SentimentBundle
     company_news: list[Any] | None = None,    # list[CompanyNewsBundle]
@@ -359,6 +374,8 @@ def render_email(
         logo_cids=logo_cids or {},
         header_image_url=header_image_url,
         holdings_intro=holdings_intro,
+        valuations=valuations or {},
+        valuation_checked_at=valuation_checked_at,
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         sentiment_gauge=sentiment_gauge,

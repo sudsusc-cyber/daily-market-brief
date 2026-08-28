@@ -16,6 +16,8 @@ from pathlib import Path
 from src.collectors.company_news import _RELEVANCE_KEYWORDS
 from src.config import HOLDINGS
 from src.processors.news_summarizer import _CN_NAME_HINT
+from src.valuation.instructions import FORMULA_INSTRUCTIONS
+from src.valuation.policy import POLICIES
 
 _LOGOS_DIR = Path(__file__).resolve().parents[1] / "assets" / "logos"
 
@@ -47,3 +49,8 @@ def test_every_holding_has_logo_file() -> None:
         if not any((_LOGOS_DIR / f"{h.slug}.{ext}").exists() for ext in ("png", "jpg", "jpeg"))
     ]
     assert not missing, f"持仓缺 logo 文件: {missing}"
+
+
+def test_every_holding_has_fixed_valuation_policy() -> None:
+    assert set(POLICIES) == {holding.ticker for holding in HOLDINGS}
+    assert set(FORMULA_INSTRUCTIONS) == set(POLICIES)

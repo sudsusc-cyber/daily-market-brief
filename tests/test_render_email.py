@@ -23,6 +23,7 @@ from src.renderer.render import (
     render_email,
 )
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEATURES
+from src.valuation.models import ValuationDisplay
 
 
 def _one_figure_bundle() -> FigureBundle:
@@ -61,6 +62,79 @@ def test_render_email_with_minimum_data_does_not_raise() -> None:
     )
     assert "<html" in html.lower()
     assert len(html.encode("utf-8")) > 1000  # 至少有完整模板骨架
+
+
+def test_sentiment_prior_day_header_compensates_trailing_letter_spacing() -> None:
+    sentiment = SimpleNamespace(metrics=[
+        SimpleNamespace(name="VIX", unit="", stale_from=None, error=None,
+                        current=20.0, prior=21.0, delta=-1.0),
+    ])
+    html = render_email(
+        signals=[],
+        generated_at=datetime(2026, 8, 28, 7, 0, tzinfo=UTC),
+        sentiment=sentiment,
+    )
+    assert '前&nbsp;一&nbsp;</span><span style="letter-spacing:0">日</span>' in html
+
+
+def test_holdings_table_renders_intrinsic_value_before_signal() -> None:
+    signal = StockSignal(
+        holding=HOLDINGS[0],
+        last_close=100.0,
+        sma_120=90.0,
+        sma_200=80.0,
+        delta_120=0.111,
+        delta_200=0.25,
+        signal="NONE",
+    )
+    valuation = ValuationDisplay(
+        ticker="MSFT",
+        status="current",
+        intrinsic_value=120.0,
+        implied_return=0.112,
+        hurdle_rate=0.10,
+        currency_symbol="$",
+    )
+    html = render_email(
+        signals=[signal],
+        generated_at=datetime(2026, 8, 28, 7, 0, tzinfo=UTC),
+        valuations={"MSFT": valuation},
+        valuation_checked_at=datetime(2026, 8, 28, 6, 58, tzinfo=UTC),
+    )
+    assert html.index('内在价<span style="letter-spacing:0">值</span>') < html.index(
+        "信&nbsp;号"
+    )
+    assert '120&nbsp;<span style="letter-spacing:0">周</span>' in html
+    assert '内在价<span style="letter-spacing:0">值</span>' in html
+    assert ">$120.00<" not in html
+    assert ">120.00<" in html
+    assert "IRR&nbsp;11.2%" in html
+    assert "官方财务资料检索截至" in html
+
+
+def test_holdings_table_pending_never_backfills_approximate_value() -> None:
+    signal = StockSignal(
+        holding=HOLDINGS[0],
+        last_close=100.0,
+        sma_120=90.0,
+        sma_200=80.0,
+        delta_120=0.111,
+        delta_200=0.25,
+        signal="NONE",
+    )
+    valuation = ValuationDisplay(
+        ticker="MSFT",
+        status="new_filing_pending",
+        hurdle_rate=0.10,
+        currency_symbol="$",
+    )
+    html = render_email(
+        signals=[signal],
+        generated_at=datetime(2026, 8, 28, 7, 0, tzinfo=UTC),
+        valuations={"MSFT": valuation},
+    )
+    assert 'class="holding-valuation-pending"' in html
+    assert "安全边际" not in html
 
 
 def test_render_email_uses_one_editorial_number_system_everywhere() -> None:

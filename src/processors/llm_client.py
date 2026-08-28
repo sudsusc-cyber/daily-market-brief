@@ -274,6 +274,80 @@ class LLMClient:
         )
         return LLMResponse(text=text or None, usage=usage, error=error)
 
+    def search_web(
+        self,
+        user_prompt: str,
+        *,
+        allowed_domains: tuple[str, ...],
+        task_extra: str | None = None,
+        max_output_tokens: int = 1600,
+        timeout: int = 60,
+    ) -> LLMResponse:
+        """强制 DeepSeek Responses API 执行网页搜索。
+
+        仅作官方文件发现的备用通道。调用方仍须校验域名、打开原文、核对发布时间
+        与 document_id；本方法返回的文字绝不能直接成为估值输入。
+        """
+        if not allowed_domains:
+            return LLMResponse(
+                text=None,
+                usage=LLMUsage(),
+                error="WebSearchDomainAllowlistRequired",
+            )
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            return LLMResponse(
+                text=None,
+                usage=LLMUsage(),
+                error="LLMStageDeadlineExceeded: cumulative LLM budget exhausted",
+            )
+        effective_timeout = max(1.0, min(float(timeout), remaining))
+        domains = ", ".join(allowed_domains)
+        guard = (
+            "你正在执行官方财务文件发现，不是一般新闻搜索。"
+            f"只允许返回这些域名的原始文件或公司公告：{domains}。"
+            "必须给出完整 URL、文件标题、正式发布时间、报告期间和公告编号；"
+            "若无法在官方原文核实任一字段，明确返回 NOT_VERIFIED。"
+        )
+        system = build_system_prompt(task_extra="\n".join(filter(None, [task_extra, guard])))
+        try:
+            response = self._client.responses.create(
+                model=self._model,
+                instructions=system,
+                input=user_prompt,
+                tools=[{"type": "web_search"}],
+                tool_choice={"type": "web_search"},
+                max_output_tokens=max_output_tokens,
+                timeout=effective_timeout,
+            )
+        except Exception as exc:  # noqa: BLE001
+            redacted_msg = redact_secrets(str(exc))[:200]
+            logger.error(
+                "llm.web_search_failed model=%s exc_type=%s msg=%s",
+                self._model,
+                type(exc).__name__,
+                redacted_msg,
+            )
+            return LLMResponse(
+                text=None,
+                usage=LLMUsage(),
+                error=f"{type(exc).__name__}: {redacted_msg}",
+            )
+        text = str(getattr(response, "output_text", "") or "").strip()
+        usage = _extract_responses_usage(response)
+        self._accumulate(usage)
+        error = None if text else "EmptyOutput: web search returned no visible text"
+        logger.info(
+            "llm.web_search_ok model=%s in=%d out=%d reasoning=%d domains=%s response_chars=%d",
+            self._model,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.reasoning_tokens,
+            domains,
+            len(text),
+        )
+        return LLMResponse(text=text or None, usage=usage, error=error)
+
     def _accumulate(self, usage: LLMUsage) -> None:
         self.cumulative.input_tokens += usage.input_tokens
         self.cumulative.output_tokens += usage.output_tokens
@@ -318,4 +392,23 @@ def _extract_usage(resp: Any) -> LLMUsage:
         output_tokens=out_tokens,
         reasoning_tokens=reasoning,
         cache_hit_tokens=cache_hit,
+    )
+
+
+def _extract_responses_usage(resp: Any) -> LLMUsage:
+    """Responses API 使用 input/output 命名，与 chat completion 不同。"""
+    usage = getattr(resp, "usage", None)
+    if usage is None:
+        return LLMUsage()
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+    input_details = getattr(usage, "input_tokens_details", None)
+    output_details = getattr(usage, "output_tokens_details", None)
+    cache_hits = int(getattr(input_details, "cached_tokens", 0) or 0)
+    reasoning = int(getattr(output_details, "reasoning_tokens", 0) or 0)
+    return LLMUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        reasoning_tokens=reasoning,
+        cache_hit_tokens=cache_hits,
     )

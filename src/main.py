@@ -63,6 +63,8 @@ from src.utils.delivery import clear_delivery_receipt, write_delivery_receipt
 from src.utils.holidays import should_send_today
 from src.utils.idempotency import already_sent_today
 from src.utils.secrets import mask_emails
+from src.valuation.models import FreshnessResult, ValuationDisplay
+from src.valuation.service import commit_published_values, prepare_valuation_displays
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +207,19 @@ def main() -> int:
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
     signals = stocks.fetch_all(HOLDINGS)
+
+    # 估值官方源第一遍检查：尽早发现收盘后刚发布的财报。底稿与视觉验收完成前
+    # VALUATION_ENABLED 默认关闭，不改变现有生产邮件。
+    valuation_displays: dict[str, ValuationDisplay] | None = None
+    valuation_freshness: dict[str, FreshnessResult] | None = None
+    if settings.valuation_enabled:
+        logger.info("valuation.freshness_precheck")
+        valuation_displays, valuation_freshness = prepare_valuation_displays(
+            signals=signals,
+            state_dir=_STATE_DIR,
+            config_dir=_PROJECT_ROOT / "config",
+            download_original=True,
+        )
 
     logger.info("collect.company_news")
     company_news_state_path = _STATE_DIR / "pushed_company_news.json"
@@ -476,6 +491,23 @@ def main() -> int:
 
     # ---------- 渲染 ----------
     logger.info("render")
+    # 发送前第二遍检查，封住“第一遍检查后、邮件渲染前发布新财报”的竞态窗口。
+    if settings.valuation_enabled:
+        logger.info("valuation.freshness_final_check")
+        valuation_displays, valuation_freshness = prepare_valuation_displays(
+            signals=signals,
+            state_dir=_STATE_DIR,
+            config_dir=_PROJECT_ROOT / "config",
+            download_original=False,
+            prior_freshness=valuation_freshness,
+        )
+        publishable = sum(
+            1 for value in (valuation_displays or {}).values() if not value.is_pending
+        )
+        if publishable < len(HOLDINGS):
+            _record_quality_alert(
+                f"内在价值数据未完全就绪：{publishable}/{len(HOLDINGS)} 只通过官方源与复算闸门。"
+            )
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
     # 刊头图统一走 inline CID(Android QQ 邮箱不会自动加载远程图,iOS/桌面正常)。
     # header_image.pick_header_image 三层都会下载到本地并返回 local_path。
@@ -490,6 +522,12 @@ def main() -> int:
         logo_cids=logo_cids,
         header_image_url=header["url"],
         holdings_intro=holdings_intro_text,
+        valuations=valuation_displays,
+        valuation_checked_at=(
+            max((item.checked_at for item in valuation_freshness.values()), default=None)
+            if valuation_freshness
+            else None
+        ),
         # 加工产物；失败区块使用受控占位语，不展示未经筛选的原始列表。
         sentiment=sentiment_bundle,
         sentiment_verdict=sentiment_verdict,
@@ -547,6 +585,14 @@ def main() -> int:
         refused_count=len(delivery.refused),
         run_id=os.environ.get("GH_RUN_ID"),
     )
+    try:
+        commit_published_values(
+            valuation_displays,
+            state_dir=_STATE_DIR,
+            sent_at=now_bj,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("valuation.commit_published_failed exc=%r", exc)
 
     # 邮件发送成功后才提交 figures 7 天去重 state — 失败时下次 run
     # 仍能重新评估同批候选,避免"LLM 失败 + state 已写"导致永久遗漏。

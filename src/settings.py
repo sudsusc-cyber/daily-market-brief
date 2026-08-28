@@ -58,6 +58,10 @@ class Settings(EmailSettings):
         default="deepseek-v4-flash",
         description="经验收后固定的 DeepSeek 模型 ID;不在生产运行时自动升级",
     )
+    valuation_enabled: bool = Field(
+        default=False,
+        description="内在价值列开关；底稿与跨客户端视觉验收完成前保持关闭",
+    )
 
     @field_validator("deepseek_model")
     @classmethod

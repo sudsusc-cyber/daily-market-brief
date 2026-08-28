@@ -28,6 +28,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.collectors.stocks import StockSignal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF  # noqa: E402
+from src.valuation.models import ValuationDisplay  # noqa: E402
 
 LOGOS_DIR = PROJECT_ROOT / "assets" / "logos"
 
@@ -113,6 +114,40 @@ def _build_logo_cids() -> dict[str, str]:
         if cid:
             out[h.ticker] = cid
     return out
+
+
+def _build_mock_valuations() -> dict[str, ValuationDisplay]:
+    """仅供视觉预览；不进入 config/valuation_snapshots.json。"""
+    values = {
+        "MSFT": (385.00, 0.091, "$"),
+        "COST": (710.00, 0.074, "$"),
+        "AAPL": (205.00, 0.087, "$"),
+        "NVDA": (188.00, 0.096, "$"),
+        "TSM": (162.00, 0.102, "$"),
+        "MCO": (426.00, 0.094, "$"),
+        "GOOG": (214.00, 0.108, "$"),
+        "BRK.B": (505.00, 0.076, "$"),
+        "KO": (70.00, 0.113, "$"),
+        "AXP": (286.00, 0.107, "$"),
+        "0700.HK": (445.00, 0.121, "HK$"),
+        "9992.HK": (145.00, 0.112, "HK$"),
+        "MA": (540.00, 0.104, "$"),
+        "LIN": (474.00, 0.096, "$"),
+    }
+    return {
+        ticker: ValuationDisplay(
+            ticker=ticker,
+            status="current",
+            intrinsic_value=value,
+            implied_return=implied,
+            hurdle_rate=(0.12 if ticker == "9992.HK" else 0.11 if ticker in {"TSM", "0700.HK"} else 0.10),
+            currency_symbol=symbol,
+            return_label=("5Y SOTP IRR" if ticker == "BRK.B" else "IRR"),
+            financial_as_of="2026-Q2",
+            approved_at="2026-08-28",
+        )
+        for ticker, (value, implied, symbol) in values.items()
+    }
 
 
 def _inline_logos_as_data_uri(html: str) -> str:
@@ -205,6 +240,8 @@ def render_preview(*, inline_assets: bool = True) -> str:
         generated_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         logo_cids=_build_logo_cids(),
         header_image_url=header_url,
+        valuations=_build_mock_valuations(),
+        valuation_checked_at=datetime.now(ZoneInfo("Asia/Shanghai")),
         # company_news 只需 truthy(jinja2 if 检查),company_news_summary 提供真实 mock
         sentiment=mock_sentiment,
         sentiment_verdict=mock_sentiment_verdict,
