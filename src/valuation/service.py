@@ -187,6 +187,57 @@ def prepare_valuation_displays(
     """自动刷新底稿、核验最新文件并由 Python 计算邮件展示值。"""
     if checked_at is None:
         checked_at = datetime.now(UTC)
+    prices = {signal.holding.ticker: signal.last_close for signal in signals}
+
+    # 晨星模式的展示值只依赖公开公允价值与现价。旧的逐股 DCF/SOTP 底稿
+    # 最终会被完整覆盖，因此不再下载财报或调用 DeepSeek 做 14 次无效复核。
+    if morningstar_provider is not None:
+        displays = {
+            ticker: ValuationDisplay(
+                ticker=ticker,
+                status="current",
+                hurdle_rate=0.10,
+                currency_symbol=_symbol(policy.market_currency),
+                return_label="1Y IRR",
+                value_label="公允价值",
+            )
+            for ticker, policy in POLICIES.items()
+        }
+        fair_values, fair_value_failures = refresh_fair_values(
+            provider=morningstar_provider,
+            state_dir=state_dir,
+            prices=prices,
+            checked_at=checked_at,
+        )
+        displays = apply_morningstar_fair_values(
+            displays,
+            fair_values=fair_values,
+            failures=fair_value_failures,
+            prices=prices,
+        )
+        displays = enforce_jump_guard(displays, state_dir=state_dir)
+        current = sum(1 for value in displays.values() if not value.is_pending)
+        logger.info(
+            "valuation.morningstar_fast_path skipped_internal_reviews=%d",
+            len(POLICIES),
+        )
+        for ticker, value in displays.items():
+            logger.info(
+                "valuation.display ticker=%s status=%s intrinsic=%s implied_return=%s source=%s",
+                ticker,
+                value.status,
+                f"{value.intrinsic_value:.4f}" if value.intrinsic_value is not None else "none",
+                f"{value.implied_return:.6f}" if value.implied_return is not None else "none",
+                value.source_document_id or "none",
+            )
+        logger.info(
+            "valuation.prepared current=%d pending=%d checked_at=%s",
+            current,
+            len(displays) - current,
+            checked_at.isoformat(),
+        )
+        return displays, {}
+
     try:
         snapshots = load_snapshots(
             state_dir / "valuation_snapshots.json",
@@ -260,7 +311,6 @@ def prepare_valuation_displays(
         )
         logger.warning("valuation.last_known_good ticker=%s reason=%s", ticker, reason)
     freshness = reconciled
-    prices = {signal.holding.ticker: signal.last_close for signal in signals}
     displays: dict[str, ValuationDisplay] = {}
     for ticker, policy in POLICIES.items():
         snapshot = snapshots.get(ticker)
@@ -281,19 +331,6 @@ def prepare_valuation_displays(
             snapshot=snapshot,
             freshness=result,
             current_price=prices.get(ticker),
-        )
-    if morningstar_provider is not None:
-        fair_values, fair_value_failures = refresh_fair_values(
-            provider=morningstar_provider,
-            state_dir=state_dir,
-            prices=prices,
-            checked_at=checked_at,
-        )
-        displays = apply_morningstar_fair_values(
-            displays,
-            fair_values=fair_values,
-            failures=fair_value_failures,
-            prices=prices,
         )
     displays = enforce_jump_guard(displays, state_dir=state_dir)
     current = sum(1 for value in displays.values() if not value.is_pending)

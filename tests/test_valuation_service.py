@@ -80,6 +80,51 @@ def test_morningstar_irr_is_missing_when_current_price_is_missing() -> None:
     assert result.return_label == "1Y IRR"
 
 
+def test_morningstar_fast_path_skips_internal_snapshots_and_reviewer(
+    tmp_path, monkeypatch
+) -> None:
+    fair_value = MorningstarFairValue(
+        ticker="AAPL",
+        provider_code="XNAS:AAPL",
+        fair_value=290.0,
+        currency="USD",
+        rating_type="published-research",
+        fair_value_updated_at="2026-08-07",
+        retrieved_at="2026-08-28T00:00:00+00:00",
+        source_provider="Morningstar public research",
+        source_url="https://www.morningstar.com/stocks/apple-test",
+        observation_count=2,
+    )
+
+    class Provider:
+        def fetch_all(self, _securities, *, checked_at):
+            return {"AAPL": fair_value}, {}
+
+    monkeypatch.setattr(
+        "src.valuation.service.load_snapshots",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("legacy path called")),
+    )
+    signal = StockSignal(
+        holding=HOLDINGS[2],
+        last_close=250.0,
+        sma_120=230.0,
+        sma_200=200.0,
+        delta_120=0.087,
+        delta_200=0.25,
+        signal="NONE",
+    )
+    displays, freshness = prepare_valuation_displays(
+        signals=[signal],
+        state_dir=tmp_path,
+        config_dir=tmp_path,
+        checked_at=datetime(2026, 8, 28, tzinfo=UTC),
+        reviewer=object(),
+        morningstar_provider=Provider(),
+    )
+    assert displays["AAPL"].implied_return == pytest.approx(0.16)
+    assert freshness == {}
+
+
 def test_jump_guard_blocks_unattributed_move(tmp_path) -> None:
     commit_published_values(
         {"AAPL": _display(100.0)},
