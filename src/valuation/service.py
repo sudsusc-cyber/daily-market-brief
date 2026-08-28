@@ -226,6 +226,15 @@ def prepare_valuation_displays(
         )
     displays = enforce_jump_guard(displays, state_dir=state_dir)
     current = sum(1 for value in displays.values() if not value.is_pending)
+    for ticker, value in displays.items():
+        logger.info(
+            "valuation.display ticker=%s status=%s intrinsic=%s implied_return=%s source=%s",
+            ticker,
+            value.status,
+            f"{value.intrinsic_value:.4f}" if value.intrinsic_value is not None else "none",
+            f"{value.implied_return:.6f}" if value.implied_return is not None else "none",
+            value.source_document_id or "none",
+        )
     logger.info(
         "valuation.prepared current=%d pending=%d checked_at=%s",
         current,

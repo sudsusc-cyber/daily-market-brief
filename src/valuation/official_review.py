@@ -68,7 +68,8 @@ def _extract_text(content: bytes, content_type: str) -> str:
         reader = PdfReader(BytesIO(content))
         text = "\n".join((page.extract_text() or "") for page in reader.pages)
     else:
-        soup = BeautifulSoup(content, "lxml")
+        parser = "xml" if content.lstrip().startswith(b"<?xml") else "lxml"
+        soup = BeautifulSoup(content, parser)
         for node in soup(["script", "style", "noscript"]):
             node.decompose()
         text = soup.get_text("\n", strip=True)
