@@ -17,7 +17,7 @@ from src.valuation.policy import ValuationPolicy
 
 
 class ValuationInputError(ValueError):
-    """估值底稿结构或经济含义不满足 v1 规则。"""
+    """估值底稿结构或经济含义不满足当前版本规则。"""
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,10 @@ class ValuationSnapshot:
     data_provider: str | None = None
     data_retrieved_at: str | None = None
     normalization_version: str | None = None
+    calibration_anchor: str | None = None
+    calibration_value: float | None = None
+    raw_intrinsic_value: float | None = None
+    calibration_weight: float | None = None
     scenario: str = "base"
     fx_reporting_per_market: float | None = None
     adr_ratio: float | None = None
@@ -114,6 +118,12 @@ def snapshot_from_dict(raw: dict[str, Any]) -> ValuationSnapshot:
             if raw.get("normalization_version")
             else None
         ),
+        calibration_anchor=(
+            str(raw["calibration_anchor"]).strip() if raw.get("calibration_anchor") else None
+        ),
+        calibration_value=optional("calibration_value"),
+        raw_intrinsic_value=optional("raw_intrinsic_value"),
+        calibration_weight=optional("calibration_weight"),
         scenario=str(raw.get("scenario", "base")).strip(),
         fx_reporting_per_market=optional("fx_reporting_per_market"),
         adr_ratio=optional("adr_ratio"),

@@ -172,17 +172,15 @@
             <table class="holdings-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; width:100%; max-width:590px; table-layout:fixed; font-family:{{ serif_body }}; color:{{ color_ink }}; {{ numeric_features }}">
               <colgroup>
                 {% if show_valuations %}
-                <col style="width:23%;" />
-                <col style="width:11%;" />
-                <col style="width:14%;" />
-                <col style="width:14%;" />
-                <col style="width:20%;" />
-                <col style="width:18%;" />
+                <col style="width:30%;" />
+                <col style="width:13%;" />
+                <col style="width:22%;" />
+                <col style="width:19%;" />
+                <col style="width:16%;" />
                 {% else %}
-                <col style="width:29%;" />
-                <col style="width:15%;" />
-                <col style="width:17.5%;" />
-                <col style="width:17.5%;" />
+                <col style="width:36%;" />
+                <col style="width:16%;" />
+                <col style="width:27%;" />
                 <col style="width:21%;" />
                 {% endif %}
               </colgroup>
@@ -202,11 +200,8 @@
                   <th class="holding-head" align="right" style="padding:14px 0 8px 0; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
                     现&nbsp;价
                   </th>
-                  <th class="holding-head" align="right" style="padding:14px 0 8px {{ 8 if show_valuations else 16 }}px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
-                    120&nbsp;<span style="letter-spacing:0;">周</span>
-                  </th>
-                  <th class="holding-head" align="right" style="padding:14px 0 8px {{ 8 if show_valuations else 16 }}px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
-                    200&nbsp;<span style="letter-spacing:0;">周</span>
+                  <th class="holding-head" align="right" style="padding:14px 0 8px {{ 8 if show_valuations else 16 }}px; font-size:9.5px; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }}; white-space:nowrap;">
+                    120&nbsp;/&nbsp;200&nbsp;<span style="letter-spacing:0;">周</span>
                   </th>
                   {% if show_valuations %}
                   <th class="holding-head" align="right" style="padding:14px 0 8px 10px; font-size:9.5px; font-weight:500; letter-spacing:0.20em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
@@ -251,8 +246,8 @@
                   </td>
 
                   {% if has_error %}
-                  {# 整行错误态:跨 4 列展示原因 #}
-                  <td colspan="{{ 5 if show_valuations else 4 }}" align="right" valign="middle" style="padding:18px 0; border-bottom:1px solid {{ color_hairline }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic; line-height:1.5;">
+                  {# 整行错误态:跨剩余列展示原因 #}
+                  <td colspan="{{ 4 if show_valuations else 3 }}" align="right" valign="middle" style="padding:18px 0; border-bottom:1px solid {{ color_hairline }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic; line-height:1.5;">
                     数据获取失败 · {{ s.error }}
                   </td>
                   {% else %}
@@ -260,15 +255,10 @@
                   <td class="holding-price" valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0; line-height:1.1; white-space:nowrap; overflow:hidden;">
                     {{ s.last_close | price }}
                   </td>
-                  {# 120w — 主数与百分比都加 tabular-nums #}
+                  {# 120/200 周合并：减少一列，给 logo、名称与估值留出稳定宽度。 #}
                   <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px {{ 8 if show_valuations else 16 }}px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
-                    <div class="holding-average-main" style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_120 | price }}</div>
-                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0; white-space:nowrap;">{{ s.delta_120 | pct }}</div>
-                  </td>
-                  {# 200w #}
-                  <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px {{ 8 if show_valuations else 16 }}px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
-                    <div class="holding-average-main" style="font-size:13.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_200 | price }}</div>
-                    <div class="holding-average-delta" style="font-size:10.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0; white-space:nowrap;">{{ s.delta_200 | pct }}</div>
+                    <div class="holding-average-main" style="font-size:12.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_120 | price }}<span style="color:{{ color_faint }}; padding:0 3px;">/</span>{{ s.sma_200 | price }}</div>
+                    <div class="holding-average-delta" style="font-size:9.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0; white-space:nowrap;">{{ s.delta_120 | pct }}<span style="color:{{ color_faint }}; padding:0 3px;">/</span>{{ s.delta_200 | pct }}</div>
                   </td>
                   {% if show_valuations %}
                   <td class="holding-valuation" valign="top" align="right" style="padding:18px 0 18px 10px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
@@ -287,7 +277,7 @@
                   {# 信号 #}
                   <td class="holding-signal" valign="middle" align="right" style="padding:18px 0 18px 12px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
                     {% if is_lump %}
-                      <span class="holding-signal-badge" style="display:inline-block; padding:5px 11px 5px 11px; background-color:{{ color_accent }}; color:{{ color_paper }}; font-size:9.5px; font-weight:600; letter-spacing:0.28em; text-transform:uppercase; line-height:1.3; mso-line-height-rule:exactly; white-space:nowrap;">Lump-sum</span>
+                      <span class="holding-signal-badge" style="display:inline-block; padding:5px 6px 5px 6px; background-color:{{ color_accent }}; color:{{ color_paper }}; font-size:8.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; line-height:1.3; mso-line-height-rule:exactly; white-space:nowrap;">Lump-sum</span>
                     {% elif is_dca %}
                       <span class="holding-signal-badge" style="display:inline-block; font-size:11.5px; font-weight:600; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_accent }}; line-height:1; padding:0; border-bottom:1px solid {{ color_accent }}; padding-bottom:3px; white-space:nowrap;">DCA</span>
                     {% else %}
@@ -308,9 +298,9 @@
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
                 <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-                  数据源&nbsp;Yahoo&nbsp;Finance&nbsp;周频收盘价。均线为最近 120 / 200 周收盘均价的算术平均。
+                  数据源&nbsp;Yahoo&nbsp;Finance&nbsp;周频收盘价。120 / 200 周已合并显示，均为对应周频收盘均价的算术平均。
                   括号内百分比表示现价相对该均线的位置——负值即现价低于均线。
-                  {% if show_valuations %}<br />内在价值与现价按各标的交易币种展示；IRR 为当前价格反推的长期模型内部收益率，伯克希尔显示 5Y SOTP IRR（固定五年退出 SOTP），均非收益承诺。官方财务资料检索截至北京时间&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}
+                  {% if show_valuations %}<br />内在价值 v2 先按逐股固定基本面公式复算，再用跨周期区间抑制单期现金流失真：NVDA、TSM、泡泡玛特以 250 日均线为校准锚，其余标的以 120 周均线为校准锚，基本面原值决定锚点上下 10% 区间内的位置。IRR 为当前价格反推的长期模型内部收益率，均非收益承诺。官方财务资料检索截至北京时间&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}
                 </td>
               </tr>
             </table>

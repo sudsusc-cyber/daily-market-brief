@@ -49,8 +49,8 @@ def _p(
 ) -> ValuationPolicy:
     return ValuationPolicy(
         ticker=ticker,
-        formula_id=formula_id,
-        model_version="1.0",
+        formula_id=(formula_id[:-3] + "_v2" if formula_id.endswith("_v1") else formula_id),
+        model_version="2.0",
         method=method,
         hurdle_rate=hurdle,
         terminal_growth=growth,

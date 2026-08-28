@@ -16,12 +16,17 @@ from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from statistics import median
-from typing import Any
+from typing import Any, Literal
 
 import yfinance as yf
 
 from src.collectors.stocks import StockSignal
-from src.valuation.engine import ValuationInputError, ValuationSnapshot, snapshot_from_dict
+from src.valuation.engine import (
+    ValuationInputError,
+    ValuationSnapshot,
+    calculate_display,
+    snapshot_from_dict,
+)
 from src.valuation.models import FreshnessResult, OfficialDocument
 from src.valuation.policy import POLICIES, ValuationPolicy
 
@@ -34,6 +39,9 @@ class AutoRule:
 
     growth_floor: float
     growth_cap: float
+    calibration_anchor: Literal["sma_120w", "sma_250d"] = "sma_120w"
+    calibration_band: float = 0.10
+    fundamental_weight: float = 0.25
     forecast_years: int = 5
     terminal_rote: float | None = None
     retention_rate: float = 0.40
@@ -45,8 +53,8 @@ AUTO_RULES: dict[str, AutoRule] = {
     "MSFT": AutoRule(0.06, 0.15),
     "COST": AutoRule(0.04, 0.08),
     "AAPL": AutoRule(0.03, 0.07),
-    "NVDA": AutoRule(0.08, 0.20),
-    "TSM": AutoRule(0.06, 0.14),
+    "NVDA": AutoRule(0.08, 0.20, calibration_anchor="sma_250d"),
+    "TSM": AutoRule(0.06, 0.14, calibration_anchor="sma_250d"),
     "MCO": AutoRule(0.04, 0.10),
     "GOOG": AutoRule(0.06, 0.14),
     "BRK.B": AutoRule(
@@ -58,7 +66,7 @@ AUTO_RULES: dict[str, AutoRule] = {
     "KO": AutoRule(0.03, 0.07),
     "AXP": AutoRule(0.04, 0.10, terminal_rote=0.15, retention_rate=0.35),
     "0700.HK": AutoRule(0.05, 0.12),
-    "9992.HK": AutoRule(0.07, 0.18),
+    "9992.HK": AutoRule(0.07, 0.18, calibration_anchor="sma_250d"),
     "MA": AutoRule(0.05, 0.12),
     "LIN": AutoRule(0.03, 0.08),
 }
@@ -200,6 +208,173 @@ def _fx_reporting_per_market(
     raise ValuationInputError("未注册报告币到交易币的即期汇率")
 
 
+def _daily_sma(ticker: Any, window: int = 250) -> float:
+    history = ticker.history(period="2y", interval="1d", auto_adjust=False)
+    if history is None or getattr(history, "empty", True) or "Close" not in history:
+        raise ValuationInputError(f"{window} 日均线数据不可用")
+    closes = [
+        value
+        for value in (_finite(raw) for raw in history["Close"].dropna().tolist())
+        if value is not None and value > 0
+    ]
+    if len(closes) < window:
+        raise ValuationInputError(f"日线仅 {len(closes)} 行，不足 {window} 日")
+    return sum(closes[-window:]) / window
+
+
+def _calibration_value(rule: AutoRule, signal: StockSignal, ticker: Any) -> float:
+    anchor = (
+        signal.sma_120
+        if rule.calibration_anchor == "sma_120w"
+        else _daily_sma(ticker, 250)
+    )
+    if anchor is None or anchor <= 0 or not math.isfinite(anchor):
+        raise ValuationInputError(f"估值校准锚 {rule.calibration_anchor} 不可用")
+    return float(anchor)
+
+
+def _current_freshness(
+    *,
+    ticker: str,
+    snapshot: ValuationSnapshot,
+    freshness: FreshnessResult,
+) -> FreshnessResult:
+    return FreshnessResult(
+        ticker=ticker,
+        status="current",
+        checked_at=freshness.checked_at,
+        latest_document=freshness.latest_document,
+        valuation_document_id=snapshot.source_document_id,
+    )
+
+
+def _snapshot_intrinsic(
+    snapshot: ValuationSnapshot,
+    *,
+    policy: ValuationPolicy,
+    freshness: FreshnessResult,
+    current_price: float,
+) -> float:
+    display = calculate_display(
+        policy=policy,
+        snapshot=snapshot,
+        freshness=_current_freshness(
+            ticker=policy.ticker,
+            snapshot=snapshot,
+            freshness=freshness,
+        ),
+        current_price=current_price,
+    )
+    value = display.intrinsic_value
+    if value is None or value <= 0 or not math.isfinite(value):
+        reason = display.warnings[0] if display.warnings else "底层估值不可复算"
+        raise ValuationInputError(reason)
+    return value
+
+
+def _scale_snapshot(snapshot: ValuationSnapshot, factor: float) -> ValuationSnapshot:
+    if factor <= 0 or not math.isfinite(factor):
+        raise ValuationInputError("估值校准比例无效")
+    if snapshot.method in {"fcff", "fcfe"}:
+        return replace(
+            snapshot,
+            cash_flows_per_share=tuple(value * factor for value in snapshot.cash_flows_per_share),
+        )
+    if snapshot.method == "residual_income":
+        return replace(
+            snapshot,
+            book_values_per_share=tuple(value * factor for value in snapshot.book_values_per_share),
+        )
+    if snapshot.method == "sotp_multiple":
+        return replace(
+            snapshot,
+            approved_intrinsic_value=(
+                snapshot.approved_intrinsic_value * factor
+                if snapshot.approved_intrinsic_value is not None
+                else None
+            ),
+            sotp_exit_value_per_share=(
+                snapshot.sotp_exit_value_per_share * factor
+                if snapshot.sotp_exit_value_per_share is not None
+                else None
+            ),
+            sotp_distributions_per_share=tuple(
+                value * factor for value in snapshot.sotp_distributions_per_share
+            ),
+        )
+    raise ValuationInputError(f"不支持校准的估值方法 {snapshot.method}")
+
+
+def calibrate_snapshot(
+    snapshot: ValuationSnapshot,
+    *,
+    signal: StockSignal,
+    freshness: FreshnessResult,
+    ticker: Any,
+) -> ValuationSnapshot:
+    """以基本面模型为中心输入、用用户指定周期锚限制严重失真。
+
+    基本面原值只影响锚点上下各 10% 的位置；它不是直接把均线当作内在价值，
+    而是把 120 周/250 日作为市场跨周期校准带，防止高资本开支或高速增长标的
+    被单期自由现金流机械压低。
+    """
+    policy = POLICIES[signal.holding.ticker]
+    rule = AUTO_RULES[policy.ticker]
+    if signal.last_close is None or signal.last_close <= 0:
+        raise ValuationInputError("现价不可用，无法校准估值")
+    raw_value = _snapshot_intrinsic(
+        snapshot,
+        policy=policy,
+        freshness=freshness,
+        current_price=signal.last_close,
+    )
+    anchor = _calibration_value(rule, signal, ticker)
+    raw_gap = raw_value / anchor - 1
+    adjustment = min(
+        max(rule.fundamental_weight * raw_gap, -rule.calibration_band),
+        rule.calibration_band,
+    )
+    target = anchor * (1 + adjustment)
+
+    calibrated = snapshot
+    # FCFF 含净债务桥接，并非严格线性；迭代缩放可在少数轮内收敛到目标。
+    for _ in range(8):
+        current = _snapshot_intrinsic(
+            calibrated,
+            policy=policy,
+            freshness=freshness,
+            current_price=signal.last_close,
+        )
+        if abs(current / target - 1) <= 1e-6:
+            break
+        calibrated = _scale_snapshot(calibrated, target / current)
+    final_value = _snapshot_intrinsic(
+        calibrated,
+        policy=policy,
+        freshness=freshness,
+        current_price=signal.last_close,
+    )
+    if abs(final_value / target - 1) > 0.002:
+        raise ValuationInputError("基本面估值无法收敛到周期校准带")
+    logger.info(
+        "valuation.cycle_calibration ticker=%s anchor=%s anchor_value=%.4f "
+        "raw_intrinsic=%.4f adjustment=%.2f%% calibrated_intrinsic=%.4f",
+        policy.ticker,
+        rule.calibration_anchor,
+        anchor,
+        raw_value,
+        adjustment * 100,
+        final_value,
+    )
+    return replace(
+        calibrated,
+        calibration_anchor=rule.calibration_anchor,
+        calibration_value=anchor,
+        raw_intrinsic_value=raw_value,
+        calibration_weight=1.0 - rule.fundamental_weight,
+    )
+
+
 def _capital_inputs(balance: Any, income: Any, *, shares: float, current_price: float) -> dict[str, float]:
     cash = _latest(
         balance,
@@ -247,7 +422,7 @@ def _base_payload(
         "approved_at": checked_at.date().isoformat(),
         "data_provider": "Yahoo Finance standardized financial statements",
         "data_retrieved_at": checked_at.astimezone(UTC).isoformat(),
-        "normalization_version": "automatic-normalized-financials-v1",
+        "normalization_version": "automatic-normalized-financials-v2",
         "currency_symbol": {"USD": "$", "HKD": "HK$", "CNY": "¥", "TWD": "NT$"}.get(
             policy.market_currency,
             policy.market_currency,
@@ -265,6 +440,7 @@ def build_snapshot(
     freshness: FreshnessResult,
     checked_at: datetime,
     ticker_factory: Callable[[str], Any] = yf.Ticker,
+    apply_cycle_calibration: bool = True,
 ) -> ValuationSnapshot:
     policy = POLICIES[signal.holding.ticker]
     rule = AUTO_RULES[policy.ticker]
@@ -379,7 +555,15 @@ def build_snapshot(
     else:  # pragma: no cover - ValuationMethod 已穷举
         raise ValuationInputError(f"不支持的自动估值方法 {policy.method}")
 
-    return snapshot_from_dict(raw)
+    snapshot = snapshot_from_dict(raw)
+    if not apply_cycle_calibration:
+        return snapshot
+    return calibrate_snapshot(
+        snapshot,
+        signal=signal,
+        freshness=freshness,
+        ticker=ticker,
+    )
 
 
 def _snapshot_payload(snapshot: ValuationSnapshot) -> dict[str, Any]:
@@ -394,7 +578,7 @@ def save_snapshots(snapshots: dict[str, ValuationSnapshot], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     body = {
         "schema_version": "1.0",
-        "generated_by": "automatic-normalized-financials-v1",
+        "generated_by": "automatic-normalized-financials-v2-cycle-calibrated",
         "snapshots": [_snapshot_payload(snapshots[ticker]) for ticker in POLICIES if ticker in snapshots],
     }
     tmp = path.with_suffix(".tmp")
@@ -425,28 +609,12 @@ def refresh_snapshots(
         try:
             policy = POLICIES[ticker]
             document = result.latest_document
-            previous = existing.get(ticker)
-            if (
-                previous is not None
-                and document is not None
-                and previous.source_document_id == document.document_id
-                and previous.formula_id == policy.formula_id
-                and previous.model_version == policy.model_version
-            ):
-                fx = _fx_reporting_per_market(policy, ticker_factory)
-                snapshots[ticker] = replace(
-                    previous,
-                    fx_reporting_per_market=fx,
-                    data_retrieved_at=checked_at.astimezone(UTC).isoformat(),
-                )
-                refreshed += 1
-                continue
-
             candidate = build_snapshot(
                 signal=signal,
                 freshness=result,
                 checked_at=checked_at,
                 ticker_factory=ticker_factory,
+                apply_cycle_calibration=False,
             )
             if reviewer is not None and document is not None:
                 try:
@@ -465,6 +633,14 @@ def refresh_snapshots(
                         type(exc).__name__,
                         str(exc)[:160],
                     )
+            # 先完成标准化底稿和可选的官方原文复核，再且只再校准一次。
+            # 每日重新读取锚点，避免同一份财报期间沿用昨日均线。
+            candidate = calibrate_snapshot(
+                candidate,
+                signal=signal,
+                freshness=result,
+                ticker=ticker_factory(signal.holding.yfinance_symbol),
+            )
             snapshots[ticker] = candidate
             refreshed += 1
         except Exception as exc:  # noqa: BLE001 - 单股安全降级

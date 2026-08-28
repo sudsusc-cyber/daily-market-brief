@@ -104,7 +104,9 @@ def test_holdings_table_renders_intrinsic_value_before_signal() -> None:
     assert html.index('内在价<span style="letter-spacing:0">值</span>') < html.index(
         "信&nbsp;号"
     )
-    assert '120&nbsp;<span style="letter-spacing:0">周</span>' in html
+    assert '120&nbsp;/&nbsp;200&nbsp;<span style="letter-spacing:0">周</span>' in html
+    assert "90.00<span" in html
+    assert ">/</span>80.00" in html
     assert '内在价<span style="letter-spacing:0">值</span>' in html
     assert ">$120.00<" not in html
     assert ">120.00<" in html
