@@ -15,10 +15,17 @@ from src.valuation.morningstar import (
 
 
 class _Response:
-    def __init__(self, text: str, *, ok: bool = True) -> None:
+    def __init__(
+        self,
+        text: str,
+        *,
+        ok: bool = True,
+        status_code: int | None = None,
+    ) -> None:
         self.text = text
         self.ok = ok
-        self.status_code = 200 if ok else 503
+        self.status_code = status_code if status_code is not None else (200 if ok else 503)
+        self.headers: dict[str, str] = {}
 
     def raise_for_status(self) -> None:
         if not self.ok:
@@ -103,6 +110,7 @@ Morningstar Apple research
 * Fair Value Estimate: $285.00
 """
     provider = MorningstarPublicProvider(
+        reader_min_interval=0,
         session=_Session(
             [
                 _Response("<html><title>Apple | Morningstar</title><body>Subscribe</body></html>"),
@@ -116,6 +124,31 @@ Morningstar Apple research
     )
     assert result.fair_value == 285.0
     assert result.source_provider.endswith("via Jina Reader")
+
+
+def test_reader_retries_temporary_rate_limit(monkeypatch) -> None:
+    reader_text = """
+Title: After Earnings, Is Apple Stock a Buy?
+Published Time: 2026-08-07T12:00:00Z
+Morningstar Apple research
+* Fair Value Estimate: $285.00
+"""
+    monkeypatch.setattr("src.valuation.morningstar.time.sleep", lambda _seconds: None)
+    provider = MorningstarPublicProvider(
+        reader_min_interval=0,
+        session=_Session(
+            [
+                _Response("<html><body>Subscribe</body></html>"),
+                _Response("rate limited", ok=False, status_code=429),
+                _Response(reader_text),
+            ]
+        ),
+    )
+    result = provider._read(
+        _Candidate("https://www.morningstar.com/stocks/apple-test", None),
+        SECURITIES["AAPL"],
+    )
+    assert result.fair_value == 285.0
 
 
 def test_live_value_is_saved_with_fixed_currency(tmp_path) -> None:

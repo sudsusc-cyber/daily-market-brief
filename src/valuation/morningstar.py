@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -346,15 +347,45 @@ def _validate_identity(text: str, security: MorningstarSecurity, source_url: str
 class MorningstarPublicProvider:
     """公开无登录 provider；不接触账户、交易或付费接口。"""
 
-    def __init__(self, *, timeout: float = 35.0, session: requests.Session | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        timeout: float = 35.0,
+        session: requests.Session | None = None,
+        reader_min_interval: float = 2.5,
+    ) -> None:
         self.timeout = timeout
         self.session = session or requests.Session()
         self.session.headers.setdefault("User-Agent", _USER_AGENT)
+        self.reader_min_interval = max(0.0, reader_min_interval)
+        self._last_reader_request_at: float | None = None
         self._memo: tuple[
             datetime,
             dict[str, MorningstarFairValue],
             dict[str, str],
         ] | None = None
+
+    def _reader_get(self, url: str) -> requests.Response:
+        """节流并重试公共文本镜像，避免一封邮件的双读触发临时限流。"""
+        response: requests.Response | None = None
+        for attempt in range(4):
+            if self._last_reader_request_at is not None:
+                elapsed = time.monotonic() - self._last_reader_request_at
+                if elapsed < self.reader_min_interval:
+                    time.sleep(self.reader_min_interval - elapsed)
+            response = self.session.get(url, timeout=self.timeout)
+            self._last_reader_request_at = time.monotonic()
+            if response.status_code not in {429, 500, 502, 503, 504}:
+                return response
+            if attempt < 3:
+                retry_after = getattr(response, "headers", {}).get("Retry-After")
+                try:
+                    wait = float(retry_after) if retry_after else 3.0 * (2**attempt)
+                except (TypeError, ValueError):
+                    wait = 3.0 * (2**attempt)
+                time.sleep(min(max(wait, 1.0), 30.0))
+        assert response is not None
+        return response
 
     def _discover(self, security: MorningstarSecurity) -> list[_Candidate]:
         response = self.session.get(
@@ -443,7 +474,7 @@ class MorningstarPublicProvider:
         # 网络错误，正文仍不可验证；继续读取同一核准来源的文本镜像，而不是误把
         # 壳层当作“最新值缺失”并回退到更旧文章。
         source = candidate.url.split("://", 1)[-1]
-        reader = self.session.get(f"{_JINA_READER}{source}", timeout=self.timeout)
+        reader = self._reader_get(f"{_JINA_READER}{source}")
         if reader.ok and reader.text.strip():
             try:
                 return parse(
@@ -510,6 +541,11 @@ class MorningstarPublicProvider:
                     errors.append(f"{host}: {str(exc)[:120]}")
             if ticker not in values:
                 failures[ticker] = "; ".join(errors[-3:]) or "没有可验证的公开 Morningstar 值"
+                logger.warning(
+                    "morningstar.unavailable ticker=%s reason=%s",
+                    ticker,
+                    failures[ticker],
+                )
         self._memo = (checked_at.astimezone(UTC), dict(values), dict(failures))
         return values, failures
 
