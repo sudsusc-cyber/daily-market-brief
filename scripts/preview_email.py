@@ -143,7 +143,7 @@ def _build_mock_valuations() -> dict[str, ValuationDisplay]:
             implied_return=value / prices[ticker] - 1,
             hurdle_rate=0.10,
             currency_symbol=symbol,
-            return_label="1Y IRR",
+            return_label="IRR",
             value_label="公允价值",
             financial_as_of="2026-Q2",
             approved_at="2026-08-28",

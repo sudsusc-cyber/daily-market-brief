@@ -299,7 +299,7 @@
               <tr>
                 <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
                   现价 / 均线：Yahoo Finance；括号为现价相对均线幅度。
-                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：Morningstar 最新公开值；1Y IRR＝公允价值 ÷ 现价 − 1（不含股息，仅供参考）。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
+                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：Morningstar 最新公开值；IRR（1年）＝公允价值 ÷ 现价 − 1（不含股息，仅供参考）。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
                 </td>
               </tr>
             </table>

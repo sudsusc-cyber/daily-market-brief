@@ -131,7 +131,7 @@ def test_holdings_table_labels_morningstar_value_without_changing_irr() -> None:
         implied_return=0.50,
         hurdle_rate=0.10,
         value_label="公允价值",
-        return_label="1Y IRR",
+        return_label="IRR",
     )
     html = render_email(
         signals=[signal],
@@ -140,8 +140,8 @@ def test_holdings_table_labels_morningstar_value_without_changing_irr() -> None:
     )
     assert '公允价<span style="letter-spacing:0">值</span>' in html
     assert ">600.00<" in html
-    assert "1Y IRR&nbsp;50.0%" in html
-    assert "1Y IRR＝公允价值 ÷ 现价 − 1" in html
+    assert "IRR&nbsp;50.0%" in html
+    assert "IRR（1年）＝公允价值 ÷ 现价 − 1" in html
     assert "逐股固定模型按当前价格独立反推" not in html
     assert "48 小时内最后一次已验证快照" not in html
 

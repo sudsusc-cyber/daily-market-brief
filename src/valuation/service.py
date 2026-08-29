@@ -140,7 +140,7 @@ def apply_morningstar_fair_values(
                 intrinsic_value=None,
                 implied_return=None,
                 hurdle_rate=0.10,
-                return_label="1Y IRR",
+                return_label="IRR",
                 value_label="公允价值",
                 warnings=(*display.warnings, reason),
             )
@@ -166,7 +166,7 @@ def apply_morningstar_fair_values(
             ),
             formula_id="morningstar_fair_value_1y_irr",
             model_version="morningstar-public-v2",
-            return_label="1Y IRR",
+            return_label="IRR",
             value_label="公允价值",
             warnings=(*display.warnings, *warning),
         )
@@ -198,7 +198,7 @@ def prepare_valuation_displays(
                 status="current",
                 hurdle_rate=0.10,
                 currency_symbol=_symbol(policy.market_currency),
-                return_label="1Y IRR",
+                return_label="IRR",
                 value_label="公允价值",
             )
             for ticker, policy in POLICIES.items()

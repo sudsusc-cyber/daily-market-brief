@@ -51,7 +51,7 @@ def test_morningstar_replaces_value_and_derives_irr_from_current_price() -> None
     )["AAPL"]
     assert result.intrinsic_value == 290.0
     assert result.implied_return == pytest.approx(0.16)
-    assert result.return_label == "1Y IRR"
+    assert result.return_label == "IRR"
     assert result.hurdle_rate == 0.10
     assert result.value_label == "公允价值"
     assert result.currency_symbol == "$"
@@ -77,7 +77,7 @@ def test_morningstar_irr_is_missing_when_current_price_is_missing() -> None:
     )["AAPL"]
     assert result.intrinsic_value == 290.0
     assert result.implied_return is None
-    assert result.return_label == "1Y IRR"
+    assert result.return_label == "IRR"
 
 
 def test_morningstar_fast_path_skips_internal_snapshots_and_reviewer(
