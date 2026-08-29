@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
 from src.valuation.morningstar import (
     SECURITIES,
     MorningstarFairValue,
@@ -260,7 +258,7 @@ def test_newer_distributed_report_replaces_older_explicit_value() -> None:
     assert "较旧来源为 280 USD" in str(result.warning)
 
 
-def test_same_report_date_source_conflict_fails_closed() -> None:
+def test_same_report_date_source_conflict_prefers_official_primary() -> None:
     official = _value(fair_value=280.0, updated="2026-08-20")
     distributed = MorningstarFairValue(
         **{
@@ -269,8 +267,10 @@ def test_same_report_date_source_conflict_fails_closed() -> None:
             "source_provider": "Morningstar report distributed by Yahoo Finance",
         }
     )
-    with pytest.raises(ValueError, match="同一报告日"):
-        _reconcile_independent_sources(official, distributed)
+    result = _reconcile_independent_sources(official, distributed)
+    assert result.fair_value == 280.0
+    assert result.source_provider == "Morningstar public research"
+    assert "Yahoo 备源为 310 USD" in str(result.warning)
 
 
 def test_yahoo_curated_report_survives_search_rate_limit(monkeypatch) -> None:

@@ -711,13 +711,19 @@ def _reconcile_independent_sources(
     primary: MorningstarFairValue,
     secondary: MorningstarFairValue,
 ) -> MorningstarFairValue:
-    """新报告可以维持旧值；仅同证据日冲突时拒绝自动选择。"""
+    """日期不同时取较新报告；同日冲突按来源层级取官方主源。"""
     if primary.ticker != secondary.ticker or primary.currency != secondary.currency:
         raise ValueError("Morningstar 主备源标的或币种不一致")
     same_value = math.isclose(primary.fair_value, secondary.fair_value, rel_tol=1e-9)
     if primary.fair_value_updated_at == secondary.fair_value_updated_at and not same_value:
-        raise ValueError(
-            "Morningstar 主备源在同一报告日给出不同公允价值，已停止自动显示"
+        return replace(
+            primary,
+            observation_count=primary.observation_count + secondary.observation_count,
+            warning=(
+                "Morningstar 主备源同日冲突；按来源层级采用官方主源 "
+                f"{primary.fair_value:g} {primary.currency}，Yahoo 备源为 "
+                f"{secondary.fair_value:g} {secondary.currency}"
+            ),
         )
     if secondary.fair_value_updated_at > primary.fair_value_updated_at:
         chosen, older = secondary, primary
