@@ -46,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Install Morningstar report OCR
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
       - name: Send formal test email
         run: uv run python src/main.py
         env:
