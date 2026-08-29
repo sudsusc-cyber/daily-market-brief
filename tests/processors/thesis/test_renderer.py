@@ -121,19 +121,12 @@ def test_weekday_unchanged_core_is_hidden():
     assert build_judgment_section([], state=state, today=_WEEKDAY) is None
 
 
-def test_saturday_weekly_review_renders_unchanged_core():
+def test_saturday_does_not_render_unchanged_historical_core():
     state = {"test-theme": make_state()}
 
     result = build_judgment_section([], state=state, today=_SATURDAY)
 
-    assert result is not None
-    assert result.items == [{
-        "theme": "test-theme",
-        "thesis": "测试断言",
-        "updated": False,
-        "marker": "",
-        "url": None,
-    }]
+    assert result is None
 
 
 def test_event_marks_persistent_item_updated():
@@ -215,11 +208,36 @@ def test_new_core_renders_on_transition_day():
     state = {
         "test-theme": make_state(changed=_WEEKDAY.isoformat()),
     }
+    evidence = make_evidence(
+        direction="neutral",
+        url="https://example.com/core",
+    )
 
-    result = build_judgment_section([], state=state, today=_WEEKDAY)
+    result = build_judgment_section(
+        [], state=state, evidence_today=[evidence], today=_WEEKDAY,
+    )
 
     assert result is not None
     assert result.items[0]["marker"] == "新核心"
+    assert result.items[0]["thesis"] == "这是一条需要跟踪的长期判断"
+
+
+def test_today_evidence_replaces_stale_persisted_thesis():
+    state = {
+        "test-theme": make_state(thesis="与今天信息不相关的历史旧断言"),
+    }
+    evidence = make_evidence(
+        direction="new_variable",
+        url="https://example.com/today",
+    )
+
+    result = build_judgment_section(
+        [], state=state, evidence_today=[evidence], today=_WEEKDAY,
+    )
+
+    assert result is not None
+    assert result.items[0]["thesis"] == "这是一条需要跟踪的长期判断"
+    assert "历史旧断言" not in result.items[0]["thesis"]
 
 
 def test_candidate_and_dormant_are_not_persistently_rendered():
@@ -231,7 +249,7 @@ def test_candidate_and_dormant_are_not_persistently_rendered():
     assert build_judgment_section([], state=state, today=_SATURDAY) is None
 
 
-def test_persistent_items_prioritize_core_then_emerging():
+def test_historical_items_do_not_reappear_without_today_evidence():
     state = {
         "emerging": make_state("emerging", status="emerging", thesis="端倪"),
         "stable": make_state("stable", status="stable", thesis="稳定", count=20),
@@ -240,8 +258,7 @@ def test_persistent_items_prioritize_core_then_emerging():
 
     result = build_judgment_section([], state=state, today=_SATURDAY)
 
-    assert result is not None
-    assert [item["thesis"] for item in result.items] == ["核心", "端倪", "稳定"]
+    assert result is None
 
 
 def test_fallback_from_old_headline():

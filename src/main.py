@@ -434,8 +434,10 @@ def main() -> int:
             company_news=company_news_summary,
             macro_news=macro_news_summary,
             figure_summaries=figure_summaries,
-            berkshire_events=buffett_bundle,
-            frontier_labs_events=frontier_labs_items,
+            # 13F 当前只有提交元数据、没有持仓变化正文，不能支撑长期判断。
+            berkshire_events=None,
+            # 邮件模板只展示前 2 条；长期判断也只能消费相同的可见集合。
+            frontier_labs_events=frontier_labs_items[:2],
             active_themes=active_themes,
             today=now_bj.date(),
         )

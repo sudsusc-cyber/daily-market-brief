@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem
 from src.collectors.figures import FigureBundle, FigureMention
@@ -199,7 +200,10 @@ def test_thesis_retries_invalid_json_and_accepts_valid_empty_array() -> None:
 
     evidence, error = extract_with_status(
         client=client,
-        company_news="已筛选的个股摘要",
+        company_news=SimpleNamespace(
+            summary_html="已筛选的个股摘要包含可核对事实。",
+            footnotes=[SimpleNamespace(url="https://example.com/source")],
+        ),
         today=date(2026, 8, 4),
     )
 

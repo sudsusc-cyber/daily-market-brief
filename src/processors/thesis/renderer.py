@@ -1,4 +1,4 @@
-"""按事件触发长期判断，并在周六固定做每周回顾。"""
+"""仅按当日邮件中有可核对证据的事件触发长期判断。"""
 
 from __future__ import annotations
 
@@ -63,13 +63,24 @@ def _build_markers(
         ):
             urls[evidence.theme] = evidence.url
 
+    material_today_by_theme: dict[str, ThesisEvidence] = {}
+    for evidence in evidence_today:
+        if (
+            evidence.date == today_str
+            and evidence.strength >= _MATERIAL_STRENGTH
+            and evidence.direction != "risk"
+            and evidence.url
+        ):
+            material_today_by_theme.setdefault(evidence.theme, evidence)
+
     for theme, thesis_state in state.items():
         if (
             thesis_state.status == "core"
             and thesis_state.last_state_change_date == today_str
+            and theme in material_today_by_theme
             and _set_marker(markers, theme, "新核心")
         ):
-            urls[theme] = None
+            urls[theme] = material_today_by_theme[theme].url
 
     # substantiate 事件已由 rules.py 执行 21 天 cooldown。
     for event in events:
@@ -85,7 +96,7 @@ def build_judgment_section(
     evidence_today: list[ThesisEvidence] | None = None,
     today: date | None = None,
 ) -> JudgmentSection | None:
-    """平日仅展示有变化的判断；周六回顾最重要的 3 条。"""
+    """只展示由当日可见证据触发变化的判断。"""
     if today is None:
         today = date.today()
     if evidence_today is None:
@@ -101,7 +112,6 @@ def build_judgment_section(
             evidence_today,
             today,
         )
-        weekly_review = today.weekday() == 5
         material_risk_themes = {
             evidence.theme
             for evidence in evidence_today
@@ -113,9 +123,8 @@ def build_judgment_section(
         active = [
             st for st in state.values()
             if st.status in status_rank and st.one_line_thesis.strip()
-            and (weekly_review or st.theme in markers)
-            # 周六固定回顾也不能让纯风险触发的主题绕过隐藏策略；若同主题
-            # 同时有新变量/新证据，则仍按非风险类别正常展示。
+            and st.theme in markers
+            # 纯风险不展示；若同主题同时有新变量/新证据，则按非风险类别展示。
             and not (st.theme in material_risk_themes and st.theme not in markers)
         ]
         active.sort(key=lambda st: st.theme)
@@ -127,9 +136,25 @@ def build_judgment_section(
         for st in active[:3]:
             event = event_by_theme.get(st.theme)
             marker = markers.get(st.theme, "")
+            current_evidence = [
+                evidence
+                for evidence in evidence_today
+                if evidence.date == today.isoformat()
+                and evidence.theme == st.theme
+                and evidence.strength >= _MATERIAL_STRENGTH
+                and evidence.direction != "risk"
+                and evidence.url
+            ]
+            current_evidence.sort(key=lambda evidence: evidence.strength, reverse=True)
+            # 展示断言必须解释今天邮件里的证据，不能回放账本中可能已经漂移的旧句子。
+            display_thesis = (
+                current_evidence[0].why_it_matters.strip()
+                if current_evidence and current_evidence[0].why_it_matters.strip()
+                else st.one_line_thesis.strip()
+            )
             items.append({
                 "theme": st.theme,
-                "thesis": st.one_line_thesis.strip(),
+                "thesis": display_thesis,
                 "updated": bool(marker),
                 "marker": marker,
                 "url": marker_urls.get(st.theme) or (event.source_url if event else None),

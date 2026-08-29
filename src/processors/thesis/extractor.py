@@ -14,9 +14,10 @@ import logging
 import re
 from datetime import date
 from typing import Any
+from urllib.parse import urldefrag
 
 from src.config import HOLDINGS
-from src.processors.html_safe import is_safe_url
+from src.processors.html_safe import is_safe_url, strip_all_tags
 from src.processors.llm_client import LLMClient
 
 from .models import ThesisEvidence
@@ -44,6 +45,126 @@ _REQUIRED_FIELDS = {
     "source_section", "source_name", "related_tickers", "theme",
     "direction", "strength", "horizon", "text", "why_it_matters",
 }
+
+
+def _value(obj: Any, name: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _normalize_grounding_text(value: Any) -> str:
+    """忽略标点与空白做保守的逐字摘录校验。"""
+    text = strip_all_tags(str(value or ""))
+    return "".join(ch.lower() for ch in text if ch.isalnum())
+
+
+def _normalize_grounding_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw or not is_safe_url(raw):
+        return ""
+    return urldefrag(raw)[0].rstrip("/")
+
+
+def _grounding_material(
+    *,
+    company_news: Any | None,
+    macro_news: Any | None,
+    figure_summaries: list[Any] | None,
+    frontier_labs_events: list[Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """收集最终邮件会展示的事实正文与来源链接。"""
+    material: dict[str, dict[str, Any]] = {}
+
+    def add(section: str, text: Any, urls: list[Any]) -> None:
+        normalized_text = _normalize_grounding_text(text)
+        normalized_urls = {
+            url for raw in urls if (url := _normalize_grounding_url(raw))
+        }
+        if not normalized_text or not normalized_urls:
+            return
+        bucket = material.setdefault(section, {"text": "", "urls": set()})
+        bucket["text"] += f"|{normalized_text}|"
+        bucket["urls"].update(normalized_urls)
+
+    def add_summary(section: str, summary: Any | None) -> None:
+        if not summary:
+            return
+        if hasattr(summary, "summary_html"):
+            footnotes = _value(summary, "footnotes", []) or []
+            add(
+                section,
+                _value(summary, "summary_html", ""),
+                [_value(item, "url", "") for item in footnotes],
+            )
+            return
+        # 兼容旧调用形态；生产路径使用上面的已筛选 summary。
+        texts: list[str] = []
+        urls: list[str] = []
+        for bundle in summary if isinstance(summary, (list, tuple)) else []:
+            for item in _value(bundle, "items", []) or []:
+                texts.extend([
+                    str(_value(item, "title", "") or ""),
+                    str(_value(item, "summary", "") or ""),
+                ])
+                urls.append(str(_value(item, "url", "") or ""))
+        add(section, " ".join(texts), urls)
+
+    add_summary("company_news", company_news)
+    add_summary("macro", macro_news)
+
+    voice_texts: list[str] = []
+    voice_urls: list[str] = []
+    for summary in figure_summaries or []:
+        for item in _value(summary, "items", []) or []:
+            voice_texts.append(str(_value(item, "text", "") or ""))
+            voice_urls.append(str(_value(item, "source_url", "") or ""))
+    add("voices", " ".join(voice_texts), voice_urls)
+
+    frontier_texts: list[str] = []
+    frontier_urls: list[str] = []
+    for item in frontier_labs_events or []:
+        frontier_texts.append(str(_value(item, "text", "") or ""))
+        frontier_urls.append(str(
+            _value(item, "url", "") or _value(item, "source_url", "") or ""
+        ))
+    add("frontier_labs", " ".join(frontier_texts), frontier_urls)
+    return material
+
+
+def _filter_grounded_evidence(
+    evidence: list[ThesisEvidence],
+    material: dict[str, dict[str, Any]],
+) -> list[ThesisEvidence]:
+    """拒绝无法在最终邮件正文和脚注中同时核对的模型输出。"""
+    grounded: list[ThesisEvidence] = []
+    for item in evidence:
+        bucket = material.get(item.source_section)
+        normalized_text = _normalize_grounding_text(item.text)
+        normalized_url = _normalize_grounding_url(item.url)
+        if not bucket:
+            logger.warning(
+                "extractor.skip_ungrounded_section theme=%s section=%s",
+                item.theme, item.source_section,
+            )
+            continue
+        if len(normalized_text) < 8 or normalized_text not in bucket["text"]:
+            logger.warning(
+                "extractor.skip_ungrounded_text theme=%s section=%s",
+                item.theme, item.source_section,
+            )
+            continue
+        if not normalized_url or normalized_url not in bucket["urls"]:
+            logger.warning(
+                "extractor.skip_ungrounded_url theme=%s section=%s",
+                item.theme, item.source_section,
+            )
+            continue
+        grounded.append(item)
+    logger.info(
+        "extractor.grounded total=%d accepted=%d", len(evidence), len(grounded),
+    )
+    return grounded
 
 # ─── theme canonicalization ───────────────────────────────────────
 
@@ -233,6 +354,17 @@ def extract_with_status(
         today = date.today()
     today_str = today.isoformat()
 
+    # Active Themes 只是映射提示，不能在没有当日展示内容时单独触发模型。
+    material = _grounding_material(
+        company_news=company_news,
+        macro_news=macro_news,
+        figure_summaries=figure_summaries,
+        frontier_labs_events=frontier_labs_events,
+    )
+    if not material:
+        logger.info("extractor.empty_grounded_input")
+        return [], None
+
     user_prompt = build_user_prompt(
         company_news=company_news,
         macro_news=macro_news,
@@ -287,6 +419,7 @@ def extract_with_status(
             return [], None
 
         evidence = validate_and_build(raw_items, today_str)
+        evidence = _filter_grounded_evidence(evidence, material)
         if not evidence:
             last_error = "AllNonEmptyItemsFailedValidation"
             logger.warning(

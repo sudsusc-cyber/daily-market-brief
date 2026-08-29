@@ -2,6 +2,7 @@
 
 import json
 from datetime import date
+from types import SimpleNamespace
 
 from src.processors.llm_client import LLMResponse, LLMUsage
 from src.processors.thesis.extractor import (
@@ -283,17 +284,79 @@ class _DummyClient:
 
 
 def test_extract_caps_evidence_items():
+    source_url = "https://example.com/grounded"
     payload = [
-        _valid_item(text=f"测试文本 {i}", why_it_matters=f"测试原因 {i}")
+        _valid_item(
+            text=f"这是一条可以核对的测试文本 {i}",
+            why_it_matters=f"测试原因 {i}",
+            url=source_url,
+        )
         for i in range(MAX_EVIDENCE_ITEMS + 4)
     ]
+    summary = SimpleNamespace(
+        summary_html=" ".join(item["text"] for item in payload),
+        footnotes=[SimpleNamespace(url=source_url)],
+    )
 
     result = extract(
         client=_DummyClient(json.dumps(payload)),
-        company_news="已筛选摘要",
+        company_news=summary,
         today=date(2026, 5, 4),
     )
 
     assert len(result) == MAX_EVIDENCE_ITEMS
-    assert result[0].text == "测试文本 0"
-    assert result[-1].text == f"测试文本 {MAX_EVIDENCE_ITEMS - 1}"
+    assert result[0].text == "这是一条可以核对的测试文本 0"
+    assert result[-1].text == f"这是一条可以核对的测试文本 {MAX_EVIDENCE_ITEMS - 1}"
+
+
+def test_active_themes_alone_do_not_call_llm():
+    class FailIfCalled:
+        def chat(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise AssertionError("active themes alone must not call the LLM")
+
+    result = extract(
+        client=FailIfCalled(),
+        active_themes=["ai-capex-cycle"],
+        today=date(2026, 5, 4),
+    )
+
+    assert result == []
+
+
+def test_rejects_evidence_text_not_shown_in_email():
+    source_url = "https://example.com/visible"
+    summary = SimpleNamespace(
+        summary_html="邮件实际只展示云业务需求保持稳定。",
+        footnotes=[SimpleNamespace(url=source_url)],
+    )
+    payload = _valid_item(
+        text="模型擅自声称手机销量大幅增长",
+        url=source_url,
+    )
+
+    result = extract(
+        client=_DummyClient(json.dumps([payload])),
+        company_news=summary,
+        today=date(2026, 5, 4),
+    )
+
+    assert result == []
+
+
+def test_rejects_evidence_url_not_shown_in_email():
+    summary = SimpleNamespace(
+        summary_html="邮件实际展示云业务需求保持稳定。",
+        footnotes=[SimpleNamespace(url="https://example.com/visible")],
+    )
+    payload = _valid_item(
+        text="邮件实际展示云业务需求保持稳定",
+        url="https://example.com/invented",
+    )
+
+    result = extract(
+        client=_DummyClient(json.dumps([payload])),
+        company_news=summary,
+        today=date(2026, 5, 4),
+    )
+
+    assert result == []

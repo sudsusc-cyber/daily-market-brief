@@ -16,6 +16,12 @@ MAX_EVIDENCE_ITEMS = 8
 
 SYSTEM_EXTRA = """你今天的额外任务是：从以下已筛选的市场日报内容中，抽取与持仓公司长期投资判断直接相关的 evidence。
 
+所有 evidence 必须能在下方某个实际展示模块中逐项核对：
+- `text` 必须直接摘录该模块已经展示的事实原句，不得改写、补充或推断输入中没有的事实
+- `url` 必须逐字复制该模块给出的真实来源链接；没有链接的内容不得抽取
+- `source_section` 必须与事实及链接所在模块一致
+- Active Themes 只是主题映射参考，绝不是证据，严禁仅凭主题名称生成 evidence
+
 只抽取与以下维度相关的内容：
 - Owner earnings（企业所有者盈利）的持续性与变化
 - 竞争格局与护城河变化
@@ -50,7 +56,7 @@ SYSTEM_EXTRA = """你今天的额外任务是：从以下已筛选的市场日�
     "direction": "support",
     "strength": 4,
     "horizon": "multi_year",
-    "text": "原文中与长期判断相关的关键事实，1-3 句。",
+    "text": "从下方模块逐字摘录的关键事实原句，1-3 句。",
     "why_it_matters": "为什么这个事实影响对 owner earnings / 竞争格局 / 资本配置 / 估值假设的判断，1-3 句。"
   }
 ]
@@ -182,15 +188,8 @@ def build_user_prompt(
                 )
         sections.append("\n".join(lines))
 
-    # ── Berkshire 事件 ──
-    if berkshire_events:
-        lines = ["## Berkshire 13F / 年报 / 股东信 (source_section: berkshire)"]
-        if hasattr(berkshire_events, "latest"):
-            latest = berkshire_events.latest
-            lines.append(f"- accession: {getattr(latest, 'accession_no', '?')}")
-            lines.append(f"- filed_at: {getattr(latest, 'filed_at', '?')}")
-        lines.append(f"- is_new: {getattr(berkshire_events, 'is_new', False)}")
-        sections.append("\n".join(lines))
+    # Berkshire 目前只知道“有新 13F”及提交编号，尚未解析持仓变化。
+    # 这类元数据没有可支撑长期判断的事实正文，不能作为 evidence 输入。
 
     if not sections:
         return "（今日无已筛选内容。）"
