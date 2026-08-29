@@ -159,6 +159,7 @@ class YahooMorningstarProvider:
         if symbol is None:
             raise ValueError("Yahoo 无同一港股上市口径的 Morningstar 报告")
         reports: list[Mapping[str, object]] = []
+        company_key = security.company_name.lower().split()[0]
         curated = _CURATED_REPORTS.get(security.ticker)
         if curated is not None:
             reports.append(
@@ -193,6 +194,7 @@ class YahooMorningstarProvider:
                 if isinstance(row, Mapping)
                 and row.get("provider") == "Morningstar"
                 and "AnalystReport" in str(row.get("id") or "")
+                and company_key in str(row.get("reportHeadline") or "").lower()
             )
         except (requests.RequestException, ValueError) as exc:
             if not reports:
@@ -206,7 +208,6 @@ class YahooMorningstarProvider:
             raise ValueError("Yahoo 未返回 Morningstar 个股报告")
         report = max(reports, key=lambda row: int(row.get("reportDate") or 0))
         headline = str(report.get("reportHeadline") or "")
-        company_key = security.company_name.lower().split()[0]
         if company_key not in headline.lower():
             raise ValueError("Yahoo Morningstar 报告与标的公司不匹配")
         report_id = str(report["id"])
