@@ -27,6 +27,7 @@ _MAX_CACHE_AGE = timedelta(hours=48)
 _GOOGLE_NEWS = "https://news.google.com/rss/search"
 _JINA_READER = "https://r.jina.ai/http://"
 _USER_AGENT = "daily-market-brief/1.0 (+public-source-validation)"
+_DEFAULT_SECONDARY = object()
 
 
 @dataclass(frozen=True)
@@ -397,11 +398,25 @@ class MorningstarPublicProvider:
         timeout: float = 35.0,
         session: requests.Session | None = None,
         reader_min_interval: float = 2.5,
+        secondary_provider: MorningstarProvider | None | object = _DEFAULT_SECONDARY,
     ) -> None:
         self.timeout = timeout
         self.session = session or requests.Session()
         self.session.headers.setdefault("User-Agent", _USER_AGENT)
         self.reader_min_interval = max(0.0, reader_min_interval)
+        if secondary_provider is _DEFAULT_SECONDARY:
+            # 自定义 session 主要用于完全离线的单元测试；生产默认启用 Yahoo
+            # 分发的 Morningstar 报告作为独立读取与回退渠道。
+            if session is None:
+                from src.valuation.yahoo_morningstar import YahooMorningstarProvider
+
+                self.secondary_provider: MorningstarProvider | None = (
+                    YahooMorningstarProvider(timeout=timeout)
+                )
+            else:
+                self.secondary_provider = None
+        else:
+            self.secondary_provider = secondary_provider  # type: ignore[assignment]
         self._last_reader_request_at: float | None = None
         self._memo: tuple[
             datetime,
@@ -587,6 +602,18 @@ class MorningstarPublicProvider:
                 return dict(memo_values), dict(memo_failures)
         values: dict[str, MorningstarFairValue] = {}
         failures: dict[str, str] = {}
+        secondary_values: dict[str, MorningstarFairValue] = {}
+        secondary_failures: dict[str, str] = {}
+        if self.secondary_provider is not None:
+            try:
+                secondary_values, secondary_failures = self.secondary_provider.fetch_all(
+                    securities, checked_at=checked_at
+                )
+            except Exception as exc:  # noqa: BLE001
+                secondary_failures = {
+                    ticker: f"独立备源整体失败: {type(exc).__name__}"
+                    for ticker in securities
+                }
         retrieved = checked_at.astimezone(UTC).isoformat()
         for ticker, security in securities.items():
             errors: list[str] = []
@@ -655,8 +682,58 @@ class MorningstarPublicProvider:
                     ticker,
                     failures[ticker],
                 )
+            secondary = secondary_values.get(ticker)
+            primary = values.get(ticker)
+            if primary is None and secondary is not None:
+                values[ticker] = replace(
+                    secondary,
+                    fallback_used=True,
+                    warning="Morningstar 官方公开页不可读，采用 Yahoo 分发的最新 Morningstar 报告",
+                )
+                failures.pop(ticker, None)
+            elif primary is not None and secondary is not None:
+                try:
+                    values[ticker] = _reconcile_independent_sources(primary, secondary)
+                    failures.pop(ticker, None)
+                except ValueError as exc:
+                    values.pop(ticker, None)
+                    failures[ticker] = str(exc)
+            elif primary is None and ticker in secondary_failures:
+                failures[ticker] = (
+                    f"{failures.get(ticker, 'Morningstar 官方公开页不可用')}；"
+                    f"Yahoo 备源: {secondary_failures[ticker]}"
+                )[:500]
         self._memo = (checked_at.astimezone(UTC), dict(values), dict(failures))
         return values, failures
+
+
+def _reconcile_independent_sources(
+    primary: MorningstarFairValue,
+    secondary: MorningstarFairValue,
+) -> MorningstarFairValue:
+    """新报告可以维持旧值；仅同证据日冲突时拒绝自动选择。"""
+    if primary.ticker != secondary.ticker or primary.currency != secondary.currency:
+        raise ValueError("Morningstar 主备源标的或币种不一致")
+    same_value = math.isclose(primary.fair_value, secondary.fair_value, rel_tol=1e-9)
+    if primary.fair_value_updated_at == secondary.fair_value_updated_at and not same_value:
+        raise ValueError(
+            "Morningstar 主备源在同一报告日给出不同公允价值，已停止自动显示"
+        )
+    if secondary.fair_value_updated_at > primary.fair_value_updated_at:
+        chosen, older = secondary, primary
+    else:
+        chosen, older = primary, secondary
+    if same_value:
+        warning = "独立分发报告已复核；新报告可能继续维持原公允价值"
+    else:
+        warning = (
+            f"采用较新报告值；较旧来源为 {older.fair_value:g} {older.currency}"
+        )
+    return replace(
+        chosen,
+        observation_count=primary.observation_count + secondary.observation_count,
+        warning=warning,
+    )
 
 
 def _retrieved_at(snapshot: MorningstarFairValue) -> datetime:

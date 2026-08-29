@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from src.valuation.morningstar import (
     SECURITIES,
     MorningstarFairValue,
@@ -10,9 +12,11 @@ from src.valuation.morningstar import (
     _Candidate,
     _extract_value,
     _parse_company_report_candidates,
+    _reconcile_independent_sources,
     load_cache,
     refresh_fair_values,
 )
+from src.valuation.yahoo_morningstar import _VALUE_RE, YahooMorningstarProvider
 
 
 class _Response:
@@ -222,6 +226,102 @@ def test_hk_does_not_fall_through_when_newest_candidate_is_unverifiable(
     assert values == {}
     assert "0700.HK" in failures
     assert calls == [newest]
+
+
+def test_newer_report_can_confirm_unchanged_fair_value() -> None:
+    official = _value(fair_value=600.0, updated="2026-08-11")
+    distributed = MorningstarFairValue(
+        **{
+            **official.__dict__,
+            "fair_value_updated_at": "2026-08-20",
+            "source_provider": "Morningstar report distributed by Yahoo Finance",
+            "source_url": "https://finance.yahoo.com/research/reports/example/",
+        }
+    )
+    result = _reconcile_independent_sources(official, distributed)
+    assert result.fair_value == 600.0
+    assert result.source_provider.endswith("Yahoo Finance")
+    assert "维持原公允价值" in str(result.warning)
+
+
+def test_newer_distributed_report_replaces_older_explicit_value() -> None:
+    official = _value(fair_value=280.0, updated="2026-08-20")
+    distributed = MorningstarFairValue(
+        **{
+            **official.__dict__,
+            "fair_value": 310.0,
+            "fair_value_updated_at": "2026-08-26",
+            "source_provider": "Morningstar report distributed by Yahoo Finance",
+            "source_url": "https://finance.yahoo.com/research/reports/example/",
+        }
+    )
+    result = _reconcile_independent_sources(official, distributed)
+    assert result.fair_value == 310.0
+    assert "较旧来源为 280 USD" in str(result.warning)
+
+
+def test_same_report_date_source_conflict_fails_closed() -> None:
+    official = _value(fair_value=280.0, updated="2026-08-20")
+    distributed = MorningstarFairValue(
+        **{
+            **official.__dict__,
+            "fair_value": 310.0,
+            "source_provider": "Morningstar report distributed by Yahoo Finance",
+        }
+    )
+    with pytest.raises(ValueError, match="同一报告日"):
+        _reconcile_independent_sources(official, distributed)
+
+
+def test_yahoo_curated_report_survives_search_rate_limit(monkeypatch) -> None:
+    provider = YahooMorningstarProvider(tesseract_path="tesseract")
+    monkeypatch.setattr(
+        provider,
+        "_search",
+        lambda _params: (_ for _ in ()).throw(ValueError("HTTP 429")),
+    )
+    report_id, published, report_url, snapshot_url = provider._latest_report(
+        SECURITIES["MSFT"]
+    )
+    assert report_id.startswith("MS_0P000003MH_AnalystReport_")
+    assert published.date().isoformat() == "2026-07-31"
+    assert report_url.startswith("https://finance.yahoo.com/research/reports/")
+    assert snapshot_url and snapshot_url.startswith("https://s.yimg.com/")
+
+
+def test_yahoo_ocr_pattern_handles_joined_following_column() -> None:
+    match = _VALUE_RE.search("600.00USD75")
+    assert match is not None
+    assert match.groups() == ("600.00", "USD")
+
+
+def test_yahoo_does_not_substitute_adr_for_hk_listing() -> None:
+    assert YahooMorningstarProvider._symbol("0700.HK") is None
+    assert YahooMorningstarProvider._symbol("9992.HK") is None
+    assert YahooMorningstarProvider._symbol("BRK.B") == "BRK-B"
+
+
+def test_yahoo_report_is_used_when_official_page_is_unavailable(monkeypatch) -> None:
+    backup = MorningstarFairValue(
+        **{
+            **_value().__dict__,
+            "source_provider": "Morningstar report distributed by Yahoo Finance",
+            "source_url": "https://finance.yahoo.com/research/reports/example/",
+        }
+    )
+    provider = MorningstarPublicProvider(
+        session=_Session([]),
+        secondary_provider=_Provider({"AAPL": backup}),
+    )
+    monkeypatch.setattr(provider, "_discover", lambda _security: [])
+    values, failures = provider.fetch_all(
+        {"AAPL": SECURITIES["AAPL"]},
+        checked_at=datetime(2026, 8, 29, tzinfo=UTC),
+    )
+    assert failures == {}
+    assert values["AAPL"].fair_value == 290.0
+    assert values["AAPL"].fallback_used is True
+    assert values["AAPL"].source_provider.endswith("Yahoo Finance")
 
 
 def test_live_value_is_saved_with_fixed_currency(tmp_path) -> None:

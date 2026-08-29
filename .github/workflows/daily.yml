@@ -67,6 +67,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Install Morningstar report OCR
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
       # GH runner 每次 fresh checkout,state 不持久化:
       #   - state/pushed_figures.json     (figures 7 天去重)
       #   - state/last_13f.json           (Berkshire 13F 提交比对)

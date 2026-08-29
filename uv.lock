@@ -367,6 +367,7 @@ dependencies = [
     { name = "jinja2" },
     { name = "lxml" },
     { name = "openai" },
+    { name = "pillow" },
     { name = "pydantic-settings" },
     { name = "pypdf" },
     { name = "python-dotenv" },
@@ -379,7 +380,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "black" },
-    { name = "pillow" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -396,6 +396,7 @@ requires-dist = [
     { name = "jinja2", specifier = ">=3.1.4" },
     { name = "lxml", specifier = ">=5.2.0" },
     { name = "openai", specifier = ">=1.40.0" },
+    { name = "pillow", specifier = ">=12.2.0" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "pypdf", specifier = ">=6.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
@@ -408,7 +409,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "black", specifier = ">=24.0.0" },
-    { name = "pillow", specifier = ">=12.2.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.6.0" },
 ]
