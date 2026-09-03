@@ -293,6 +293,7 @@ class LLMClient:
         task_extra: str | None = None,
         max_output_tokens: int = 1600,
         timeout: int = 60,
+        market_data: bool = False,
     ) -> LLMResponse:
         """强制 DeepSeek Responses API 执行网页搜索。
 
@@ -320,16 +321,32 @@ class LLMClient:
             "必须给出完整 URL、文件标题、正式发布时间、报告期间和公告编号；"
             "若无法在官方原文核实任一字段，明确返回 NOT_VERIFIED。"
         )
+        if market_data:
+            guard = (
+                f"只从这些域名读取公开基金和指数数据：{domains}。"
+                "必须先执行网页搜索，再输出最终 JSON；找到核心字段后立即回答。"
+                "按用户指定 JSON 字段返回数值、真实数据日期和来源 URL；"
+                "不可将抓取日期当作数据日期，不可用示例或记忆填补缺失数据。"
+            )
         system = build_system_prompt(task_extra="\n".join(filter(None, [task_extra, guard])))
         try:
+            search_options = {}
+            if market_data:
+                # Fixed-schema extraction does not need hidden reasoning. Forced
+                # search can consume every continuation without a final message.
+                search_options = {
+                    "reasoning": {"effort": "none"},
+                    "text": {"format": {"type": "json_object"}},
+                }
             response = self._client.responses.create(
                 model=self._model,
                 instructions=system,
                 input=user_prompt,
                 tools=[{"type": "web_search"}],
-                tool_choice={"type": "web_search"},
+                tool_choice="auto" if market_data else {"type": "web_search"},
                 max_output_tokens=max_output_tokens,
                 timeout=effective_timeout,
+                **search_options,
             )
         except Exception as exc:  # noqa: BLE001
             redacted_msg = redact_secrets(str(exc))[:200]
@@ -345,9 +362,22 @@ class LLMClient:
                 error=f"{type(exc).__name__}: {redacted_msg}",
             )
         text = _extract_responses_text(response)
+        output_types = [
+            item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+            for item in (getattr(response, "output", None) or [])
+        ]
+        logger.info(
+            "llm.web_search_structure status=%s output_types=%s incomplete=%s",
+            getattr(response, "status", None),
+            output_types,
+            getattr(response, "incomplete_details", None),
+        )
         usage = _extract_responses_usage(response)
         self._accumulate(usage)
         error = None if text else "EmptyOutput: web search returned no visible text"
+        if market_data and "web_search_call" not in output_types:
+            text = ""
+            error = "WebSearchNotExecuted: market data requires live search"
         logger.info(
             "llm.web_search_ok model=%s in=%d out=%d reasoning=%d domains=%s response_chars=%d",
             self._model,
@@ -435,10 +465,16 @@ def _extract_responses_text(resp: Any) -> str:
         return ""
     chunks: list[str] = []
     for item in output:
+        item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+        if item_type not in (None, "message"):
+            continue
         content = item.get("content") if isinstance(item, dict) else getattr(item, "content", None)
         if not isinstance(content, (list, tuple)):
             continue
         for part in content:
+            part_type = part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+            if part_type not in (None, "text", "output_text"):
+                continue
             text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
             if text:
                 chunks.append(str(text))

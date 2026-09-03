@@ -88,6 +88,16 @@ jobs:
           restore-keys: |
             daily-state-
 
+      - name: Restore QQQM startup snapshot when daily state has none
+        if: ${{ hashFiles('state/qqqm_valuation.json') == '' }}
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/qqqm_valuation.json
+          key: qqqm-verified-read-${{ github.run_id }}
+          restore-keys: |
+            qqqm-verified-
+
       - name: Send daily market brief
         run: uv run python src/main.py
         env:

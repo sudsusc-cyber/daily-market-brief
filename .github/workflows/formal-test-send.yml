@@ -10,6 +10,16 @@ on:
         description: "试发收件人（多个地址用英文逗号分隔）"
         required: true
         type: string
+      qqqm_check_only:
+        description: "Only verify QQQM live inputs; do not send email"
+        required: false
+        default: false
+        type: boolean
+      qqqm_verified_seed:
+        description: "Optional independently verified QQQM source JSON for initial cache"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -48,9 +58,11 @@ jobs:
         run: uv sync --frozen
 
       - name: Install Morningstar report OCR
+        if: ${{ !inputs.qqqm_check_only }}
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr
 
       - name: Restore verified Morningstar snapshot only
+        if: ${{ !inputs.qqqm_check_only }}
         continue-on-error: true
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -59,7 +71,23 @@ jobs:
           restore-keys: |
             morningstar-verified-
 
+      - name: Restore verified QQQM snapshot only
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/qqqm_valuation.json
+          key: qqqm-verified-read-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            qqqm-verified-
+
+      - name: Install independently verified QQQM startup snapshot
+        if: ${{ inputs.qqqm_verified_seed != '' }}
+        run: uv run python scripts/seed_qqqm.py
+        env:
+          QQQM_VERIFIED_SEED: ${{ inputs.qqqm_verified_seed }}
+
       - name: Send formal test email
+        if: ${{ !inputs.qqqm_check_only }}
         run: uv run python src/main.py
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -69,8 +97,31 @@ jobs:
           QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
           EMAIL_RECIPIENT: ${{ inputs.recipients }}
 
+      - name: Verify QQQM without sending
+        if: ${{ inputs.qqqm_check_only }}
+        run: uv run python scripts/check_qqqm.py
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+      - name: Upload QQQM diagnostic
+        if: ${{ always() && inputs.qqqm_check_only }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qqqm-diagnostic
+          path: state/qqqm_diagnostic.json
+          retention-days: 3
+
       - name: Confirm SMTP acceptance
+        if: ${{ !inputs.qqqm_check_only }}
         run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
 
       - name: Confirm full email delivery
+        if: ${{ !inputs.qqqm_check_only }}
         run: uv run python -m src.utils.delivery full .delivery-receipt.json
+
+      - name: Save verified QQQM snapshot
+        if: ${{ success() && github.ref == 'refs/heads/main' && hashFiles('state/qqqm_valuation.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/qqqm_valuation.json
+          key: qqqm-verified-${{ github.run_id }}-${{ github.run_attempt }}

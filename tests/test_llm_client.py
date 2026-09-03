@@ -212,7 +212,10 @@ def test_web_search_extracts_deepseek_output_content_when_output_text_is_empty(m
         def create(self, **_kwargs):
             return SimpleNamespace(
                 output_text="",
-                output=[SimpleNamespace(content=[SimpleNamespace(text='{"status":"ok"}')])],
+                output=[
+                    SimpleNamespace(type="reasoning", content=[SimpleNamespace(text="hidden")]),
+                    SimpleNamespace(type="message", content=[SimpleNamespace(text='{"status":"ok"}')]),
+                ],
                 usage=None,
             )
 
@@ -237,3 +240,29 @@ def test_web_search_requires_domain_allowlist(monkeypatch) -> None:
     )
     assert response.text is None
     assert response.error == "WebSearchDomainAllowlistRequired"
+
+
+def test_market_search_reserves_visible_output_and_requires_real_search(monkeypatch) -> None:
+    captured = {}
+    output = [{"type": "web_search_call"}]
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(output_text='{"status":"ok"}', output=output, usage=None)
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", FakeOpenAI)
+    client = LLMClient(api_key="secret")
+    response = client.search_web("查基金数据", allowed_domains=("invesco.com",), market_data=True)
+    assert response.text == '{"status":"ok"}'
+    assert captured["reasoning"] == {"effort": "none"}
+    assert captured["text"] == {"format": {"type": "json_object"}}
+    assert captured["tool_choice"] == "auto"
+    output.clear()
+    response = client.search_web("查基金数据", allowed_domains=("invesco.com",), market_data=True)
+    assert response.text is None
+    assert response.error.startswith("WebSearchNotExecuted")
