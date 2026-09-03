@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
+import requests
+
 from src.valuation.morningstar import (
     SECURITIES,
     MorningstarFairValue,
@@ -97,6 +100,7 @@ Ivan Su Aug 12, 2026
         _Candidate(
             "https://www.morningstar.com/company-reports/1494726-test?listing=x",
             datetime(2026, 8, 12, tzinfo=UTC),
+            headline="Tencent Earnings",
         )
     ]
 
@@ -399,3 +403,185 @@ def test_corrupt_cache_is_ignored(tmp_path) -> None:
     path = tmp_path / "morningstar_fair_values.json"
     path.write_text(json.dumps({"fair_values": [{"ticker": "AAPL"}]}), encoding="utf-8")
     assert load_cache(path) == {}
+
+
+@pytest.mark.parametrize("ticker,headline,value", [
+    ("0700.HK", "Tencent: HKD 780 Fair Value Unchanged", 780),
+    ("0700.HK", "Tencent: HKD 825.50 Fair Value Estimate Maintained", 825.5),
+    ("0700.HK", "Tencent: Fair Value Estimate Raised to HKD 910", 910),
+    ("0700.HK", "Tencent: Fair Value Unchanged at HK$ 800", 800),
+    ("0700.HK", "Tencent: Fair Value: HKD 1,020", 1020),
+    ("9992.HK", "Pop Mart: HKD 224 Fair Value Unchanged", 224),
+])
+def test_hk_explicit_headline_values_are_dynamic(ticker, headline, value) -> None:
+    assert _extract_value(f"Title: {headline}\nMorningstar", SECURITIES[ticker]) == (value, "HKD")
+
+
+@pytest.mark.parametrize("headline", [
+    "Tencent: Fair Value Cut by 20%",  # 百分比不是港币公允价值。
+    "Tencent: HKD 780 Revenue Expected",  # 其他指标。
+    "Tencent: USD 100 Fair Value Unchanged",  # 不得把 ADR 美元口径当港股。
+    "Tencent: Prior HKD 900 Fair Value; Review Pending",  # 历史值。
+    "Tencent: HKD 780 Fair Value or HKD 800 Fair Value",  # 歧义。
+    "Tencent: HKD 0 Fair Value Unchanged",
+    "Other Company: HKD 780 Fair Value Unchanged",
+])
+def test_hk_headline_does_not_guess_or_misattribute_values(headline) -> None:
+    with pytest.raises(ValueError):
+        _extract_value(f"Title: {headline}\nMorningstar", SECURITIES["0700.HK"])
+
+
+def test_hk_does_not_extract_value_from_archived_related_reports() -> None:
+    page = """
+Title: Tencent: New AI Spending Update
+Morningstar Tencent research. Subscribe for full report.
+## Company Report Archive
+### Tencent Earnings
+Fair Value Estimate: HKD 900
+"""
+    with pytest.raises(ValueError):
+        _extract_value(page, SECURITIES["0700.HK"])
+
+
+_TENCENT_URL = (
+    "https://www.morningstar.com/company-reports/"
+    "1498254-tencent-the-ai-cash-drain-has-a-visible-end-date-hkd-780-fair-value-unchanged"
+    "?listing=0P00009S22"
+)
+_TENCENT_DATE = datetime(2026, 9, 2, tzinfo=UTC)
+_TENCENT_TITLE = "Tencent: The AI Cash Drain Has a Visible End Date; HKD 780 Fair Value Unchanged"
+
+
+def _tencent_listing(title=_TENCENT_TITLE, url=_TENCENT_URL, date="Sep 2, 2026"):
+    return f"### [{title}]({url})\nSummary.\nIvan Su {date}\n"
+
+
+def test_live_tencent_report_regression_uses_new_date_without_known_value(monkeypatch) -> None:
+    page = f"Title: {_TENCENT_TITLE}\nPublished Time: 2026-09-02T11:59:00+0000\nMorningstar"
+    provider = MorningstarPublicProvider(reader_min_interval=0, session=_Session([
+        _Response("Forbidden", ok=False, status_code=403), _Response(page),
+        _Response("Forbidden", ok=False, status_code=403), _Response(page),
+    ]))
+    candidate = _Candidate(_TENCENT_URL, _TENCENT_DATE)  # 无硬编码值。
+    monkeypatch.setattr(provider, "_discover", lambda _security: [candidate])
+    values, failures = provider.fetch_all({"0700.HK": SECURITIES["0700.HK"]}, checked_at=datetime(2026, 9, 3, tzinfo=UTC))
+    assert failures == {}
+    assert values["0700.HK"].fair_value == 780
+    assert values["0700.HK"].fair_value_updated_at == "2026-09-02"
+    assert values["0700.HK"].observation_count == 2
+
+
+def test_hk_direct_html_preserves_og_title_and_publication_date() -> None:
+    html = f'''<html><head><meta property="og:title" content="{_TENCENT_TITLE}">
+    <meta property="article:published_time" content="2026-09-02T11:59:00+0000"></head>
+    <body>Tencent Holdings — Morningstar</body></html>'''
+    provider = MorningstarPublicProvider(session=_Session([_Response(html)]))
+    value = provider._read(_Candidate(_TENCENT_URL, None), SECURITIES["0700.HK"])
+    assert value.fair_value == 780
+    assert value.fair_value_updated_at == "2026-09-02"
+
+
+def test_explicit_new_headline_value_overrides_curated_baseline() -> None:
+    page = "Title: Tencent: HKD 825 Fair Value Unchanged\nPublished Time: 2026-09-02\nMorningstar"
+    provider = MorningstarPublicProvider(session=_Session([_Response(page)]))
+    value = provider._read(_Candidate(_TENCENT_URL, _TENCENT_DATE, known_value=780), SECURITIES["0700.HK"])
+    assert value.fair_value == 825
+
+
+def test_direct_timeout_still_tries_public_reader() -> None:
+    page = f"Title: {_TENCENT_TITLE}\nPublished Time: 2026-09-02T11:59:00Z\nMorningstar"
+
+    class TimeoutSession(_Session):
+        def get(self, url, **kwargs):
+            if not url.startswith("https://r.jina.ai/"):
+                raise requests.Timeout("direct timeout")
+            return super().get(url, **kwargs)
+
+    provider = MorningstarPublicProvider(session=TimeoutSession([_Response(page)]))
+    value = provider._read(_Candidate(_TENCENT_URL, _TENCENT_DATE), SECURITIES["0700.HK"])
+    assert value.fair_value == 780
+
+
+def test_hk_official_directory_recovers_when_both_report_paths_fail(monkeypatch) -> None:
+    responses = []
+    for _ in range(2):
+        responses.extend([
+            _Response("Forbidden", ok=False, status_code=403),
+            _Response("Forbidden", ok=False, status_code=403),
+            _Response(_tencent_listing()),
+        ])
+    provider = MorningstarPublicProvider(reader_min_interval=0, session=_Session(responses))
+    monkeypatch.setattr(provider, "_discover", lambda _security: [_Candidate(_TENCENT_URL, _TENCENT_DATE)])
+    values, failures = provider.fetch_all({"0700.HK": SECURITIES["0700.HK"]}, checked_at=datetime(2026, 9, 3, tzinfo=UTC))
+    assert failures == {}
+    value = values["0700.HK"]
+    assert value.fair_value == 780 and value.fair_value_updated_at == "2026-09-02"
+    assert value.source_provider == "Morningstar official report listing via Jina Reader"
+    assert value.observation_count == 2
+
+
+def test_directory_fallback_rejects_two_different_live_reads(monkeypatch) -> None:
+    responses = []
+    for amount in (780, 825):
+        responses.extend([
+            _Response("Forbidden", ok=False, status_code=403),
+            _Response("Forbidden", ok=False, status_code=403),
+            _Response(_tencent_listing(title=f"Tencent: HKD {amount} Fair Value Unchanged")),
+        ])
+    provider = MorningstarPublicProvider(reader_min_interval=0, session=_Session(responses))
+    monkeypatch.setattr(provider, "_discover", lambda _security: [_Candidate(_TENCENT_URL, _TENCENT_DATE)])
+    values, failures = provider.fetch_all({"0700.HK": SECURITIES["0700.HK"]}, checked_at=datetime(2026, 9, 3, tzinfo=UTC))
+    assert not values
+    assert "双读不一致" in failures["0700.HK"]
+
+
+@pytest.mark.parametrize("listing", [
+    _tencent_listing(url=_TENCENT_URL.replace("1498254", "1494726")),
+    _tencent_listing(date="Aug 12, 2026"),
+    _tencent_listing(title="Tencent: Fair Value Cut by 20%"),
+    _tencent_listing(title="Other Company: HKD 780 Fair Value Unchanged"),
+])
+def test_directory_fallback_requires_exact_report_date_issuer_and_absolute_value(listing) -> None:
+    provider = MorningstarPublicProvider(session=_Session([_Response(listing)]))
+    with pytest.raises(ValueError):
+        provider._read_listing(_Candidate(_TENCENT_URL, _TENCENT_DATE), SECURITIES["0700.HK"])
+
+
+def test_directory_fallback_rejects_wrong_listing_identity() -> None:
+    provider = MorningstarPublicProvider(session=_Session([]))
+    candidate = _Candidate(_TENCENT_URL.replace("0P00009S22", "other"), _TENCENT_DATE)
+    with pytest.raises(ValueError, match="上市口径"):
+        provider._read_listing(candidate, SECURITIES["0700.HK"])
+
+
+def test_report_listing_does_not_borrow_date_from_next_report() -> None:
+    text = f"### [Undated report]({_TENCENT_URL.replace('1498254', 'other')})\nSummary\n" + _tencent_listing()
+    assert [c.url for c in _parse_company_report_candidates(text)] == [_TENCENT_URL]
+
+
+def test_final_check_retries_only_failed_tickers(monkeypatch) -> None:
+    provider = MorningstarPublicProvider(session=_Session([]))
+    calls = []
+    fail_tencent = True
+
+    def discover(security):
+        calls.append(security.ticker)
+        return [_Candidate("https://www.morningstar.com/stocks/test", _TENCENT_DATE)]
+
+    def read(candidate, security):
+        if security.ticker == "0700.HK" and fail_tencent:
+            raise ValueError("temporary failure")
+        return _value(security.ticker, updated="2026-09-02")
+
+    monkeypatch.setattr(provider, "_discover", discover)
+    monkeypatch.setattr(provider, "_read", read)
+    securities = {k: SECURITIES[k] for k in ("AAPL", "0700.HK")}
+    now = datetime(2026, 9, 3, tzinfo=UTC)
+    values, failures = provider.fetch_all(securities, checked_at=now)
+    assert set(values) == {"AAPL"} and set(failures) == {"0700.HK"}
+    fail_tencent = False
+    values, failures = provider.fetch_all(securities, checked_at=now + timedelta(minutes=6))
+    assert set(values) == set(securities) and failures == {}
+    assert calls == ["AAPL", "0700.HK", "0700.HK"]
+    provider.fetch_all(securities, checked_at=now + timedelta(minutes=7))
+    assert len(calls) == 3

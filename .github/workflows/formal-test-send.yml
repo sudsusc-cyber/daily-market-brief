@@ -2,6 +2,7 @@ name: send-formal-test
 
 # 手动定向试发完整正式版：运行真实采集、LLM、主题与正式模板，但不恢复或保存
 # daily-state，因此不会污染定时邮件的新闻去重、主题缓存或判断账本。
+# 仅只读恢复独立的 Morningstar 已核验快照；仍先实时取数，回退受 48 小时限制。
 on:
   workflow_dispatch:
     inputs:
@@ -48,6 +49,15 @@ jobs:
 
       - name: Install Morningstar report OCR
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
+      - name: Restore verified Morningstar snapshot only
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/morningstar_fair_values.json
+          key: morningstar-verified-read-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            morningstar-verified-
 
       - name: Send formal test email
         run: uv run python src/main.py

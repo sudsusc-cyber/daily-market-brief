@@ -134,3 +134,11 @@ jobs:
           path: |
             state
           key: daily-state-${{ github.run_id }}
+
+      # 单独保存已核验估值；定向试发可以只读使用，不接触新闻/主题去重状态。
+      - name: Save verified Morningstar snapshot
+        if: ${{ always() && github.ref == 'refs/heads/main' && hashFiles('.delivery-receipt.json') != '' && hashFiles('state/morningstar_fair_values.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/morningstar_fair_values.json
+          key: morningstar-verified-${{ github.run_id }}-${{ github.run_attempt }}

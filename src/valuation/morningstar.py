@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -250,10 +250,11 @@ class _Candidate:
     url: str
     published_at: datetime | None
     known_value: float | None = None
+    headline: str | None = None
 
 
 _REPORT_LINK_RE = re.compile(
-    r"^###\s+\[[^\]]+\]\((https?://www\.morningstar\.com/company-reports/[^)]+)\)$",
+    r"^###\s+\[(?P<headline>[^\]]+)\]\((?P<url>https?://www\.morningstar\.com/company-reports/[^)]+)\)$",
     re.I,
 )
 _REPORT_DATE_RE = re.compile(r"\b([A-Z][a-z]{2} \d{1,2}, \d{4})$")
@@ -269,6 +270,8 @@ def _parse_company_report_candidates(text: str) -> list[_Candidate]:
             continue
         published_at: datetime | None = None
         for following in lines[index + 1 : index + 14]:
+            if following.strip().startswith("### "):
+                break  # 不把下一篇报告的日期借给当前报告。
             date_match = _REPORT_DATE_RE.search(following.strip())
             if date_match:
                 published_at = datetime.strptime(
@@ -277,8 +280,8 @@ def _parse_company_report_candidates(text: str) -> list[_Candidate]:
                 break
         if published_at is None:
             continue
-        url = re.sub(r"^http://", "https://", link_match.group(1), flags=re.I)
-        candidates.append(_Candidate(url, published_at))
+        url = re.sub(r"^http://", "https://", link_match.group("url"), flags=re.I)
+        candidates.append(_Candidate(url, published_at, headline=link_match.group("headline")))
     return candidates
 
 
@@ -323,12 +326,62 @@ def _company_scope(text: str, security: MorningstarSecurity) -> str | None:
     return None
 
 
+def _extract_hk_headline_value(
+    headline: str, security: MorningstarSecurity,
+) -> tuple[float, str] | None:
+    """仅接受本公司标题中明确以港币计价的公允价值，不用涨跌幅推算。"""
+    if not security.ticker.endswith(".HK"):
+        return None
+    if security.company_name.lower().split()[0] not in headline.lower():
+        return None
+    amount = r"(?:HKD|HK\$)\s*(\d[\d,]*(?:\.\d+)?)\b"
+    phrase = r"fair\s+value(?:\s+estimate)?"
+    patterns = (
+        rf"{amount}\s+{phrase}",
+        rf"{phrase}\s*:?\s*(?:(?:is|remains|unchanged|maintained|raised|increased|cut|reduced)\s+)*"
+        rf"(?:(?:at|to|of)\s+)?{amount}",
+    )
+    values = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, headline, re.I):
+            if re.search(r"\b(?:previous|prior|old|former|from)\s*$", headline[:match.start()], re.I):
+                continue
+            values.add(float(match.group(1).replace(",", "")))
+    if len(values) > 1:
+        raise ValueError("报告标题存在多个不同公允价值，需核对正文")
+    if not values:
+        return None
+    value = values.pop()
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError("Morningstar 公允价值必须是正有限数")
+    return value, "HKD"
+
+
+def _research_text(html: str) -> str:
+    """保留公开 HTML 的报告标题/日期，避免正文转文本时丢失关键字段。"""
+    soup = BeautifulSoup(html, "lxml")
+    title = soup.find("meta", property="og:title")
+    heading = str(title.get("content", "")) if title else ""
+    if not heading and soup.title:
+        heading = soup.title.get_text(" ", strip=True)
+    published = soup.find("meta", property="article:published_time")
+    prefix = f"Title: {heading}\n" if heading else ""
+    if published and published.get("content"):
+        prefix += f"Published Time: {published['content']}\n"
+    return prefix + soup.get_text("\n", strip=True)
+
+
 def _extract_value(text: str, security: MorningstarSecurity) -> tuple[float, str]:
     title_match = re.search(r"^Title:\s*([^\n]+)", text, re.I | re.M)
     title = title_match.group(1).lower() if title_match else ""
+    headline_value = _extract_hk_headline_value(title, security)
+    if headline_value is not None:
+        return headline_value
     dedicated = security.company_name.lower().split()[0] in title
     scoped = None if dedicated else _company_scope(text, security)
     search_text = scoped or text
+    if security.ticker.endswith(".HK"):
+        search_text = re.split(r"^## (?:Company Report Archive|Share This Report)\b", search_text, flags=re.M)[0]
     if security.ticker == "BRK.B":
         patterns = (
             r"\$[\d,]+\s*\(\$([\d,]+(?:\.\d+)?)\)\s*per class a \(b\)",
@@ -540,10 +593,35 @@ class MorningstarPublicProvider:
             reverse=True,
         )
 
+    def _read_listing(self, candidate: _Candidate, security: MorningstarSecurity) -> str:
+        """同一官方报告的目录备用路径；不宣称是独立分发源。"""
+        if not security.listing_id:
+            raise ValueError("该标的没有官方报告目录")
+        if parse_qs(urlparse(candidate.url).query).get("listing") != [security.listing_id]:
+            raise ValueError("报告上市口径与官方目录不匹配")
+        listing = self._reader_get(
+            f"{_JINA_READER}www.morningstar.com/company-reports?listing={security.listing_id}"
+        )
+        listing.raise_for_status()
+        for entry in _parse_company_report_candidates(listing.text):
+            if entry.url != candidate.url or entry.published_at != candidate.published_at:
+                continue
+            if not entry.headline or _extract_hk_headline_value(entry.headline, security) is None:
+                raise ValueError("官方目录标题未明确给出本标的港币公允价值")
+            return (
+                f"Title: {entry.headline}\nPublished Time: {entry.published_at.isoformat()}\n"
+                "Morningstar official company report listing"
+            )
+        raise ValueError("官方目录未找到同一报告及发布日期")
+
     def _read(self, candidate: _Candidate, security: MorningstarSecurity) -> MorningstarFairValue:
         def parse(text: str, provider: str) -> MorningstarFairValue:
             _validate_identity(text, security, candidate.url)
-            if candidate.known_value is not None:
+            headline = re.search(r"^Title:\s*([^\n]+)", text, re.I | re.M)
+            explicit = _extract_hk_headline_value(headline.group(1), security) if headline else None
+            if explicit is not None:
+                value, currency = explicit
+            elif candidate.known_value is not None:
                 value = candidate.known_value
                 currency = security.currency
             else:
@@ -562,32 +640,39 @@ class MorningstarPublicProvider:
             )
 
         errors: list[str] = []
-        direct = self.session.get(candidate.url, timeout=self.timeout)
-        if direct.ok and direct.text.strip():
-            try:
+        try:
+            direct = self.session.get(candidate.url, timeout=self.timeout)
+            if direct.ok and direct.text.strip():
                 return parse(
-                    BeautifulSoup(direct.text, "lxml").get_text("\n", strip=True),
+                    _research_text(direct.text),
                     "Morningstar public research",
                 )
-            except ValueError as exc:
-                errors.append(str(exc))
+            errors.append(f"直接页 HTTP {direct.status_code}")
+        except (requests.RequestException, ValueError) as exc:
+            errors.append(str(exc))
 
         # Morningstar 偶尔以 HTTP 200 返回只有壳层/付费墙的 HTML。此时直接页虽非
         # 网络错误，正文仍不可验证；继续读取同一核准来源的文本镜像，而不是误把
         # 壳层当作“最新值缺失”并回退到更旧文章。
         source = candidate.url.split("://", 1)[-1]
-        reader = self._reader_get(f"{_JINA_READER}{source}")
-        if reader.ok and reader.text.strip():
-            try:
+        try:
+            reader = self._reader_get(f"{_JINA_READER}{source}")
+            if reader.ok and reader.text.strip():
                 return parse(
                     reader.text,
                     "Morningstar public research via Jina Reader",
                 )
-            except ValueError as exc:
+            errors.append(f"正文镜像 HTTP {reader.status_code}")
+        except (requests.RequestException, ValueError) as exc:
+            errors.append(str(exc))
+        if security.listing_id:
+            try:
+                return parse(
+                    self._read_listing(candidate, security),
+                    "Morningstar official report listing via Jina Reader",
+                )
+            except (requests.RequestException, ValueError) as exc:
                 errors.append(str(exc))
-        if not errors:
-            reader.raise_for_status()
-            direct.raise_for_status()
         raise ValueError("；".join(errors) or "来源正文不可读取")
 
     def fetch_all(
@@ -596,26 +681,32 @@ class MorningstarPublicProvider:
         *,
         checked_at: datetime,
     ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
-        if self._memo is not None:
-            memo_at, memo_values, memo_failures = self._memo
-            if checked_at.astimezone(UTC) - memo_at <= timedelta(minutes=30):
-                return dict(memo_values), dict(memo_failures)
         values: dict[str, MorningstarFairValue] = {}
+        memo_at = checked_at.astimezone(UTC)
+        if self._memo is not None:
+            memo_at, memo_values, _memo_failures = self._memo
+            if timedelta(0) <= checked_at.astimezone(UTC) - memo_at <= timedelta(minutes=30):
+                values = {ticker: value for ticker, value in memo_values.items() if ticker in securities}
+                if set(values) == set(securities):
+                    return values, {}
+            else:
+                memo_at = checked_at.astimezone(UTC)
+        pending = {ticker: security for ticker, security in securities.items() if ticker not in values}
         failures: dict[str, str] = {}
         secondary_values: dict[str, MorningstarFairValue] = {}
         secondary_failures: dict[str, str] = {}
         if self.secondary_provider is not None:
             try:
                 secondary_values, secondary_failures = self.secondary_provider.fetch_all(
-                    securities, checked_at=checked_at
+                    pending, checked_at=checked_at
                 )
             except Exception as exc:  # noqa: BLE001
                 secondary_failures = {
                     ticker: f"独立备源整体失败: {type(exc).__name__}"
-                    for ticker in securities
+                    for ticker in pending
                 }
         retrieved = checked_at.astimezone(UTC).isoformat()
-        for ticker, security in securities.items():
+        for ticker, security in pending.items():
             errors: list[str] = []
             try:
                 candidates = self._discover(security)
@@ -659,6 +750,7 @@ class MorningstarPublicProvider:
                     host = urlparse(candidate.url).hostname or "unknown"
                     error_text = str(exc)
                     errors.append(f"{host}: {error_text[:120]}")
+                    logger.info("morningstar.candidate_failed ticker=%s url=%s reason=%s", ticker, candidate.url, error_text[:240])
                     # 港股的公开研究页会对公允价值字段做前端混淆。若最新候选无法
                     # 验证，宁可触发 48 小时快照回退/待更新，也不能继续采用更旧
                     # 文章并把它误标成当天最新值。
@@ -703,7 +795,8 @@ class MorningstarPublicProvider:
                     f"{failures.get(ticker, 'Morningstar 官方公开页不可用')}；"
                     f"Yahoo 备源: {secondary_failures[ticker]}"
                 )[:500]
-        self._memo = (checked_at.astimezone(UTC), dict(values), dict(failures))
+        # 只复用成功项；发送前复核会重新尝试失败标的，而非复用失败 30 分钟。
+        self._memo = (memo_at, dict(values), dict(failures))
         return values, failures
 
 
