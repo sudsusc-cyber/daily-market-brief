@@ -14,13 +14,16 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.valuation.qqqm import calculate_qqqm, parse_qqqm_inputs
+from src.valuation.qqqm import calculate_qqqm, daily_forward_enabled, parse_qqqm_inputs
 from src.valuation.qqqm_sources import fetch_source_packet
 
 
 def seed_snapshot(text: str, *, packet: dict, state_dir: Path, checked_at: datetime) -> None:
-    inputs = parse_qqqm_inputs(text, price=packet["nav_anchor"], checked_at=checked_at)
-    for field in ("nav_anchor", "div_ttm", "data_date", "pe_pair_t", "pe_pair_f", "fwd_date"):
+    inputs = parse_qqqm_inputs(text, price=packet["nav_anchor"], checked_at=checked_at,
+                               allow_daily_forward=daily_forward_enabled())
+    fields = ["nav_anchor", "div_ttm", "data_date", "pe_pair_t", "pe_pair_f", "fwd_date"]
+    fields.extend(key for key in ("pe_ttm", "forward_basis") if packet.get(key) is not None)
+    for field in fields:
         expected, actual = packet[field], getattr(inputs, field)
         if isinstance(expected, float) and isinstance(actual, (float, int)):
             same = math.isclose(expected, actual, rel_tol=1e-8)
@@ -38,7 +41,7 @@ def seed_snapshot(text: str, *, packet: dict, state_dir: Path, checked_at: datet
 
 def main() -> None:
     checked_at = datetime.now(UTC)
-    packet = fetch_source_packet(checked_at=checked_at)
+    packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=daily_forward_enabled())
     if packet is None:
         raise ValueError("Live official sources unavailable; do not install seed")
     seed_snapshot(os.environ["QQQM_VERIFIED_SEED"], packet=packet,

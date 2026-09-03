@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -17,8 +18,10 @@ NOW = datetime(2026, 9, 3, 4, 0, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
-def no_live_sources(monkeypatch):
+def no_live_sources(monkeypatch, tmp_path):
     monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: None)
+    monkeypatch.setenv("QQQM_DAILY_FORWARD_ENABLED", "false")
+    monkeypatch.setattr("src.valuation.qqqm._BOOTSTRAP_PATH", tmp_path / "missing-bootstrap.json")
 
 
 def _payload(*, data_date: str = "2026-09-02") -> str:
@@ -119,7 +122,7 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     assert first.implied_return == pytest.approx(first.intrinsic_value / 300.0 - 1)
     assert first.financial_as_of == "2026-09-02"
     assert first.formula_id == "qqqm_optimistic_cashflow_v1_6"
-    assert first.model_version == "1.6"
+    assert first.model_version == "1.7"
 
     failed = _Client(LLMResponse(text=None, error="rate limit", usage=LLMUsage()))
     second = prepare_qqqm_display(price=305.0, client=failed, state_dir=tmp_path, checked_at=NOW)
@@ -210,3 +213,140 @@ def test_prompt_and_display_keep_single_scenario_and_gap_return():
     assert "不得再乘1.15" in prompt
     assert "20%/40%/40%" not in prompt
     assert "差额收益率，非年化" in prompt
+
+
+def _packet():
+    raw = json.loads(_payload())
+    return dict(raw["data"], citations=raw["citations"], fwd_date="2026-09-02")
+
+
+def test_verified_direct_packet_does_not_depend_on_deepseek(tmp_path, monkeypatch):
+    packet = _packet()
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: packet)
+    client = _Client(LLMResponse(text=None, error="quota exhausted", usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW)
+    assert not display.is_pending
+    assert client.calls == 0
+    assert display.implied_return == pytest.approx(display.intrinsic_value / 300 - 1)
+    assert (tmp_path / "qqqm_valuation.json").exists()
+
+
+def test_search_can_fill_missing_packet_field_but_not_overwrite_verified_pe(tmp_path, monkeypatch):
+    packet = _packet()
+    packet["pe_pair_t"] = packet["pe_pair_f"] = packet["fwd_date"] = None
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: packet)
+    client = _Client(LLMResponse(text=_payload(), usage=LLMUsage()))
+    assert not prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW).is_pending
+    packet["pe_ttm"] = 26
+    fresh_state = tmp_path / "mismatch"
+    display = prepare_qqqm_display(price=300, client=client, state_dir=fresh_state, checked_at=NOW)
+    assert display.is_pending
+    assert "pe_ttm 被模型改写" in display.warnings[0]
+
+
+def test_daily_consensus_requires_explicit_opt_in(tmp_path, monkeypatch):
+    packet = _packet()
+    packet["forward_basis"] = "dl-blended-fy1fy2"
+    for item in packet["citations"]:
+        if item["field"].startswith("pe_pair"):
+            item["basis"] = packet["forward_basis"]
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: packet)
+    client = _Client(LLMResponse(text=None, usage=LLMUsage()))
+    assert prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW).is_pending
+    monkeypatch.setenv("QQQM_DAILY_FORWARD_ENABLED", "true")
+    assert not prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW).is_pending
+
+
+def test_weekend_and_not_yet_closed_forward_dates_are_rejected():
+    for day in ("2026-09-03", "2026-08-30"):
+        payload = json.loads(_payload())
+        payload["data"]["fwd_date"] = day
+        for citation in payload["citations"]:
+            if citation["field"].startswith("pe_pair"):
+                citation["date"] = day
+        inputs = parse_qqqm_inputs(json.dumps(payload), price=300, checked_at=NOW)
+        with pytest.raises(ValueError, match="乐观情景缺少"):
+            calculate_qqqm(inputs)
+
+
+def test_cache_recovery_uses_newest_complete_snapshot_not_existing_invalid_file(tmp_path):
+    failed = _Client(LLMResponse(text=None, error="offline", usage=LLMUsage()))
+    (tmp_path / "qqqm_valuation.json").write_text('{"source_response":"invalid"}')
+    (tmp_path / "qqqm_valuation.daily.json").write_text(json.dumps({"source_response": _payload()}))
+    display = prepare_qqqm_display(price=310, client=failed, state_dir=tmp_path, checked_at=NOW)
+    assert not display.is_pending
+    assert display.implied_return == pytest.approx(display.intrinsic_value / 310 - 1)
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({"source_response": _payload(data_date="2026-09-01")}))
+    display = prepare_qqqm_display(price=310, client=failed, state_dir=tmp_path, checked_at=NOW)
+    assert display.financial_as_of == "2026-09-02"
+
+
+def test_cache_save_gate_does_not_republish_old_base_snapshot(tmp_path):
+    from scripts.qqqm_cache import normalize_cache, preserve_daily
+
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({"source_response": _payload()}))
+    preserve_daily(tmp_path)
+    base = json.loads(_payload())
+    base["data"].update(pe_pair_t=None, pe_pair_f=None)
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({"source_response": json.dumps(base)}))
+    assert normalize_cache(tmp_path, checked_at=NOW, allow_daily_forward=False)
+    restored = json.loads((tmp_path / "qqqm_valuation.json").read_text())
+    assert json.loads(restored["source_response"])["data"]["pe_pair_t"] == 30
+    assert not normalize_cache(tmp_path, checked_at=NOW + timedelta(days=14), allow_daily_forward=False)
+
+
+def test_needs_review_reports_which_inputs_are_missing(tmp_path):
+    payload = json.loads(_payload())
+    payload["status"] = "needs_review"
+    payload["data"].update(pe_ttm=None, pe_pair_t=None, pe_pair_f=None)
+    client = _Client(LLMResponse(text=json.dumps(payload), usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW)
+    assert "缺失字段=pe_ttm,pe_pair_t,pe_pair_f" in display.warnings[0]
+
+
+@pytest.mark.parametrize("bad", [None, [], {}, 12, ""])
+def test_malformed_primary_source_response_does_not_block_valid_secondary(tmp_path, bad):
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({"source_response": bad}))
+    (tmp_path / "qqqm_valuation.daily.json").write_text(json.dumps({"source_response": _payload()}))
+    failed = _Client(LLMResponse(text=None, error="offline", usage=LLMUsage()))
+    assert not prepare_qqqm_display(price=300, client=failed, state_dir=tmp_path, checked_at=NOW).is_pending
+
+
+def test_bootstrap_snapshot_is_recomputed_and_expires(tmp_path, monkeypatch):
+    bootstrap = tmp_path / "verified-startup.json"
+    bootstrap.write_text(json.dumps({"source_response": _payload(), "value": 1}))
+    monkeypatch.setattr("src.valuation.qqqm._BOOTSTRAP_PATH", bootstrap)
+    client = _Client(LLMResponse(text=None, error="offline", usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path / "state", checked_at=NOW)
+    assert not display.is_pending
+    assert display.intrinsic_value != 1
+    from scripts.qqqm_cache import normalize_cache
+    assert normalize_cache(tmp_path / "state", checked_at=NOW, allow_daily_forward=False)
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path / "state",
+                                   checked_at=NOW + timedelta(days=14))
+    assert display.is_pending
+
+
+def test_model_upgrade_does_not_trigger_unattributed_value_jump(tmp_path, monkeypatch):
+    from src.valuation.models import ValuationDisplay
+    from src.valuation.service import commit_published_values, enforce_jump_guard
+    commit_published_values({"QQQM": ValuationDisplay(
+        ticker="QQQM", status="current", intrinsic_value=241.51,
+        source_document_id="qqqm-v1.5:2026-09-02", model_version="1.5",
+    )}, state_dir=tmp_path, sent_at=NOW)
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: _packet())
+    client = _Client(LLMResponse(text=None, usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW)
+    assert not enforce_jump_guard({"QQQM": display}, state_dir=tmp_path)["QQQM"].is_pending
+
+
+def test_shipped_bootstrap_has_complete_dated_inputs_and_cannot_live_forever():
+    snapshot = json.loads((Path(__file__).parents[1] / "config/qqqm_verified_snapshot.json").read_text())
+    checked_at = datetime.fromisoformat(snapshot["verified_at"])
+    inputs = parse_qqqm_inputs(snapshot["source_response"], price=300, checked_at=checked_at,
+                               allow_daily_forward=True)
+    assert inputs.forward_basis == "dl-blended-fy1fy2"
+    assert calculate_qqqm(inputs).value > 0
+    with pytest.raises(ValueError, match="14 天"):
+        parse_qqqm_inputs(snapshot["source_response"], price=300,
+                           checked_at=checked_at + timedelta(days=15), allow_daily_forward=True)
