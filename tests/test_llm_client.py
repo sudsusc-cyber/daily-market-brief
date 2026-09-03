@@ -260,6 +260,7 @@ def test_market_search_reserves_visible_output_and_requires_real_search(monkeypa
     response = client.search_web("查基金数据", allowed_domains=("invesco.com",), market_data=True)
     assert response.text == '{"status":"ok"}'
     assert captured["reasoning"] == {"effort": "none"}
+    assert captured["text"] == {"format": {"type": "json_object"}}
     assert captured["tool_choice"] == "auto"
     output.clear()
     response = client.search_web("查基金数据", allowed_domains=("invesco.com",), market_data=True)

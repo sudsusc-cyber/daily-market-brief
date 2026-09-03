@@ -26,7 +26,7 @@ def _payload(*, data_date: str = "2026-09-03") -> str:
         "data_date": data_date,
         "source_urls": [
             "https://www.invesco.com/qqqm",
-            "https://www.gurufocus.com/ndx-pe",
+            "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio",
             "https://historyofmarket.com/ndx-pe",
         ],
     }
@@ -108,3 +108,16 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     assert second.implied_return != first.implied_return
     assert second.implied_return == pytest.approx(second.intrinsic_value / 305.0 - 1)
     assert "快照" in second.warnings[0]
+
+
+def test_reject_wrong_index_page():
+    payload = _payload().replace("economic_indicators/6778/nasdaq-100-pe-ratio", "stock/FRA:NDX/summary")
+    with pytest.raises(ValueError, match="指定 Nasdaq 100"):
+        parse_qqqm_inputs(payload, price=300, checked_at=NOW)
+
+
+def test_corrupt_cache_does_not_crash_email(tmp_path):
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({"inputs": {"pe_ttm": 0}}))
+    failed = _Client(LLMResponse(text=None, error="offline", usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=failed, state_dir=tmp_path, checked_at=NOW)
+    assert display.is_pending

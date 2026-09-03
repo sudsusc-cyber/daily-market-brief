@@ -6,7 +6,7 @@ import json
 import logging
 import math
 import re
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -65,6 +65,7 @@ def build_qqqm_prompt(*, checked_at: datetime, price: float) -> str:
     return f"""为 QQQM 生成当天估值输入 JSON。当前价格 P={price:.6f} USD，由程序行情采集，不能修改。
 数据日 D_anchor 是最近已收盘美股交易日 {latest_closed_date(checked_at).isoformat()}。NAV_anchor 和 PE_ttm 必须同为 D_anchor 日，DIV_ttm 是截至该日的过去12个月分红合计。
 GuruFocus 唯一目标页面是 {PE_URL}，不是 FRA:NDX 的 Nordex 股票，也不是 QQQM 基金本身的 PE。若页面标题和旧统计表日期不同，取实际数据日匹配的最新读数。最多搜索3次；缺失则立即输出 needs_review JSON，不输出过程叙述。
+优先搜索 site:gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio "As of {latest_closed_date(checked_at).isoformat()}"。若原页返回403，可读取搜索结果中完全相同URL的公开标题或原文摘要，但必须同时明确包含 Nasdaq 100 PE Ratio、数值与匹配的数据日期；不得用其他网址的二手转述或猜测。
 请搜索 QQQM 的 Invesco 官方 NAV、GuruFocus Nasdaq 100 PE Ratio（PE_ttm）以及 Invesco 分红历史（允许 stockanalysis.com/etf/qqqm/dividend/）；可选的 PE_pair_t/PE_pair_f 仅取 historyofmarket.com 的同日 NDX trailing/forward PE 配对，记录 fwd_date，距 D_anchor 最多3个交易日。找不到配对时将两个值及 fwd_date 写 null，仍返回已确认的 NAV、PE_ttm、DIV_ttm；不要反复搜索配对。无法确认核心字段时 status=needs_review，不可猜测。
 固定规则（不可改）：E0= NAV_anchor/PE_ttm；k=DIV_ttm/E0；g_mkt=PE_pair_t/PE_pair_f-1；三情景权重=20%/40%/40%；第1年盈利分别为 E0×1.08、E0×1.12、E0×(1+g_mkt)，之后保守 8%/5%、基准 12%/6%、乐观 15%/7%；PE_exit=24.65；QQQM fee=0.15%；折现率=10%；预测期=10年。你只整理输入，不计算 IV 或 IRR。
 只返回 JSON：{{"status":"ok|needs_review","data":{{"nav_anchor":数值,"pe_ttm":数值,"pe_pair_t":数值或null,"pe_pair_f":数值或null,"fwd_date":"YYYY-MM-DD或null","div_ttm":数值,"data_date":"YYYY-MM-DD","source_urls":["https://..."]}},"citations":[{{"field":"nav_anchor|pe_ttm|div_ttm|pe_pair_t|pe_pair_f","source":"URL","date":"真实数据日YYYY-MM-DD","quote":"不超过25字"}}]}}。核心字段 nav_anchor、pe_ttm、div_ttm 各有引文；有配对数值才需要配对引文。"""
@@ -72,6 +73,8 @@ GuruFocus 唯一目标页面是 {PE_URL}，不是 FRA:NDX 的 Nordex 股票，�
 
 def _number(data: dict[str, Any], key: str) -> float:
     value = data.get(key)
+    if isinstance(value, bool):
+        raise ValueError(f"QQQM {key} 不得为布尔值")
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
@@ -159,6 +162,8 @@ def parse_qqqm_inputs(text: str, *, price: float, checked_at: datetime) -> QQQMI
         host = (urlparse(source).hostname or "").lower()
         if not any(host == domain or host.endswith(f".{domain}") for domain in permitted):
             raise ValueError(f"QQQM {item['field']} 不符合指定数据源")
+        if item["field"] == "pe_ttm" and urlparse(source).path.rstrip("/") != urlparse(PE_URL).path:
+            raise ValueError("QQQM PE 来源不是指定 Nasdaq 100 指数页面")
     pair_t = pair_f = None
     fwd_date = None
     try:
@@ -260,13 +265,9 @@ def calculate_qqqm(inputs: QQQMInputs) -> QQQMResult:
 def _from_cache(path: Path, *, price: float, checked_at: datetime) -> QQQMResult | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        inputs = QQQMInputs(**payload["inputs"])
-        inputs = QQQMInputs(**{**asdict(inputs), "price": price})
-        anchor = date.fromisoformat(inputs.data_date)
-        stale_days = (checked_at.astimezone(_BEIJING).date() - anchor).days
-        if stale_days < 0 or stale_days > _STALE_DAYS:
-            return None
-        return calculate_qqqm(replace(inputs, stale_days=stale_days))
+        # Re-run all value/date/source gates, not just the cache age check.
+        inputs = parse_qqqm_inputs(payload["source_response"], price=price, checked_at=checked_at)
+        return calculate_qqqm(inputs)
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
 
@@ -309,10 +310,16 @@ def prepare_qqqm_display(
                         raise ValueError(f"QQQM {field} 被模型改写，与官方原始数据不符")
             result = calculate_qqqm(inputs)
             state_dir.mkdir(parents=True, exist_ok=True)
-            (state_dir / _CACHE_NAME).write_text(
-                json.dumps({"inputs": asdict(result.inputs)}, ensure_ascii=False, indent=2),
+            cache_path = state_dir / _CACHE_NAME
+            temporary = cache_path.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps({"inputs": asdict(result.inputs), "source_response": response.text}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            temporary.replace(cache_path)
+        except OSError as exc:
+            # A valid live result remains usable when persisting its cache fails.
+            warning = f"QQQM 快照保存失败：{type(exc).__name__}"
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             warning = f"QQQM 当日输入校验失败：{str(exc)[:120]}"
     else:

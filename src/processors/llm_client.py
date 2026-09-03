@@ -334,7 +334,10 @@ class LLMClient:
             if market_data:
                 # Fixed-schema extraction does not need hidden reasoning. Forced
                 # search can consume every continuation without a final message.
-                search_options = {"reasoning": {"effort": "none"}}
+                search_options = {
+                    "reasoning": {"effort": "none"},
+                    "text": {"format": {"type": "json_object"}},
+                }
             response = self._client.responses.create(
                 model=self._model,
                 instructions=system,
