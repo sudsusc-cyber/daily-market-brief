@@ -344,7 +344,7 @@ class LLMClient:
                 usage=LLMUsage(),
                 error=f"{type(exc).__name__}: {redacted_msg}",
             )
-        text = str(getattr(response, "output_text", "") or "").strip()
+        text = _extract_responses_text(response)
         usage = _extract_responses_usage(response)
         self._accumulate(usage)
         error = None if text else "EmptyOutput: web search returned no visible text"
@@ -423,3 +423,23 @@ def _extract_responses_usage(resp: Any) -> LLMUsage:
         reasoning_tokens=reasoning,
         cache_hit_tokens=cache_hits,
     )
+
+
+def _extract_responses_text(resp: Any) -> str:
+    """兼容 Responses API 的 output_text 与 DeepSeek 的 output 内容数组。"""
+    direct = str(getattr(resp, "output_text", "") or "").strip()
+    if direct:
+        return direct
+    output = getattr(resp, "output", None)
+    if not isinstance(output, (list, tuple)):
+        return ""
+    chunks: list[str] = []
+    for item in output:
+        content = item.get("content") if isinstance(item, dict) else getattr(item, "content", None)
+        if not isinstance(content, (list, tuple)):
+            continue
+        for part in content:
+            text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+            if text:
+                chunks.append(str(text))
+    return "".join(chunks).strip()
