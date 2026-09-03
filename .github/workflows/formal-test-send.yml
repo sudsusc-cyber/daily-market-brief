@@ -10,6 +10,11 @@ on:
         description: "试发收件人（多个地址用英文逗号分隔）"
         required: true
         type: string
+      qqqm_check_only:
+        description: "Only verify QQQM live inputs; do not send email"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -60,6 +65,7 @@ jobs:
             morningstar-verified-
 
       - name: Send formal test email
+        if: ${{ !inputs.qqqm_check_only }}
         run: uv run python src/main.py
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -69,8 +75,24 @@ jobs:
           QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
           EMAIL_RECIPIENT: ${{ inputs.recipients }}
 
+      - name: Verify QQQM without sending
+        if: ${{ inputs.qqqm_check_only }}
+        run: uv run python scripts/check_qqqm.py
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+      - name: Upload QQQM diagnostic
+        if: ${{ always() && inputs.qqqm_check_only }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qqqm-diagnostic
+          path: state/qqqm_diagnostic.json
+          retention-days: 3
+
       - name: Confirm SMTP acceptance
+        if: ${{ !inputs.qqqm_check_only }}
         run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
 
       - name: Confirm full email delivery
+        if: ${{ !inputs.qqqm_check_only }}
         run: uv run python -m src.utils.delivery full .delivery-receipt.json

@@ -212,7 +212,10 @@ def test_web_search_extracts_deepseek_output_content_when_output_text_is_empty(m
         def create(self, **_kwargs):
             return SimpleNamespace(
                 output_text="",
-                output=[SimpleNamespace(content=[SimpleNamespace(text='{"status":"ok"}')])],
+                output=[
+                    SimpleNamespace(type="reasoning", content=[SimpleNamespace(text="hidden")]),
+                    SimpleNamespace(type="message", content=[SimpleNamespace(text='{"status":"ok"}')]),
+                ],
                 usage=None,
             )
 

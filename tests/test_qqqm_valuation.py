@@ -28,7 +28,7 @@ def _payload(*, data_date: str = "2026-09-03") -> str:
     citations = [
         {
             "field": field,
-            "source": fields["source_urls"][index % 3],
+            "source": fields["source_urls"][2 if field.startswith("pe_pair") else (1 if field == "pe_ttm" else 0)],
             "date": data_date,
             "quote": "verified",
         }
@@ -69,11 +69,23 @@ def test_parse_accepts_search_text_wrapping_valid_json() -> None:
 
 def test_parse_rejects_missing_field_citation_and_future_data() -> None:
     payload = json.loads(_payload())
-    payload["citations"] = payload["citations"][:-1]
+    payload["citations"] = [item for item in payload["citations"] if item["field"] != "nav_anchor"]
     with pytest.raises(ValueError, match="每个输入字段"):
         parse_qqqm_inputs(json.dumps(payload), price=300.0, checked_at=NOW)
     with pytest.raises(ValueError, match="未来"):
         parse_qqqm_inputs(_payload(data_date="2026-09-04"), price=300.0, checked_at=NOW)
+
+
+def test_missing_forward_pair_keeps_base_value_available() -> None:
+    payload = json.loads(_payload())
+    payload["data"]["pe_pair_t"] = None
+    payload["data"]["pe_pair_f"] = None
+    payload["citations"] = [item for item in payload["citations"] if not item["field"].startswith("pe_pair")]
+    inputs = parse_qqqm_inputs(json.dumps(payload), price=300.0, checked_at=NOW)
+    result = calculate_qqqm(inputs)
+    assert result.value > 0
+    assert result.implied_return is not None
+    assert result.warning == "B类：乐观缺失，展示基准价值"
 
 
 def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) -> None:
