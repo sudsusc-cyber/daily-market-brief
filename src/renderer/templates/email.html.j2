@@ -149,10 +149,7 @@
                   {%- if holdings_intro %}
                   {{ holdings_intro }}
                   {%- else %}
-                  当前持仓{{ holdings_counts.total }}只——美股{{ holdings_counts.us }}只,港股{{ holdings_counts.hk }}只。下表展示各只标的现价相对 120 周与 200 周均线的位置。
-                  现价跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">120 周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;DCA</span>,
-                  跌破<span style="color:{{ color_accent }}; font-family:{{ serif_body }}; letter-spacing:0.04em; white-space:nowrap;">200 周</span>触发<span style="color:{{ color_accent }}; letter-spacing:0.16em; text-transform:uppercase; font-weight:600; white-space:nowrap;">&nbsp;Lump-sum</span>;
-                  无信号则记录至最近均线的距离。
+                  当前持仓{{ holdings_counts.total }}只——美股{{ holdings_counts.us }}只，港股{{ holdings_counts.hk }}只{% if holdings_counts.etf %}，ETF {{ holdings_counts.etf }}只{% endif %}。各依其参考线，静候价格与纪律相逢。
                   {%- endif %}
                 </td>
               </tr>
@@ -201,7 +198,7 @@
                     现&nbsp;价
                   </th>
                   <th class="holding-head" align="right" style="padding:14px 0 8px {{ 8 if show_valuations else 16 }}px; font-size:9.5px; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }}; white-space:nowrap;">
-                    120&nbsp;/&nbsp;200&nbsp;<span style="letter-spacing:0;">周</span>
+                    参&nbsp;考&nbsp;<span style="letter-spacing:0;">线</span>
                   </th>
                   {% if show_valuations %}
                   <th class="holding-head" align="right" style="padding:14px 0 8px 10px; font-size:9.5px; font-weight:500; letter-spacing:0.20em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">
@@ -213,17 +210,26 @@
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {% for s in signals %}
+              {% for group in signal_groups %}
+              {%- set final_group = loop.last -%}
+              <tbody data-strategy-group="{{ group.strategy.key }}">
+                <tr class="holding-group-heading">
+                  <td colspan="2" style="padding:0; font-size:0; line-height:0;">&nbsp;</td>
+                  <td class="holding-group-lines" align="right" style="padding:6px 0 0 {{ 8 if show_valuations else 16 }}px; font-size:9.5px; line-height:14px; color:{{ color_muted }}; letter-spacing:0; white-space:nowrap;">{% for label in group.strategy.reference_line_labels %}<span class="holding-period-label">{{ label }}{% if loop.first and group.strategy.dca_line is none %}<sup class="holding-observation-marker" style="font-size:7px; line-height:0; vertical-align:super;">*</sup>{% endif %}</span>{% if not loop.last %}<span class="holding-period-divider" style="padding:0 3px; color:{{ color_faint }};">/</span>{% endif %}{% endfor %}</td>
+                  <td colspan="{{ 2 if show_valuations else 1 }}" style="padding:0; font-size:0; line-height:0;">&nbsp;</td>
+                </tr>
+                {% for s in group.signals %}
                 {%- set is_lump = (s.signal == 'LUMP_SUM') -%}
                 {%- set is_dca  = (s.signal == 'DCA') -%}
                 {%- set has_error = (s.error is not none) -%}
                 {%- set valuation = valuations.get(s.holding.ticker) if show_valuations else none -%}
                 {%- set row_bg = color_paper_alt if is_lump else color_paper -%}
                 {%- set has_logo = logo_cids and (s.holding.ticker in logo_cids) -%}
-                <tr bgcolor="{{ row_bg }}" style="background-color:{{ row_bg }};">
+                {%- set group_end = loop.last and not final_group -%}
+                {%- set row_rule = color_faint if group_end else color_hairline -%}
+                <tr data-holding="{{ s.holding.ticker }}"{% if group_end %} class="holding-group-end"{% endif %} bgcolor="{{ row_bg }}" style="background-color:{{ row_bg }};">
                   {# 标的:logo + ticker / name 横排 #}
-                  <td valign="top" style="padding:16px 8px 16px 0; border-bottom:1px solid {{ color_hairline }};">
+                  <td valign="top" style="padding:16px 8px 16px 0; border-bottom:1px solid {{ row_rule }};">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
                         <td class="holding-logo-cell" valign="middle" width="36" style="padding-right:12px;">
@@ -247,22 +253,24 @@
 
                   {% if has_error %}
                   {# 整行错误态:跨剩余列展示原因 #}
-                  <td colspan="{{ 4 if show_valuations else 3 }}" align="right" valign="middle" style="padding:18px 0; border-bottom:1px solid {{ color_hairline }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic; line-height:1.5;">
+                  <td colspan="{{ 4 if show_valuations else 3 }}" align="right" valign="middle" style="padding:18px 0; border-bottom:1px solid {{ row_rule }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic; line-height:1.5;">
                     数据获取失败 · {{ s.error }}
                   </td>
                   {% else %}
                   {# 现价 — tabular-nums 让小数点跨行对齐 #}
-                  <td class="holding-price" valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ color_hairline }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0; line-height:1.1; white-space:nowrap; overflow:hidden;">
+                  <td class="holding-price" valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ row_rule }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0; line-height:1.1; white-space:nowrap; overflow:hidden;">
                     {{ s.last_close | price }}
                   </td>
-                  {# 120/200 周合并：减少一列，给 logo、名称与估值留出稳定宽度。 #}
-                  <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px {{ 8 if show_valuations else 16 }}px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
-                    <div class="holding-average-main" style="font-size:12.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ s.sma_120 | price }}<span style="color:{{ color_faint }}; padding:0 3px;">/</span>{{ s.sma_200 | price }}</div>
-                    <div class="holding-average-delta" style="font-size:9.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0; white-space:nowrap;">{{ s.delta_120 | pct }}<span style="color:{{ color_faint }}; padding:0 3px;">/</span>{{ s.delta_200 | pct }}</div>
+                  {# 双数值展示与触发规则分离；星号组的 120 周仅供观察。 #}
+                  <td class="holding-average" valign="top" align="right" style="padding:18px 0 18px {{ 8 if show_valuations else 16 }}px; border-bottom:1px solid {{ row_rule }}; white-space:nowrap; overflow:hidden;">
+                    <div class="holding-average-main" style="font-size:12.5px; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{% for line in s.reference_lines %}<span class="holding-reference-slot">{{ line.value | price }}</span>{% if not loop.last %}<span class="holding-reference-divider" style="padding:0 2px; color:{{ color_faint }};">/</span>{% endif %}{% endfor %}</div>
+                    <div class="holding-average-delta" style="font-size:9.5px; color:{{ color_muted }}; margin-top:4px; line-height:1; letter-spacing:0; white-space:nowrap;">{% for line in s.reference_lines %}<span class="holding-reference-slot">{{ line.delta | pct }}</span>{% if not loop.last %}<span class="holding-reference-divider" style="padding:0 2px; color:{{ color_faint }};">/</span>{% endif %}{% endfor %}</div>
                   </td>
                   {% if show_valuations %}
-                  <td class="holding-valuation" valign="top" align="right" style="padding:18px 0 18px 10px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
-                    {% if valuation and valuation.intrinsic_value is not none %}
+                  <td class="holding-valuation" valign="top" align="right" style="padding:18px 0 18px 10px; border-bottom:1px solid {{ row_rule }}; white-space:nowrap; overflow:hidden;">
+                    {% if s.holding.asset_type == 'etf' %}
+                    <div class="holding-valuation-unavailable" style="font-size:13.5px; color:{{ color_faint }}; line-height:1.1;">—</div>
+                    {% elif valuation and valuation.intrinsic_value is not none %}
                     <div class="holding-valuation-main" style="font-size:13.5px; font-weight:500; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ valuation.intrinsic_value | price }}</div>
                       {% if valuation.implied_return is not none %}
                     <div class="holding-implied-return" style="font-size:8.5px; color:{{ color_accent if valuation.is_attractive else color_muted }}; margin-top:4px; line-height:1.1; letter-spacing:0.08em; white-space:nowrap;">{{ valuation.return_label }}&nbsp;{{ valuation.implied_return | rate }}</div>
@@ -275,7 +283,7 @@
                   </td>
                   {% endif %}
                   {# 信号 #}
-                  <td class="holding-signal" valign="middle" align="right" style="padding:18px 0 18px 12px; border-bottom:1px solid {{ color_hairline }}; white-space:nowrap; overflow:hidden;">
+                  <td class="holding-signal" valign="middle" align="right" style="padding:18px 0 18px 12px; border-bottom:1px solid {{ row_rule }}; white-space:nowrap; overflow:hidden;">
                     {% if is_lump %}
                       <span class="holding-signal-badge" style="display:inline-block; padding:5px 6px 5px 6px; background-color:{{ color_accent }}; color:{{ color_paper }}; font-size:8.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; line-height:1.3; mso-line-height-rule:exactly; white-space:nowrap;">Lump-sum</span>
                     {% elif is_dca %}
@@ -288,6 +296,7 @@
                 </tr>
                 {% endfor %}
               </tbody>
+              {% endfor %}
             </table>
           </td>
         </tr>
@@ -298,7 +307,8 @@
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
                 <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-                  现价 / 均线：Yahoo Finance；括号为现价相对均线幅度。
+                  参考线依次为 DCA / 大额；* 组仅 200 周触发大额。每日持续显示。<br />
+                  行情：Yahoo Finance；250 日指交易日；小字为距参考线幅度。
                   {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：Morningstar 最新公开值；IRR（1年）＝公允价值 ÷ 现价 − 1（不含股息，仅供参考）。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
                 </td>
               </tr>

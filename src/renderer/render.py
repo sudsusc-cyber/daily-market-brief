@@ -24,6 +24,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from src.collectors.stocks import StockSignal
+from src.config import BUY_STRATEGIES
 from src.processors.html_safe import is_safe_url
 from src.processors.sentiment_judge import VERDICT_THRESHOLDS, one_sentence_summary
 from src.renderer.text_utils import add_cjk_spacing
@@ -365,8 +366,9 @@ def render_email(
     sentiment_gauge = _build_sentiment_gauge(sentiment_verdict)
     holdings_counts = {
         "total": len(signals),
-        "us": sum(1 for signal in signals if not signal.holding.ticker.endswith(".HK")),
+        "us": sum(1 for signal in signals if signal.holding.asset_type == "stock" and not signal.holding.ticker.endswith(".HK")),
         "hk": sum(1 for signal in signals if signal.holding.ticker.endswith(".HK")),
+        "etf": sum(1 for signal in signals if signal.holding.asset_type == "etf"),
     }
     valuation_label = (
         "公允价值"
@@ -376,6 +378,19 @@ def render_email(
     )
     html = template.render(
         signals=signals,
+        signal_groups=[
+            {
+                "strategy": strategy,
+                "signals": sorted(
+                    [signal for signal in signals if signal.strategy.key == strategy.key],
+                    key=lambda signal: strategy.tickers.index(
+                        {"GOOGL": "GOOG", "BRK-B": "BRK.B"}.get(signal.holding.ticker, signal.holding.ticker)
+                    ),
+                ),
+            }
+            for strategy in BUY_STRATEGIES
+            if any(signal.strategy.key == strategy.key for signal in signals)
+        ],
         generated_at=generated_at,
         logo_cids=logo_cids or {},
         header_image_url=header_image_url,

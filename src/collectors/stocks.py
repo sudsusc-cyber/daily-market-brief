@@ -1,7 +1,7 @@
 """
-持仓股票信号采集:拉周线 → 算 120w/200w SMA → 判断 DCA / LUMP-SUM。
+持仓信号：按逐股九五策略计算 120w / 200w / 250d SMA。
 
-数据源:yfinance,周频,5 年历史。
+数据源:yfinance,5 年周线；NVDA/TSM 另取 2 年日线。
 失败处理:不抛异常,在 StockSignal.error 字段记录,让上层渲染时区分展示。
 """
 
@@ -15,7 +15,7 @@ from typing import Literal
 import requests
 import yfinance as yf
 
-from src.config import Holding
+from src.config import BuyLine, BuyStrategy, Holding, buy_strategy
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -38,13 +38,60 @@ class StockSignal:
     signal: SignalKind
     error: str | None = None
     data_source: str = ""
+    sma_250d: float | None = None
+
+    @property
+    def strategy(self) -> BuyStrategy:
+        return buy_strategy(self.holding.ticker)
+
+    def line_value(self, line: BuyLine) -> float | None:
+        return {"120w": self.sma_120, "200w": self.sma_200, "250d": self.sma_250d}[line]
+
+    @property
+    def buy_lines(self) -> list[dict]:
+        """实际参与信号的买入线视图，供引言使用；不包含纯观察参考线。"""
+        strategy = self.strategy
+        lines = (
+            (strategy.dca_line, strategy.lump_line)
+            if strategy.dca_line else (strategy.lump_line,)
+        )
+        result = []
+        for line, label in zip(lines, strategy.line_labels, strict=True):
+            value = self.line_value(line)
+            delta = (self.last_close - value) / value if value and self.last_close else None
+            result.append({"label": label, "value": value, "delta": delta})
+        return result
+
+    @property
+    def reference_lines(self) -> list[dict]:
+        """邮件统一双数值展示；单线组的 120 周仅作观察，不参与信号。"""
+        lines = self.buy_lines
+        if self.strategy.dca_line is None:
+            value = self.sma_120
+            delta = (self.last_close - value) / value if value and self.last_close else None
+            lines.insert(0, {"label": "120 周", "value": value, "delta": delta})
+        return lines
 
 
-def _judge_signal(last_close: float, sma_120: float, sma_200: float) -> SignalKind:
-    """信号判断:200w 优先于 120w(更深的折扣)"""
-    if last_close <= sma_200:
+def _judge_signal(
+    last_close: float,
+    sma_120: float | None,
+    sma_200: float | None,
+    *,
+    ticker: str = "MSFT",
+    sma_250d: float | None = None,
+) -> SignalKind:
+    """每日持续显示所在区间；大额层优先，不按均线数值重新排列策略。"""
+    strategy = buy_strategy(ticker)
+    averages = {"120w": sma_120, "200w": sma_200, "250d": sma_250d}
+    required = [last_close, averages[strategy.lump_line]]
+    if strategy.dca_line:
+        required.append(averages[strategy.dca_line])
+    if any(value is None or not math.isfinite(value) or value <= 0 for value in required):
+        raise ValueError("策略所需行情或买入线缺失/无效")
+    if last_close <= averages[strategy.lump_line]:
         return "LUMP_SUM"
-    if last_close <= sma_120:
+    if strategy.dca_line and last_close <= averages[strategy.dca_line]:
         return "DCA"
     return "NONE"
 
@@ -62,7 +109,17 @@ def _yf_history(ticker: yf.Ticker):
 
 
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
-def _yahoo_chart_weekly(symbol: str) -> tuple[list[float], float | None]:
+def _yf_daily_history(ticker: yf.Ticker):
+    """250 日线使用 250 个真实交易日，不能用 50 周近似。"""
+    hist = ticker.history(period="2y", interval="1d", auto_adjust=False)
+    if hist is None or hist.empty:
+        raise RuntimeError(f"yfinance 返回空日线 for {ticker.ticker}")
+    return hist
+
+
+def _yahoo_chart_history(
+    symbol: str, *, interval: str, period: str, minimum: int,
+) -> tuple[list[float], float | None]:
     """yfinance 库路径故障时，直连 Yahoo Chart JSON 的备路径。
 
     两者的底层数据同源，但认证/cookie/库版本链路不同；
@@ -73,8 +130,8 @@ def _yahoo_chart_weekly(symbol: str) -> tuple[list[float], float | None]:
     resp = requests.get(
         url,
         params={
-            "range": "5y",
-            "interval": "1wk",
+            "range": period,
+            "interval": interval,
             "events": "history",
             "includeAdjustedClose": "true",
         },
@@ -91,13 +148,9 @@ def _yahoo_chart_weekly(symbol: str) -> tuple[list[float], float | None]:
         raise RuntimeError("Yahoo Chart 返回空 result")
     result = results[0]
     quotes = ((result.get("indicators") or {}).get("quote") or [{}])[0]
-    closes = [
-        float(value)
-        for value in quotes.get("close") or []
-        if value is not None and math.isfinite(float(value)) and float(value) > 0
-    ]
-    if len(closes) < 200:
-        raise RuntimeError(f"Yahoo Chart 周线仅 {len(closes)} 行")
+    closes = [float(value) if value is not None else float("nan")
+              for value in quotes.get("close") or []]
+    _checked_mean(closes, minimum)
     live_raw = (result.get("meta") or {}).get("regularMarketPrice")
     try:
         live_price = float(live_raw)
@@ -108,35 +161,72 @@ def _yahoo_chart_weekly(symbol: str) -> tuple[list[float], float | None]:
     return closes, live_price
 
 
+@retry(max_attempts=3, base_delay=2.0, backoff=2.5)
+def _yahoo_chart_weekly(symbol: str) -> tuple[list[float], float | None]:
+    return _yahoo_chart_history(symbol, interval="1wk", period="5y", minimum=120)
+
+
+@retry(max_attempts=3, base_delay=2.0, backoff=2.5)
+def _yahoo_chart_daily(symbol: str) -> tuple[list[float], float | None]:
+    return _yahoo_chart_history(symbol, interval="1d", period="2y", minimum=250)
+
+
+def _checked_mean(closes: list[float], periods: int) -> float:
+    if len(closes) < periods:
+        raise ValueError(f"行情仅 {len(closes)} 行，需要 {periods} 行")
+    window = closes[-periods:]
+    if any(not math.isfinite(value) or value <= 0 for value in window):
+        raise ValueError("均线窗口含无效价格，不能删除缺失项后用更旧价格凑数")
+    return sum(window) / periods
+
+
+def _history_closes(hist) -> list[float]:
+    if hist is None or hist.empty or "Close" not in hist:
+        raise ValueError("yfinance 返回空行情")
+    return [float(value) if value is not None else float("nan")
+            for value in hist["Close"].tolist()]
+
+
 def _build_signal(
     holding: Holding,
     *,
     closes: list[float],
     live_price: float | None,
     data_source: str,
+    daily_closes: list[float] | None = None,
 ) -> StockSignal:
-    if len(closes) < 200:
-        raise RuntimeError(f"周线仅 {len(closes)} 行,< 200 周")
-    sma_120 = sum(closes[-120:]) / 120
-    sma_200 = sum(closes[-200:]) / 200
+    strategy = buy_strategy(holding.ticker)
+    needs_daily = strategy.dca_line == "250d"
+    _checked_mean(closes, 120 if needs_daily else 200)
+    sma_120 = _checked_mean(closes, 120)
+    try:
+        sma_200 = _checked_mean(closes, 200)
+    except ValueError:
+        if not needs_daily:
+            raise
+        # 成长组只依赖 120 周；更早的无效周线不能阻断有效的买入线。
+        sma_200 = None
+    sma_250d = _checked_mean(daily_closes or [], 250) if needs_daily else None
     weekly_close = closes[-1]
-    if not all(
-        math.isfinite(value) and value > 0
-        for value in (sma_120, sma_200, weekly_close)
-    ):
-        raise RuntimeError("周线价格或均线无效")
-    last_close = live_price if live_price is not None else weekly_close
+    if live_price is not None and (not math.isfinite(live_price) or live_price <= 0):
+        live_price = None
+    fallback_close = daily_closes[-1] if needs_daily else weekly_close
+    last_close = live_price if live_price is not None else fallback_close
     delta_120 = (last_close - sma_120) / sma_120
-    delta_200 = (last_close - sma_200) / sma_200
-    signal = _judge_signal(last_close, sma_120, sma_200)
+    delta_200 = (last_close - sma_200) / sma_200 if sma_200 else None
+    signal = _judge_signal(
+        last_close, sma_120, sma_200, ticker=holding.ticker, sma_250d=sma_250d,
+    )
     logger.info(
-        "stocks.signal ticker=%s source=%s last=%.2f sma120=%.2f sma200=%.2f signal=%s",
+        "stocks.signal ticker=%s source=%s last=%.2f sma120=%.2f sma200=%s signal=%s strategy=%s sma250d=%s",
         holding.ticker,
         data_source,
         last_close,
         sma_120,
         sma_200,
         signal,
+        strategy.key,
+        sma_250d,
     )
     return StockSignal(
         holding=holding,
@@ -147,33 +237,41 @@ def _build_signal(
         delta_200=delta_200,
         signal=signal,
         data_source=data_source,
+        sma_250d=sma_250d,
     )
 
 
 def fetch_one(holding: Holding) -> StockSignal:
     """
-    拉单只股票的周线并计算信号。
+    拉单只股票所需的周线/日线并计算分组信号。
 
     任何异常都会被吞掉并写入 error,保证上层批处理不会因单只失败中断。
-    周线不足 200 周(新股)按"数据不足"处理,error 字段说明原因。
+    不足策略要求的 120/200 周或 250 个交易日时按数据不足处理。
 
     last_close 优先取 fast_info.last_price（当日/最新价），
-    SMA 计算始终基于周线数据。
+    周线 SMA 与日线 SMA 分开计算，主备数据源保持相同 Close 口径。
     """
     symbol = holding.yfinance_symbol
+    daily_closes: list[float] | None = None
+    daily_source = ""
+    if buy_strategy(holding.ticker).dca_line == "250d":
+        try:
+            daily_closes = _history_closes(_yf_daily_history(yf.Ticker(symbol)))
+            _checked_mean(daily_closes, 250)
+            daily_source = "+daily:yfinance"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("stocks.daily_primary_failed ticker=%s type=%s", holding.ticker, type(exc).__name__)
+            try:
+                daily_closes, _ = _yahoo_chart_daily(symbol)
+                _checked_mean(daily_closes, 250)
+                daily_source = "+daily:yahoo_chart"
+            except Exception as daily_exc:  # noqa: BLE001
+                return _failed(holding, f"250 日线主备链路均失败: {redact_secrets(str(daily_exc))[:180]}")
     primary_error: Exception | None = None
     try:
         ticker = yf.Ticker(symbol)
         hist = _yf_history(ticker)
-        if hist is None or hist.empty or "Close" not in hist:
-            raise RuntimeError("yfinance 返回空数据")
-        if len(hist) < 200:
-            raise RuntimeError(f"yfinance 周线仅 {len(hist)} 行")
-        closes = [
-            float(value)
-            for value in hist["Close"].tolist()
-            if value is not None and math.isfinite(float(value)) and float(value) > 0
-        ]
+        closes = _history_closes(hist)
         try:
             live_price: float | None = float(ticker.fast_info.last_price)
         except Exception:  # noqa: BLE001 — 取不到 live 价是已知降级路径
@@ -184,7 +282,8 @@ def fetch_one(holding: Holding) -> StockSignal:
             holding,
             closes=closes,
             live_price=live_price,
-            data_source="yfinance",
+            data_source="yfinance" + daily_source,
+            daily_closes=daily_closes,
         )
     except Exception as exc:  # noqa: BLE001
         primary_error = exc
@@ -201,7 +300,8 @@ def fetch_one(holding: Holding) -> StockSignal:
             holding,
             closes=closes,
             live_price=live_price,
-            data_source="yahoo_chart",
+            data_source="yahoo_chart" + daily_source,
+            daily_closes=daily_closes,
         )
         logger.warning(
             "stocks.fallback_used ticker=%s primary=yfinance fallback=yahoo_chart",

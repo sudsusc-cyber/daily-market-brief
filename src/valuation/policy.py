@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from src.config import HOLDINGS
+from src.config import COMPANY_HOLDINGS
 
 ValuationMethod = Literal["fcff", "fcfe", "residual_income", "sotp_multiple"]
 
@@ -83,7 +83,7 @@ POLICIES: dict[str, ValuationPolicy] = {
 
 
 def validate_policy_coverage() -> None:
-    holdings = {holding.ticker for holding in HOLDINGS}
+    holdings = {holding.ticker for holding in COMPANY_HOLDINGS}
     policies = set(POLICIES)
     if holdings != policies:
         raise RuntimeError(

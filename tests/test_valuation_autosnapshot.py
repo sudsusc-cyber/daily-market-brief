@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from src.collectors.stocks import StockSignal
-from src.config import HOLDINGS
+from src.config import COMPANY_HOLDINGS, HOLDINGS
 from src.valuation.autosnapshot import AUTO_RULES, build_snapshot, refresh_snapshots
 from src.valuation.engine import calculate_display
 from src.valuation.models import FreshnessResult, OfficialDocument
@@ -166,7 +166,7 @@ def test_refresh_retains_last_good_snapshot_when_provider_fails(tmp_path) -> Non
 
 
 def test_auto_rules_cover_every_holding() -> None:
-    assert set(AUTO_RULES) == {holding.ticker for holding in HOLDINGS}
+    assert set(AUTO_RULES) == {holding.ticker for holding in COMPANY_HOLDINGS}
 
 
 @pytest.mark.parametrize("ticker", ["MSFT", "AAPL", "GOOG"])

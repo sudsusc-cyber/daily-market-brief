@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
-from src.collectors.stocks import StockSignal  # noqa: E402
+from src.collectors.stocks import StockSignal, _judge_signal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF  # noqa: E402
 from src.valuation.models import ValuationDisplay  # noqa: E402
@@ -47,7 +47,7 @@ def _format_pct(v: float | None) -> str:
 
 def _build_mock_signals() -> list[StockSignal]:
     """
-    构造 14 只样例数据,与真实持仓 ticker 一致以复用 logo 文件。
+    构造 15 只样例数据,与真实持仓 ticker 一致以复用 logo 文件。
     默认全部 OK,包含 DCA / LUMP_SUM / NONE 三种信号 + BRK.B 的"无 logo 文字 fallback"。
     错误态视觉若需复核,临时把任一行最后一个字段填字符串错误信息即可。
     """
@@ -55,17 +55,18 @@ def _build_mock_signals() -> list[StockSignal]:
         (HOLDINGS[0], 432.10, 410.50, 360.20, None),   # MSFT, NONE
         (HOLDINGS[1], 968.45, 875.20, 720.40, None),   # COST, NONE
         (HOLDINGS[2], 232.80, 215.60, 188.10, None),   # AAPL, NONE
-        (HOLDINGS[3], 209.25, 140.29, 96.22, None),    # NVDA, NONE
-        (HOLDINGS[4], 175.80, 168.20, 132.40, None),   # TSM, NONE
-        (HOLDINGS[5], 478.30, 502.80, 390.50, None),   # MCO, DCA
+        (HOLDINGS[3], 209.25, 140.29, 96.22, None),    # NVDA, 低于250日线 → DCA
+        (HOLDINGS[4], 160.80, 168.20, 132.40, None),   # TSM, 低于120周线 → LUMP_SUM
+        (HOLDINGS[5], 478.30, 502.80, 390.50, None),   # MCO, 无120周 DCA
         (HOLDINGS[6], 198.40, 185.60, 152.30, None),   # GOOG, NONE
         (HOLDINGS[7], 462.10, 451.20, 388.40, None),   # BRK.B, NONE(无 logo,走文字 fallback)
-        (HOLDINGS[8], 64.20, 68.40, 60.10, None),      # KO, DCA
+        (HOLDINGS[8], 64.20, 68.40, 60.10, None),      # KO, 无120周 DCA
         (HOLDINGS[9], 268.90, 295.40, 312.80, None),   # AXP, LUMP_SUM
         (HOLDINGS[10], 412.40, 380.60, 340.20, None),  # 0700.HK, NONE
         (HOLDINGS[11], 157.10, 136.01, 89.67, None),   # 9992.HK 泡泡玛特, NONE
         (HOLDINGS[12], 512.30, 478.20, 412.60, None),  # MA 万事达, NONE
-        (HOLDINGS[13], 445.80, 462.10, 398.40, None),  # LIN 林德, DCA
+        (HOLDINGS[13], 445.80, 462.10, 398.40, None),  # LIN, 无120周 DCA
+        (HOLDINGS[14], 310.00, 270.00, 230.00, None), # QQQM, 样例行情, NONE
     ]
 
     signals: list[StockSignal] = []
@@ -77,13 +78,11 @@ def _build_mock_signals() -> list[StockSignal]:
             raise ValueError(f"invalid preview fixture for {holding.ticker}")
         delta_120 = (last - sma120) / sma120
         delta_200 = (last - sma200) / sma200
-        if last <= sma200:
-            sig = "LUMP_SUM"
-        elif last <= sma120:
-            sig = "DCA"
-        else:
-            sig = "NONE"
-        signals.append(StockSignal(holding, last, sma120, sma200, delta_120, delta_200, sig))
+        sma250d = {"NVDA": 220.40, "TSM": 190.60}.get(holding.ticker)
+        sig = _judge_signal(last, sma120, sma200, ticker=holding.ticker, sma_250d=sma250d)
+        signals.append(StockSignal(
+            holding, last, sma120, sma200, delta_120, delta_200, sig, sma_250d=sma250d,
+        ))
     return signals
 
 
@@ -117,7 +116,7 @@ def _build_logo_cids() -> dict[str, str]:
 
 
 def _build_mock_valuations() -> dict[str, ValuationDisplay]:
-    """仅供视觉预览；数值取本次公开 Morningstar 全量复核，不写入生产底稿。"""
+    """固定视觉样例，非实时行情/公允价值；不写入生产底稿。"""
     values = {
         "MSFT": (600.00, "$"),
         "COST": (650.00, "$"),

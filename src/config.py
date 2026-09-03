@@ -10,6 +10,47 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+BuyLine = Literal["120w", "200w", "250d"]
+
+
+@dataclass(frozen=True)
+class BuyStrategy:
+    key: str
+    label: str
+    tickers: tuple[str, ...]
+    dca_line: BuyLine | None
+    lump_line: BuyLine
+
+    @property
+    def line_labels(self) -> tuple[str, ...]:
+        labels = {"120w": "120 周", "200w": "200 周", "250d": "250 日"}
+        lines = (self.dca_line, self.lump_line) if self.dca_line else (self.lump_line,)
+        return tuple(labels[line] for line in lines)
+
+    @property
+    def reference_line_labels(self) -> tuple[str, ...]:
+        """展示用双参考线；不改变 line_labels 所描述的实际触发条件。"""
+        return self.line_labels if self.dca_line else ("120 周", *self.line_labels)
+
+
+# 用户九五策略；顺序同时决定邮件分组顺序。港股规则相同但独立展示。
+BUY_STRATEGIES = (
+    BuyStrategy("us_weekly", "美股 · 双线", ("MSFT", "GOOG", "AAPL", "BRK.B", "QQQM"), "120w", "200w"),
+    BuyStrategy("us_daily_weekly", "美股 · 日周线", ("NVDA", "TSM"), "250d", "120w"),
+    BuyStrategy("us_deep", "美股 · 单线", ("COST", "MA", "MCO", "KO", "LIN", "AXP"), None, "200w"),
+    BuyStrategy("hk_weekly", "港股 · 双线", ("0700.HK", "9992.HK"), "120w", "200w"),
+)
+
+
+def buy_strategy(ticker: str) -> BuyStrategy:
+    # GOOGL 不加入持仓；若明确传入，按同组规则使用它自身行情。
+    key = {"GOOGL": "GOOG", "BRK-B": "BRK.B"}.get(ticker, ticker)
+    for strategy in BUY_STRATEGIES:
+        if key in strategy.tickers:
+            return strategy
+    raise ValueError(f"未配置买入策略: {ticker}")
 
 
 @dataclass(frozen=True)
@@ -19,6 +60,7 @@ class Holding:
     ticker: str  # 标准记号,邮件展示与日志用
     name: str  # 中文/英文展示名
     logo_domain: str  # Clearbit / 公司主域名,用于拉 logo,如 'microsoft.com'
+    asset_type: Literal["stock", "etf"] = "stock"
 
     @property
     def yfinance_symbol(self) -> str:
@@ -57,4 +99,8 @@ HOLDINGS: list[Holding] = [
     # 追加在末尾——多个测试用 HOLDINGS[idx] 索引引用既有持仓,插入中间会破坏索引。
     Holding("MA", "Mastercard", "mastercard.com"),
     Holding("LIN", "Linde", "linde.com"),
+    # QQQM 仅接入持仓行情/买入信号，不套用上市公司的估值模型与新闻流程。
+    Holding("QQQM", "Invesco Nasdaq 100", "invesco.com", asset_type="etf"),
 ]
+
+COMPANY_HOLDINGS: list[Holding] = [holding for holding in HOLDINGS if holding.asset_type == "stock"]

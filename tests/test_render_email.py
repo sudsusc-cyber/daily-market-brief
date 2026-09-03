@@ -104,14 +104,112 @@ def test_holdings_table_renders_intrinsic_value_before_signal() -> None:
     assert html.index('内在价<span style="letter-spacing:0">值</span>') < html.index(
         "信&nbsp;号"
     )
-    assert '120&nbsp;/&nbsp;200&nbsp;<span style="letter-spacing:0">周</span>' in html
-    assert "90.00<span" in html
-    assert ">/</span>80.00" in html
+    soup = BeautifulSoup(html, "html.parser")
+    assert soup.select_one(".holding-group-lines").get_text(strip=True) == "120 周/200 周"
+    assert '参&nbsp;考&nbsp;<span style="letter-spacing:0">线</span>' in html
+    assert "距参考线幅度" in html
+    assert "买入线" not in html
+    assert soup.select_one(".holding-average-main").get_text(strip=True) == "90.00/80.00"
     assert '内在价<span style="letter-spacing:0">值</span>' in html
     assert ">$120.00<" not in html
     assert ">120.00<" in html
     assert "IRR&nbsp;11.2%" in html
     assert "内在价值 / IRR：逐股固定模型，仅供参考" in html
+
+
+def test_holdings_are_grouped_with_correct_average_values():
+    from scripts.preview_email import _build_mock_signals, _build_mock_valuations
+
+    signals = _build_mock_signals()
+    html = render_email(signals=signals, generated_at=datetime.now(UTC), valuations=_build_mock_valuations())
+    soup = BeautifulSoup(html, "html.parser")
+    groups = soup.select("tbody[data-strategy-group]")
+    assert [g["data-strategy-group"] for g in groups] == ["us_weekly", "us_daily_weekly", "us_deep", "hk_weekly"]
+    assert [[row["data-holding"] for row in group.select("tr[data-holding]")] for group in groups] == [
+        ["MSFT", "GOOG", "AAPL", "BRK.B", "QQQM"], ["NVDA", "TSM"],
+        ["COST", "MA", "MCO", "KO", "LIN", "AXP"], ["0700.HK", "9992.HK"],
+    ]
+    assert [g.select_one(".holding-group-lines").get_text(strip=True) for g in groups] == [
+        "120 周/200 周", "250 日/120 周", "120 周*/200 周", "120 周/200 周",
+    ]
+    nvda = soup.select_one('[data-holding="NVDA"]')
+    assert nvda.select_one(".holding-average-main").get_text() == "220.40/140.29"
+    assert nvda.select_one(".holding-signal").get_text(strip=True) == "DCA"
+    tsm = soup.select_one('[data-holding="TSM"]')
+    assert tsm.select_one(".holding-signal").get_text(strip=True) == "Lump-sum"
+    for ticker in ("MCO", "KO", "LIN"):
+        row = soup.select_one(f'[data-holding="{ticker}"]')
+        assert len(row.select(".holding-average-main .holding-reference-slot")) == 2
+        assert row.select_one(".holding-signal").get_text(strip=True) == "—"
+    assert soup.select_one('[data-holding="MCO"] .holding-average-main').get_text() == "502.80/390.50"
+    assert len(soup.select(".holding-observation-marker")) == 1
+    assert groups[2].select_one(".holding-observation-marker")
+    assert "组仅 200 周触发大额" in soup.get_text()
+    assert len(soup.select(".holding-valuation")) == 15
+    qqqm = soup.select_one('[data-holding="QQQM"]')
+    assert qqqm.select_one(".holding-average-main").get_text() == "270.00/230.00"
+    assert qqqm.select_one(".holding-valuation").get_text(strip=True) == "—"
+    assert not qqqm.select(".holding-implied-return,.holding-valuation-pending")
+    assert all(label not in soup.get_text() for label in ("美股 · 双线", "美股 · 日周线", "美股 · 单线", "港股 · 双线"))
+    for row in soup.select(".holding-group-heading"):
+        assert not row.find("td").get_text(strip=True)
+        assert "bgcolor" not in row.attrs
+        assert "background-color" not in str(row)
+        assert row.select_one(".holding-group-lines")["align"] == "right"
+        assert row.find_all("td", recursive=False)[0]["colspan"] == "2"
+        assert "border-bottom" not in str(row)
+    assert len(html.encode("utf-8")) < _EMAIL_HTML_BUDGET_BYTES
+
+
+def test_strategy_groups_without_valuations_have_consistent_colspans():
+    from scripts.preview_email import _build_mock_signals
+
+    soup = BeautifulSoup(render_email(signals=_build_mock_signals(), generated_at=datetime.now(UTC)), "html.parser")
+    for row in soup.select(".holding-group-heading"):
+        assert sum(int(td.get("colspan", 1)) for td in row.find_all("td", recursive=False)) == 4
+
+
+def test_reference_numbers_and_period_labels_have_compact_slash_spacing():
+    from scripts.preview_email import _build_mock_signals, _build_mock_valuations
+
+    for valuations in (None, _build_mock_valuations()):
+        soup = BeautifulSoup(render_email(signals=_build_mock_signals(), generated_at=datetime.now(UTC), valuations=valuations), "html.parser")
+        for group in soup.select("[data-strategy-group]"):
+            heading = group.select_one(".holding-group-lines")
+            assert f"padding:6px 0 0 {8 if valuations else 16}px" in heading["style"]
+            assert "line-height:14px" in heading["style"]
+            slot_count = 2
+            assert len(heading.select(".holding-period-label")) == slot_count
+            assert not heading.select(".holding-reference-slot,.holding-reference-divider")
+            assert "width:" not in str(heading)
+            assert len(heading.select(".holding-period-divider")) == slot_count - 1
+            assert all("padding:0 3px" in divider["style"] for divider in heading.select(".holding-period-divider"))
+            for block in group.select(".holding-average-main,.holding-average-delta"):
+                slots = block.select(".holding-reference-slot")
+                assert len(slots) == slot_count
+                assert "width:" not in str(block)
+                assert all("style" not in slot.attrs for slot in slots)
+                dividers = block.select(".holding-reference-divider")
+                assert len(dividers) == slot_count - 1
+                assert all("padding:0 2px" in divider["style"] for divider in dividers)
+
+
+def test_strategy_group_rules_are_continuous_with_and_without_valuations():
+    from scripts.preview_email import _build_mock_signals, _build_mock_valuations
+
+    for valuations in (None, _build_mock_valuations()):
+        signals = _build_mock_signals()
+        # 错误态跨列也必须保留整条组间线，不能在右边断开。
+        next(s for s in signals if s.holding.ticker == "TSM").error = "fixture unavailable"
+        soup = BeautifulSoup(render_email(signals=signals, generated_at=datetime.now(UTC), valuations=valuations), "html.parser")
+        rules = soup.select(".holding-group-end")
+        assert [row["data-holding"] for row in rules] == ["QQQM", "TSM", "AXP"]
+        for row in rules:
+            cells = row.find_all("td", recursive=False)
+            assert sum(int(td.get("colspan", 1)) for td in cells) == (5 if valuations else 4)
+            assert all("border-bottom:1px solid #6f685c" in td["style"].lower() for td in cells)
+        for row in soup.select("tr[data-holding]:not(.holding-group-end)"):
+            assert all("border-bottom:1px solid #d9d2be" in td["style"].lower() for td in row.find_all("td", recursive=False))
 
 
 def test_holdings_table_labels_morningstar_value_without_changing_irr() -> None:

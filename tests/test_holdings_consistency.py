@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.collectors.company_news import _RELEVANCE_KEYWORDS
-from src.config import HOLDINGS
+from src.config import COMPANY_HOLDINGS, HOLDINGS
 from src.processors.news_summarizer import _CN_NAME_HINT
 from src.valuation.instructions import FORMULA_INSTRUCTIONS
 from src.valuation.policy import POLICIES
@@ -31,14 +31,14 @@ def test_every_holding_has_relevance_keywords() -> None:
     """港股走 Google News(query 即公司名)不需要关键词;美股必须有。"""
     missing = [
         h.ticker
-        for h in HOLDINGS
+        for h in COMPANY_HOLDINGS
         if not h.ticker.endswith(".HK") and h.ticker not in _RELEVANCE_KEYWORDS
     ]
     assert not missing, f"美股持仓缺新闻相关性关键词: {missing}"
 
 
 def test_every_holding_has_cn_name_hint() -> None:
-    missing = [h.ticker for h in HOLDINGS if h.ticker not in _CN_NAME_HINT]
+    missing = [h.ticker for h in COMPANY_HOLDINGS if h.ticker not in _CN_NAME_HINT]
     assert not missing, f"持仓缺中文名映射: {missing}"
 
 
@@ -52,5 +52,13 @@ def test_every_holding_has_logo_file() -> None:
 
 
 def test_every_holding_has_fixed_valuation_policy() -> None:
-    assert set(POLICIES) == {holding.ticker for holding in HOLDINGS}
+    assert set(POLICIES) == {holding.ticker for holding in COMPANY_HOLDINGS}
     assert set(FORMULA_INSTRUCTIONS) == set(POLICIES)
+
+
+def test_qqqm_is_a_signal_holding_not_a_company_valuation():
+    qqqm = next(h for h in HOLDINGS if h.ticker == "QQQM")
+    assert qqqm.asset_type == "etf"
+    assert qqqm not in COMPANY_HOLDINGS
+    assert {h.ticker for h in HOLDINGS} - {h.ticker for h in COMPANY_HOLDINGS} == {"QQQM"}
+    assert "QQQM" not in POLICIES

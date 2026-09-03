@@ -39,7 +39,7 @@ from src.collectors import (
     sentiment,
     stocks,
 )
-from src.config import HOLDINGS, Holding
+from src.config import COMPANY_HOLDINGS, HOLDINGS, Holding
 from src.processors import (
     figure_filter,
     frontier_labs_filter,
@@ -241,7 +241,7 @@ def main() -> int:
     logger.info("collect.company_news")
     company_news_state_path = _STATE_DIR / "pushed_company_news.json"
     cn_bundles, company_news_pending_pushed = company_news.fetch_all(
-        HOLDINGS, settings.finnhub_api_key, state_path=company_news_state_path,
+        COMPANY_HOLDINGS, settings.finnhub_api_key, state_path=company_news_state_path,
     )
 
     logger.info("collect.macro_news")
@@ -512,10 +512,10 @@ def main() -> int:
         publishable = sum(
             1 for value in (valuation_displays or {}).values() if not value.is_pending
         )
-        if publishable < len(HOLDINGS):
+        if publishable < len(COMPANY_HOLDINGS):
             _record_quality_alert(
                 f"{'公允价值' if settings.morningstar_fair_value_enabled else '内在价值'}"
-                f"数据未完全就绪：{publishable}/{len(HOLDINGS)} 只通过来源与复算闸门。"
+                f"数据未完全就绪：{publishable}/{len(COMPANY_HOLDINGS)} 只通过来源与复算闸门。"
             )
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
     # 刊头图统一走 inline CID(Android QQ 邮箱不会自动加载远程图,iOS/桌面正常)。

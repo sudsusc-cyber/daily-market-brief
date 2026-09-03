@@ -34,6 +34,15 @@ def _bad_resp(err: str = "rate limit") -> LLMResponse:
 
 
 class TestFormatInput:
+    def test_intro_uses_each_stocks_actual_strategy(self) -> None:
+        from scripts.preview_email import _build_mock_signals
+
+        out = _format_input(_build_mock_signals())
+        cost = next(line for line in out.splitlines() if line.startswith("- COST"))
+        nvda = next(line for line in out.splitlines() if line.startswith("- NVDA"))
+        assert "200 周" in cost and "120 周" not in cost
+        assert "250 日" in nvda and "120 周" in nvda and "200 周" not in nvda
+
     def test_format_includes_signal_summary(self) -> None:
         signals = [
             _signal(0, signal="LUMP_SUM"),

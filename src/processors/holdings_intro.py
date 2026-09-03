@@ -5,7 +5,7 @@
 改写为简短、有哲学意味、文笔讲究的开场白(60-110 字,prompt 内硬约束)。
 
 设计要点:
-- 输入是当日全部 StockSignal(含 ticker/last_close/sma_120/sma_200/signal/error)
+- 输入是当日全部 StockSignal(含 ticker/last_close/逐股 buy_lines/signal/error)
 - 输出是单段中文,直接渲染到模板
 - 行文基调:Berkshire 致股东信 / Howard Marks Memo / 巴菲特价值投资框架
 - 失败时返回 None,模板降级到原文案
@@ -45,6 +45,9 @@ _TASK_INSTRUCTION = """\
 - **不要劝告**读者具体怎么操作("应该买入""建议加仓"全禁)
 - **不要堆砌**"耐心""纪律""安全边际"这些词;要让读者**感受到**这些品质而非看到这些字
 - 必须暗合今日实际:全 NONE / 多个 DCA / 多个 LUMP_SUM / 价格普遍高位 vs 普遍低位
+- 各股参考线不同，必须遵照输入逐股规则；不得笼统声称所有标的以 120/200 周线触发信号
+- 均线在邮件中统一称“参考线”，不要称“买入线”；名称调整不改变逐股信号规则
+- 信号表示每天持续显示的当前区间，不得写成首次跌破或新触发
 """
 
 
@@ -57,15 +60,18 @@ def _format_input(signals: list[Any]) -> str:
 
     lines = [f"信号汇总:LUMP_SUM={n_lump},DCA={n_dca},无信号={n_none},取数失败={n_err}"]
     lines.append("")
-    lines.append("逐只明细(ticker | 现价 | 120w | 200w | 信号):")
+    lines.append("逐只明细(ticker | 现价 | 参考线与偏离度 | 信号；双线依次为 DCA/大额，单线仅大额):")
     for s in signals:
         if s.error:
             lines.append(f"- {s.holding.ticker} | 错误:{s.error[:40]}")
             continue
-        d120 = "—" if s.delta_120 is None else f"{s.delta_120 * 100:+.1f}%"
-        d200 = "—" if s.delta_200 is None else f"{s.delta_200 * 100:+.1f}%"
+        line_text = " / ".join(
+            f"{line['label']}:{line['delta'] * 100:+.1f}%"
+            if line["delta"] is not None else f"{line['label']}:—"
+            for line in s.buy_lines
+        )
         lines.append(
-            f"- {s.holding.ticker} | {s.last_close:.2f} | {d120} | {d200} | {s.signal}"
+            f"- {s.holding.ticker} | {s.last_close:.2f} | {line_text} | {s.signal}"
         )
     return "\n".join(lines)
 

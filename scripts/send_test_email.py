@@ -47,46 +47,14 @@ sys.path.insert(0, str(_WORKTREE_ROOT))
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 
+from scripts.preview_email import _build_mock_signals  # noqa: E402
 from src.collectors.header_image import pick_header_image  # noqa: E402
-from src.collectors.stocks import StockSignal  # noqa: E402
 from src.config import HOLDINGS, Holding  # noqa: E402
 from src.renderer.render import render_email  # noqa: E402
 from src.sender.smtp_sender import InlineImage, send_html_email  # noqa: E402
 from src.utils.secrets import mask_email  # noqa: E402
 
 _LOGOS_DIR = _WORKTREE_ROOT / "assets" / "logos"
-
-
-def _build_mock_signals() -> list[StockSignal]:
-    """构造 14 只假 signal,覆盖 NONE / DCA / LUMP_SUM 三种状态。"""
-    cases: list[tuple[Holding, float | None, float | None, float | None, str | None]] = [
-        (HOLDINGS[0], 414.44, 438.85, 381.78, None),   # MSFT, NONE
-        (HOLDINGS[1], 1011.70, 908.45, 756.63, None),  # COST, NONE
-        (HOLDINGS[2], 280.14, 226.43, 202.18, None),   # AAPL, NONE
-        (HOLDINGS[3], 198.45, 140.20, 96.16, None),    # NVDA, NONE
-        (HOLDINGS[4], 397.67, 219.97, 167.42, None),   # TSM, NONE
-        (HOLDINGS[5], 478.30, 502.80, 390.50, None),   # MCO, DCA
-        (HOLDINGS[6], 198.40, 185.60, 152.30, None),   # GOOG, NONE
-        (HOLDINGS[7], 462.10, 451.20, 388.40, None),   # BRK.B, NONE(无 logo)
-        (HOLDINGS[8], 64.20, 68.40, 60.10, None),      # KO, DCA
-        (HOLDINGS[9], 268.90, 295.40, 312.80, None),   # AXP, LUMP_SUM
-        (HOLDINGS[10], 412.40, 380.60, 340.20, None),  # 0700.HK, NONE
-        (HOLDINGS[11], 157.10, 136.01, 89.67, None),   # 9992.HK 泡泡玛特, NONE
-        (HOLDINGS[12], 512.30, 478.20, 412.60, None),  # MA 万事达, NONE
-        (HOLDINGS[13], 445.80, 462.10, 398.40, None),  # LIN 林德, DCA
-    ]
-    signals: list[StockSignal] = []
-    for h, last, s120, s200, err in cases:
-        if err:
-            signals.append(StockSignal(h, None, None, None, None, None, "NONE", error=err))
-            continue
-        if last is None or s120 is None or s200 is None:
-            raise ValueError(f"invalid preview fixture for {h.ticker}")
-        d120 = (last - s120) / s120
-        d200 = (last - s200) / s200
-        sig = "LUMP_SUM" if last <= s200 else ("DCA" if last <= s120 else "NONE")
-        signals.append(StockSignal(h, last, s120, s200, d120, d200, sig))
-    return signals
 
 
 def _logo_path(h: Holding) -> Path | None:

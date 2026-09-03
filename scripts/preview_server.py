@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import http.server
 import os
-import socketserver
 import sys
 import tempfile
 from pathlib import Path
@@ -40,7 +39,8 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-with socketserver.TCPServer((HOST, PORT), QuietHandler) as httpd:
+# 多个预览标签页可能预先占住连接；线程化避免一个闲置连接阻塞其他页面刷新。
+with http.server.ThreadingHTTPServer((HOST, PORT), QuietHandler) as httpd:
     display_host = "localhost" if HOST in ("", "127.0.0.1") else HOST
     print(f"serving {PREVIEW_DIR} at http://{display_host}:{PORT}", flush=True)
     httpd.serve_forever()

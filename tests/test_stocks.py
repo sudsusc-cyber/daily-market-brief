@@ -5,10 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from src.collectors import stocks
 from src.collectors.stocks import _judge_signal
-from src.config import HOLDINGS
+from src.config import BUY_STRATEGIES, HOLDINGS, buy_strategy
 
 
 class TestJudgeSignal:
@@ -44,3 +45,142 @@ def test_nonfinite_live_price_falls_back_to_weekly_close(monkeypatch) -> None:
 
     assert signal.error is None
     assert signal.last_close == closes.iloc[-1]
+
+
+def test_each_holding_has_exactly_one_strategy():
+    configured = [ticker for strategy in BUY_STRATEGIES for ticker in strategy.tickers]
+    assert len(configured) == len(set(configured)) == len(HOLDINGS)
+    assert set(configured) == {holding.ticker for holding in HOLDINGS}
+    assert buy_strategy("GOOGL") == buy_strategy("GOOG")
+    with pytest.raises(ValueError, match="未配置"):
+        buy_strategy("UNKNOWN")
+
+
+@pytest.mark.parametrize("ticker", ["MSFT", "AAPL", "GOOG", "BRK.B", "QQQM", "0700.HK", "9992.HK"])
+@pytest.mark.parametrize("price,expected", [(141, "NONE"), (140, "DCA"), (130, "DCA"), (120, "LUMP_SUM"), (110, "LUMP_SUM")])
+def test_weekly_groups_use_two_layers_every_day(ticker, price, expected):
+    for _ in range(2):
+        assert _judge_signal(price, 140, 120, ticker=ticker) == expected
+
+
+@pytest.mark.parametrize("ticker", ["COST", "MA", "MCO", "KO", "LIN", "AXP"])
+@pytest.mark.parametrize("price,expected", [(150, "NONE"), (140, "NONE"), (130, "NONE"), (120, "LUMP_SUM"), (110, "LUMP_SUM")])
+def test_deep_group_never_uses_120w_dca(ticker, price, expected):
+    assert _judge_signal(price, 140, 120, ticker=ticker) == expected
+
+
+@pytest.mark.parametrize("ticker", ["NVDA", "TSM"])
+@pytest.mark.parametrize("price,expected", [(201, "NONE"), (200, "DCA"), (170, "DCA"), (140, "LUMP_SUM"), (100, "LUMP_SUM")])
+def test_growth_group_uses_250d_and_120w(ticker, price, expected):
+    assert _judge_signal(price, 140, 90, ticker=ticker, sma_250d=200) == expected
+
+
+def test_lump_layer_remains_priority_when_averages_cross():
+    assert _judge_signal(130, 140, 90, ticker="NVDA", sma_250d=120) == "LUMP_SUM"
+
+
+@pytest.mark.parametrize("daily", [None, float("nan"), float("inf"), 0, -1])
+def test_growth_missing_daily_never_falls_back_to_wrong_weekly_strategy(daily):
+    with pytest.raises(ValueError):
+        _judge_signal(130, 140, 90, ticker="TSM", sma_250d=daily)
+
+
+def test_growth_average_uses_exact_last_250_daily_closes():
+    daily = [1000.0] * 100 + [float(i) for i in range(101, 351)]
+    signal = stocks._build_signal(
+        next(h for h in HOLDINGS if h.ticker == "NVDA"),
+        closes=[100.0] * 150,
+        daily_closes=daily,
+        live_price=200,
+        data_source="fixture",
+    )
+    assert signal.sma_250d == pytest.approx(225.5)
+    assert signal.sma_120 == 100
+    assert signal.sma_200 is None  # 该组不需要200周历史
+    assert signal.signal == "DCA"
+    assert [line["value"] for line in signal.buy_lines] == [225.5, 100]
+
+
+def test_growth_unused_200w_missing_bar_does_not_block_valid_strategy():
+    signal = stocks._build_signal(
+        next(h for h in HOLDINGS if h.ticker == "NVDA"),
+        closes=[float("nan")] * 80 + [100.0] * 120,
+        daily_closes=[150.0] * 250,
+        live_price=130,
+        data_source="fixture",
+    )
+    assert signal.sma_200 is None
+    assert signal.sma_120 == 100
+    assert signal.sma_250d == 150
+    assert signal.signal == "DCA"
+
+
+@pytest.mark.parametrize("daily", [[100.0] * 249, [100.0] * 249 + [float("nan")]])
+def test_growth_rejects_incomplete_daily_window(daily):
+    with pytest.raises(ValueError):
+        stocks._build_signal(
+            next(h for h in HOLDINGS if h.ticker == "TSM"),
+            closes=[100.0] * 220, daily_closes=daily,
+            live_price=90, data_source="fixture",
+        )
+
+
+def test_daily_history_request_is_daily_and_unadjusted():
+    calls = []
+
+    def history(**kwargs):
+        calls.append(kwargs)
+        return pd.DataFrame({"Close": [150.0] * 300})
+
+    stocks._yf_daily_history(SimpleNamespace(ticker="NVDA", history=history))
+    assert calls == [{"period": "2y", "interval": "1d", "auto_adjust": False}]
+
+
+def test_growth_daily_primary_failure_uses_daily_backup(monkeypatch):
+    ticker = SimpleNamespace(fast_info=SimpleNamespace(last_price=130))
+    monkeypatch.setattr(stocks.yf, "Ticker", lambda _: ticker)
+    monkeypatch.setattr(stocks, "_yf_history", lambda _: pd.DataFrame({"Close": [100.0] * 220}))
+    monkeypatch.setattr(stocks, "_yf_daily_history", lambda _: (_ for _ in ()).throw(RuntimeError("daily failed")))
+    monkeypatch.setattr(stocks, "_yahoo_chart_daily", lambda _: ([150.0] * 300, 130))
+    signal = stocks.fetch_one(next(h for h in HOLDINGS if h.ticker == "NVDA"))
+    assert signal.error is None
+    assert signal.sma_250d == 150
+    assert signal.signal == "DCA"
+    assert signal.data_source == "yfinance+daily:yahoo_chart"
+
+
+def test_growth_daily_both_fail_returns_error_not_weekly_signal(monkeypatch):
+    def fail(_):
+        raise RuntimeError("unavailable")
+
+    monkeypatch.setattr(stocks, "_yf_daily_history", fail)
+    monkeypatch.setattr(stocks, "_yahoo_chart_daily", fail)
+    signal = stocks.fetch_one(next(h for h in HOLDINGS if h.ticker == "TSM"))
+    assert signal.error and "250 日线" in signal.error
+    assert signal.signal == "NONE"
+
+
+def test_single_line_group_does_not_fetch_daily(monkeypatch):
+    ticker = SimpleNamespace(fast_info=SimpleNamespace(last_price=130))
+    monkeypatch.setattr(stocks.yf, "Ticker", lambda _: ticker)
+    monkeypatch.setattr(stocks, "_yf_history", lambda _: pd.DataFrame({"Close": [100.0] * 220}))
+    monkeypatch.setattr(stocks, "_yf_daily_history", lambda _: pytest.fail("unexpected daily fetch"))
+    signal = stocks.fetch_one(next(h for h in HOLDINGS if h.ticker == "COST"))
+    assert signal.error is None
+    assert signal.signal == "NONE"
+    assert [line["label"] for line in signal.buy_lines] == ["200 周"]
+
+
+@pytest.mark.parametrize("ticker", ["COST", "MA", "MCO", "KO", "LIN", "AXP"])
+def test_observation_120w_is_displayed_but_never_adds_dca(ticker):
+    holding = next(h for h in HOLDINGS if h.ticker == ticker)
+    signal = stocks._build_signal(
+        holding, closes=[100.0] * 80 + [140.0] * 120,
+        live_price=130.0, data_source="fixture",
+    )
+    assert signal.signal == "NONE"  # 低于120周但高于200周，仍无 DCA。
+    assert [line["value"] for line in signal.reference_lines] == [140.0, 124.0]
+    assert signal.strategy.reference_line_labels == ("120 周", "200 周")
+    assert [line["label"] for line in signal.buy_lines] == ["200 周"]
+    assert signal.strategy.line_labels == ("200 周",)
+    assert signal.reference_lines[0]["delta"] == pytest.approx(130 / 140 - 1)

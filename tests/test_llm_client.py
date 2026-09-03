@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import requests
 
+from src.config import BUY_STRATEGIES
 from src.processors.llm_client import (
     DEFAULT_MODEL,
     INVESTMENT_FRAMEWORK,
@@ -33,6 +34,19 @@ class TestBuildSystemPrompt:
         sp = build_system_prompt()
         for ticker in ["MSFT", "NVDA", "BRK.B", "0700.HK", "9992.HK"]:
             assert ticker in sp, f"持仓 {ticker} 应出现在 system prompt 中"
+
+    def test_buy_rules_match_shared_strategy_configuration(self) -> None:
+        sp = build_system_prompt()
+        for strategy in BUY_STRATEGIES:
+            line = next(line for line in sp.splitlines() if f"{', '.join(strategy.tickers)}:" in line)
+            assert f"现价 ≤ {strategy.line_labels[-1]}均线 → lump-sum" in line
+            if strategy.dca_line:
+                assert f"现价 ≤ {strategy.line_labels[0]}均线 → DCA" in line
+            else:
+                assert "不设 DCA" in line
+                assert "120 周" not in line
+        assert "信号每天持续显示当前区间" in sp
+        assert "250 个交易日" in sp
 
     def test_injects_beijing_time(self) -> None:
         # ADR-0001 §3:必须显式注入北京时间

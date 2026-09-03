@@ -20,6 +20,7 @@ from typing import Any
 import requests
 from openai import OpenAI
 
+from src.config import BUY_STRATEGIES
 from src.utils.dates import now_beijing_human
 from src.utils.secrets import redact_secrets
 
@@ -29,8 +30,16 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 _FLASH_MODEL_RE = re.compile(r"^deepseek-v(?P<version>\d+(?:\.\d+)*)(?:-[a-z0-9]+)*-flash$")
 
+_BUY_RULES_CONTEXT = "\n".join(
+    f"    - {', '.join(strategy.tickers)}: "
+    + (f"现价 ≤ {strategy.line_labels[0]}均线 → DCA(小额固定定投); "
+       if strategy.dca_line else "不设 DCA; ")
+    + f"现价 ≤ {strategy.line_labels[-1]}均线 → lump-sum(大额买入)"
+    for strategy in BUY_STRATEGIES
+)
+
 # PLAN 第 10 节"投资上下文",所有 LLM 调用必须以此作为 system prompt 开头
-INVESTMENT_FRAMEWORK = """\
+INVESTMENT_FRAMEWORK = f"""\
 你是为开源(一位中国财务从业者、业余价值投资者)服务的私人投资信息助手。
 
 开源的投资框架是:
@@ -38,8 +47,9 @@ INVESTMENT_FRAMEWORK = """\
 - 关注"本分"(企业是否做对的事、是否做难而正确的事)
 - 估值方法是"两列法":Column 1 净金融资产 + Column 2 Owner Earnings × 合理倍数
 - 建仓规则:
-    - 股价跌破 120 周均线 → 启动 DCA(分批定投)
-    - 股价跌破 200 周均线 → 启动 lump-sum(一次性建仓)
+{_BUY_RULES_CONTEXT}
+    - 250 日指 250 个交易日; 港股与美股独立分组展示
+    - 信号每天持续显示当前区间,不是首次跌破提醒; 大额优先,不满足则无信号
     - 200 周线买入的部分永不无条件卖出
     - 无信号时持有 BOXX 作为现金等价物
 - 关注的信号是:企业基本面变化、长期竞争力、管理层资本配置能力
@@ -48,6 +58,7 @@ INVESTMENT_FRAMEWORK = """\
 开源的当前持仓清单:
 - 美股:MSFT, COST, AAPL, NVDA, TSM, MCO, GOOG, BRK.B, KO, AXP, MA, LIN
 - 港股:0700.HK(腾讯)、9992.HK(泡泡玛特)
+- ETF:QQQM(Invesco Nasdaq 100 ETF),与 MSFT 同组买入线,不套用个股估值
 
 你的输出语言:简体中文,平实自然,严禁出现以下:
 - AI 腔(亲、哦、赋能、抓手、一站式、全方位)
