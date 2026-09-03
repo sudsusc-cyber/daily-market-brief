@@ -309,7 +309,7 @@
                 <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
                   参考线依次为 DCA / 大额；* 组仅 200 周触发大额。每日持续显示。<br />
                   行情：Yahoo Finance；250 日指交易日；小字为距参考线幅度。
-                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：个股采用 Morningstar 最新公开值，QQQM 按 v1.5 固定模型每日重算；IRR（1年）＝公允价值 ÷ 现价 − 1（不含股息，仅供参考）。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
+                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：个股 Morningstar；QQQM v1.5 模型。IRR＝公允价值 ÷ 现价 − 1（差额收益率，非年化、不含息）。仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
                 </td>
               </tr>
             </table>

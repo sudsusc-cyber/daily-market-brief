@@ -11,6 +11,11 @@ from src.valuation.qqqm import calculate_qqqm, parse_qqqm_inputs, prepare_qqqm_d
 NOW = datetime(2026, 9, 3, 4, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def no_live_sources(monkeypatch):
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: None)
+
+
 def _payload(*, data_date: str = "2026-09-03") -> str:
     fields = {
         "nav_anchor": 500.0,
@@ -93,6 +98,7 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     first = prepare_qqqm_display(price=300.0, client=good, state_dir=tmp_path, checked_at=NOW)
     assert good.calls == 1
     assert first.intrinsic_value is not None
+    assert first.implied_return == pytest.approx(first.intrinsic_value / 300.0 - 1)
     assert first.financial_as_of == "2026-09-03"
 
     failed = _Client(LLMResponse(text=None, error="rate limit", usage=LLMUsage()))
@@ -100,4 +106,5 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     assert failed.calls == 1
     assert second.intrinsic_value == pytest.approx(first.intrinsic_value)
     assert second.implied_return != first.implied_return
+    assert second.implied_return == pytest.approx(second.intrinsic_value / 305.0 - 1)
     assert "快照" in second.warnings[0]
