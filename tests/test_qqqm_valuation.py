@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -16,7 +16,7 @@ def no_live_sources(monkeypatch):
     monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: None)
 
 
-def _payload(*, data_date: str = "2026-09-03") -> str:
+def _payload(*, data_date: str = "2026-09-02") -> str:
     fields = {
         "nav_anchor": 500.0,
         "pe_ttm": 25.0,
@@ -57,7 +57,7 @@ class _Client:
 def test_parse_and_calculate_qqqm_v15() -> None:
     inputs = parse_qqqm_inputs(_payload(), price=300.0, checked_at=NOW)
     result = calculate_qqqm(inputs)
-    assert inputs.stale_days == 0
+    assert inputs.stale_days == 1
     assert result.value > 0
     assert result.implied_return is not None
     assert result.inputs.price == 300.0
@@ -69,7 +69,7 @@ def test_parse_accepts_search_text_wrapping_valid_json() -> None:
         price=300.0,
         checked_at=NOW,
     )
-    assert inputs.data_date == "2026-09-03"
+    assert inputs.data_date == "2026-09-02"
 
 
 def test_parse_rejects_missing_field_citation_and_future_data() -> None:
@@ -99,7 +99,7 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     assert good.calls == 1
     assert first.intrinsic_value is not None
     assert first.implied_return == pytest.approx(first.intrinsic_value / 300.0 - 1)
-    assert first.financial_as_of == "2026-09-03"
+    assert first.financial_as_of == "2026-09-02"
 
     failed = _Client(LLMResponse(text=None, error="rate limit", usage=LLMUsage()))
     second = prepare_qqqm_display(price=305.0, client=failed, state_dir=tmp_path, checked_at=NOW)
@@ -121,3 +121,28 @@ def test_corrupt_cache_does_not_crash_email(tmp_path):
     failed = _Client(LLMResponse(text=None, error="offline", usage=LLMUsage()))
     display = prepare_qqqm_display(price=300, client=failed, state_dir=tmp_path, checked_at=NOW)
     assert display.is_pending
+
+
+def test_cached_snapshot_expires_without_renewing_its_data_date(tmp_path):
+    client = _Client(LLMResponse(text=_payload(), usage=LLMUsage()))
+    prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW)
+    client.response = LLMResponse(text=None, error="blocked", usage=LLMUsage())
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW + timedelta(days=14))
+    assert display.is_pending
+
+
+def test_reject_not_yet_closed_date():
+    with pytest.raises(ValueError, match="已收盘"):
+        parse_qqqm_inputs(_payload(data_date="2026-09-03"), price=300, checked_at=NOW)
+
+
+def test_startup_seed_rechecks_live_values(tmp_path):
+    from scripts.seed_qqqm import seed_snapshot
+
+    data = json.loads(_payload())["data"]
+    packet = {**data, "fwd_date": data["data_date"]}
+    seed_snapshot(_payload(), packet=packet, state_dir=tmp_path, checked_at=NOW)
+    assert (tmp_path / "qqqm_valuation.json").exists()
+    packet["nav_anchor"] = 600.0
+    with pytest.raises(ValueError, match="differs from live"):
+        seed_snapshot(_payload(), packet=packet, state_dir=tmp_path, checked_at=NOW)

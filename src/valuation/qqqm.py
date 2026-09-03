@@ -133,6 +133,8 @@ def parse_qqqm_inputs(text: str, *, price: float, checked_at: datetime) -> QQQMI
     stale_days = (checked_date - anchor).days
     if stale_days < 0 or stale_days > _STALE_DAYS:
         raise ValueError(f"QQQM 数据日距今日 {stale_days} 天，超过 14 天或在未来")
+    if anchor > latest_closed_date(checked_at) or not is_us_market_open(anchor):
+        raise ValueError("QQQM 数据日不是已收盘交易日或属于未来数据")
     urls = tuple(
         dict.fromkeys(
             str(url).strip()
@@ -341,9 +343,13 @@ def prepare_qqqm_display(
             value_label="公允价值",
             warnings=(warning or "QQQM 没有可验证的同日输入",),
         )
+    logger.info(
+        "valuation.qqqm_ready value=%.4f gap_return=%.6f data_date=%s fallback=%s",
+        result.value, result.value / price - 1, result.inputs.data_date, bool(warning),
+    )
     return ValuationDisplay(
         ticker="QQQM",
-        status="not_due" if result.inputs.stale_days else "current",
+        status="not_due" if warning else "current",
         intrinsic_value=result.value,
         # Email IRR is the user's value-gap return, not the document's 10Y IRR.
         implied_return=result.value / price - 1,
