@@ -183,6 +183,7 @@ def prepare_valuation_displays(
     prior_freshness: dict[str, FreshnessResult] | None = None,
     reviewer: Any | None = None,
     morningstar_provider: MorningstarProvider | None = None,
+    qqqm_display: ValuationDisplay | None = None,
 ) -> tuple[dict[str, ValuationDisplay], dict[str, FreshnessResult]]:
     """自动刷新底稿、核验最新文件并由 Python 计算邮件展示值。"""
     if checked_at is None:
@@ -215,6 +216,8 @@ def prepare_valuation_displays(
             failures=fair_value_failures,
             prices=prices,
         )
+        if qqqm_display is not None:
+            displays["QQQM"] = qqqm_display
         displays = enforce_jump_guard(displays, state_dir=state_dir)
         current = sum(1 for value in displays.values() if not value.is_pending)
         logger.info(
@@ -247,9 +250,7 @@ def prepare_valuation_displays(
         logger.error("valuation.snapshots_invalid reason=%s", exc)
         snapshots = {}
 
-    accepted_ids = {
-        ticker: snapshot.source_document_id for ticker, snapshot in snapshots.items()
-    }
+    accepted_ids = {ticker: snapshot.source_document_id for ticker, snapshot in snapshots.items()}
     freshness = check_official_freshness(
         POLICIES.values(),
         valuation_document_ids=accepted_ids,
@@ -332,6 +333,8 @@ def prepare_valuation_displays(
             freshness=result,
             current_price=prices.get(ticker),
         )
+    if qqqm_display is not None:
+        displays["QQQM"] = qqqm_display
     displays = enforce_jump_guard(displays, state_dir=state_dir)
     current = sum(1 for value in displays.values() if not value.is_pending)
     for ticker, value in displays.items():

@@ -99,7 +99,7 @@ HOLDINGS: list[Holding] = [
     # 追加在末尾——多个测试用 HOLDINGS[idx] 索引引用既有持仓,插入中间会破坏索引。
     Holding("MA", "Mastercard", "mastercard.com"),
     Holding("LIN", "Linde", "linde.com"),
-    # QQQM 仅接入持仓行情/买入信号，不套用上市公司的估值模型与新闻流程。
+    # QQQM 接入持仓行情/买入信号；估值由独立 v1.5 ETF 模块处理，不套用上市公司模型。
     Holding("QQQM", "Invesco Nasdaq 100", "invesco.com", asset_type="etf"),
 ]
 

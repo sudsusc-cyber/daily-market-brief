@@ -148,8 +148,8 @@ def test_holdings_are_grouped_with_correct_average_values():
     assert len(soup.select(".holding-valuation")) == 15
     qqqm = soup.select_one('[data-holding="QQQM"]')
     assert qqqm.select_one(".holding-average-main").get_text() == "270.00/230.00"
-    assert qqqm.select_one(".holding-valuation").get_text(strip=True) == "—"
-    assert not qqqm.select(".holding-implied-return,.holding-valuation-pending")
+    assert qqqm.select_one(".holding-valuation-main").get_text(strip=True) == "320.00"
+    assert qqqm.select_one(".holding-implied-return").get_text(strip=True).startswith("IRR")
     assert all(label not in soup.get_text() for label in ("美股 · 双线", "美股 · 日周线", "美股 · 单线", "港股 · 双线"))
     for row in soup.select(".holding-group-heading"):
         assert not row.find("td").get_text(strip=True)

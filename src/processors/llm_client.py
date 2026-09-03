@@ -58,7 +58,7 @@ INVESTMENT_FRAMEWORK = f"""\
 开源的当前持仓清单:
 - 美股:MSFT, COST, AAPL, NVDA, TSM, MCO, GOOG, BRK.B, KO, AXP, MA, LIN
 - 港股:0700.HK(腾讯)、9992.HK(泡泡玛特)
-- ETF:QQQM(Invesco Nasdaq 100 ETF),与 MSFT 同组买入线,不套用个股估值
+- ETF:QQQM(Invesco Nasdaq 100 ETF),与 MSFT 同组买入线,按独立 v1.5 ETF 公允价值规则取数
 
 你的输出语言:简体中文,平实自然,严禁出现以下:
 - AI 腔(亲、哦、赋能、抓手、一站式、全方位)

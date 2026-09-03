@@ -65,6 +65,7 @@ from src.utils.idempotency import already_sent_today
 from src.utils.secrets import mask_emails
 from src.valuation.models import FreshnessResult, ValuationDisplay
 from src.valuation.morningstar import MorningstarPublicProvider
+from src.valuation.qqqm import prepare_qqqm_display
 from src.valuation.service import commit_published_values, prepare_valuation_displays
 
 logger = logging.getLogger(__name__)
@@ -119,11 +120,13 @@ def _select_active_thesis_themes(
         status = getattr(st, "status", "")
         if status not in _ACTIVE_THESIS_STATUS_RANK:
             continue
-        rows.append((
-            _ACTIVE_THESIS_STATUS_RANK[status],
-            getattr(st, "last_evidence_date", "") or "",
-            str(theme),
-        ))
+        rows.append(
+            (
+                _ACTIVE_THESIS_STATUS_RANK[status],
+                getattr(st, "last_evidence_date", "") or "",
+                str(theme),
+            )
+        )
 
     # 稳定排序：先 theme 字母序，再按最近 evidence 时间降序，最后按状态优先级。
     rows.sort(key=lambda row: row[2])
@@ -158,16 +161,18 @@ def _load_logo_assets(holdings: list[Holding]) -> tuple[dict[str, str], list[Inl
     破解某些邮件客户端(如 iOS 微信邮件助手)对同名 CID 旧附件的缓存。
     """
     import hashlib
+
     cids: dict[str, str] = {}
     images: list[InlineImage] = []
     for h in holdings:
         path = next(
-            (p for ext in ("png", "jpg", "jpeg")
-             if (p := _LOGOS_DIR / f"{h.slug}.{ext}").exists()),
+            (p for ext in ("png", "jpg", "jpeg") if (p := _LOGOS_DIR / f"{h.slug}.{ext}").exists()),
             None,
         )
         if path is None:
-            logger.warning("logo.missing ticker=%s expected=%s/{png,jpg}", h.ticker, _LOGOS_DIR / h.slug)
+            logger.warning(
+                "logo.missing ticker=%s expected=%s/{png,jpg}", h.ticker, _LOGOS_DIR / h.slug
+            )
             continue
         sha8 = hashlib.sha1(path.read_bytes(), usedforsecurity=False).hexdigest()[:8]
         cid = f"{h.logo_cid}_{sha8}"
@@ -219,34 +224,53 @@ def main() -> int:
     logger.info("collect.stocks count=%d", len(HOLDINGS))
     signals = stocks.fetch_all(HOLDINGS)
     morningstar_provider = (
-        MorningstarPublicProvider()
-        if settings.morningstar_fair_value_enabled
-        else None
+        MorningstarPublicProvider() if settings.morningstar_fair_value_enabled else None
     )
 
     # 估值官方源第一遍检查：尽早发现收盘后刚发布的财报，并自动刷新可复算底稿。
     valuation_displays: dict[str, ValuationDisplay] | None = None
     valuation_freshness: dict[str, FreshnessResult] | None = None
+    qqqm_display: ValuationDisplay | None = None
     if settings.valuation_enabled:
+        qqqm_signal = next(
+            (signal for signal in signals if signal.holding.ticker == "QQQM" and signal.last_close),
+            None,
+        )
+        if qqqm_signal is not None:
+            logger.info("valuation.qqqm_prepare price=%.4f", qqqm_signal.last_close)
+            qqqm_display = prepare_qqqm_display(
+                price=qqqm_signal.last_close,
+                client=llm,
+                state_dir=_STATE_DIR,
+                checked_at=now_bj,
+            )
+        else:
+            logger.warning("valuation.qqqm_pending reason=market_price_unavailable")
         logger.info("valuation.freshness_precheck")
         valuation_displays, valuation_freshness = prepare_valuation_displays(
             signals=signals,
             state_dir=_STATE_DIR,
             config_dir=_PROJECT_ROOT / "config",
+            checked_at=now_bj,
             download_original=True,
             reviewer=llm,
             morningstar_provider=morningstar_provider,
+            qqqm_display=qqqm_display,
         )
 
     logger.info("collect.company_news")
     company_news_state_path = _STATE_DIR / "pushed_company_news.json"
     cn_bundles, company_news_pending_pushed = company_news.fetch_all(
-        COMPANY_HOLDINGS, settings.finnhub_api_key, state_path=company_news_state_path,
+        COMPANY_HOLDINGS,
+        settings.finnhub_api_key,
+        state_path=company_news_state_path,
     )
 
     logger.info("collect.macro_news")
     macro_news_state_path = _STATE_DIR / "pushed_macro_news.json"
-    macro_bundles, macro_news_pending_pushed = macro_news.fetch_all(state_path=macro_news_state_path)
+    macro_bundles, macro_news_pending_pushed = macro_news.fetch_all(
+        state_path=macro_news_state_path
+    )
 
     logger.info("collect.figures")
     figures_state_path = _STATE_DIR / "pushed_figures.json"
@@ -271,13 +295,9 @@ def main() -> int:
         today=now_bj.date(),
         fred_api_key=settings.fred_api_key,
     )
-    if (
-        jiangsu_fuel_alert is not None
-        and jiangsu_fuel_alert.forecast_method == "schedule_only"
-    ):
+    if jiangsu_fuel_alert is not None and jiangsu_fuel_alert.forecast_method == "schedule_only":
         _record_quality_alert(
-            "油价预告方向降级：新闻预测与国际原油代理均不可用，"
-            "已保证显示调价时间和方向待更新。"
+            "油价预告方向降级：新闻预测与国际原油代理均不可用，" "已保证显示调价时间和方向待更新。"
         )
 
     logger.info("collect.sentiment")
@@ -306,14 +326,11 @@ def main() -> int:
         if company_news_summary is not None and getattr(company_news_summary, "is_silence", False):
             company_news_summary = None
             company_news_silence_note = (
-                news_summarizer.generate_silence_note(client=llm)
-                or "商海无波，舟自徐行。"
+                news_summarizer.generate_silence_note(client=llm) or "商海无波，舟自徐行。"
             )
         elif company_news_summary is None:
             company_news_fallback_note = _COMPANY_PROCESSING_FALLBACK_NOTE
-            _record_quality_alert(
-                "个股动态加工失败：已使用受控占位语，未展示原始新闻列表。"
-            )
+            _record_quality_alert("个股动态加工失败：已使用受控占位语，未展示原始新闻列表。")
     elif any(bundle.error for bundle in cn_bundles):
         company_news_summary = None
         company_news_fallback_note = _COMPANY_SOURCE_FALLBACK_NOTE
@@ -321,8 +338,7 @@ def main() -> int:
     else:
         company_news_summary = None
         company_news_silence_note = (
-            news_summarizer.generate_silence_note(client=llm)
-            or "商海无波，舟自徐行。"
+            news_summarizer.generate_silence_note(client=llm) or "商海无波，舟自徐行。"
         )
     if company_source_failures and any(bundle.items for bundle in cn_bundles):
         _record_quality_alert(
@@ -337,20 +353,15 @@ def main() -> int:
         macro_news_summary = macro_filter.summarize(macro_bundles, client=llm)
         if macro_news_summary is None:
             macro_news_fallback_note = _MACRO_PROCESSING_FALLBACK_NOTE
-            _record_quality_alert(
-                "宏观视野加工失败：已使用受控占位语，未展示原始 RSS 列表。"
-            )
+            _record_quality_alert("宏观视野加工失败：已使用受控占位语，未展示原始 RSS 列表。")
     elif any(bundle.error for bundle in macro_bundles):
         macro_news_summary = None
         macro_news_fallback_note = _MACRO_SOURCE_FALLBACK_NOTE
-        _record_quality_alert(
-            "宏观视野数据源不可用：已使用受控占位语。"
-        )
+        _record_quality_alert("宏观视野数据源不可用：已使用受控占位语。")
     else:
         macro_news_summary = None
         macro_news_silence_note = (
-            macro_filter.generate_silence_note(client=llm)
-            or "四海无波，日升月落而已。"
+            macro_filter.generate_silence_note(client=llm) or "四海无波，日升月落而已。"
         )
     if macro_source_failures and any(bundle.items for bundle in macro_bundles):
         _record_quality_alert(
@@ -365,7 +376,8 @@ def main() -> int:
     if len(figure_summaries) < len(figure_results):
         logger.info(
             "figure_filter.dropped_silent count=%d failures=%d",
-            len(figure_results) - len(figure_summaries), len(figure_failures),
+            len(figure_results) - len(figure_summaries),
+            len(figure_failures),
         )
     # 全员沉默时:LLM 写一句古典韵味的占位语
     figure_silence_note = None
@@ -375,14 +387,10 @@ def main() -> int:
         if figure_failures:
             figure_fallback_note = _FIGURE_PROCESSING_FALLBACK_NOTE
             _record_quality_alert(
-                f"关键发言加工失败：{len(figure_failures)} 位人物处理未完成，"
-                "已使用受控占位语。"
+                f"关键发言加工失败：{len(figure_failures)} 位人物处理未完成，" "已使用受控占位语。"
             )
         else:
-            figure_silence_note = (
-                figure_filter.generate_silence_note(llm)
-                or "群贤皆默，市自为声。"
-            )
+            figure_silence_note = figure_filter.generate_silence_note(llm) or "群贤皆默，市自为声。"
     else:
         if figure_failures:
             _record_quality_alert(
@@ -442,14 +450,14 @@ def main() -> int:
             today=now_bj.date(),
         )
         if thesis_extraction_error:
-            _record_quality_alert(
-                "长期判断证据提取失败：本次未写入新的判断证据。"
-            )
+            _record_quality_alert("长期判断证据提取失败：本次未写入新的判断证据。")
         # extractor 只 return；写入由 state.py 统一负责（内部按 evidence_id 去重）
         thesis_state.append_evidence(evidence_today, _STATE_DIR, today=now_bj.date())
 
         recent_evidence = thesis_state.load_recent_evidence(
-            _STATE_DIR, days=90, today=now_bj.date(),
+            _STATE_DIR,
+            days=90,
+            today=now_bj.date(),
         )
         holdings_tickers = [h.ticker for h in HOLDINGS]
         state_dict, thesis_events = thesis_rules.run_state_transitions(
@@ -480,7 +488,8 @@ def main() -> int:
         # traceback 可能带请求 url 或 header 痕迹;只记 type + 截断后的 str。
         logger.warning(
             "thesis.pipeline_failed exc_type=%s msg=%s",
-            type(exc).__name__, str(exc)[:200],
+            type(exc).__name__,
+            str(exc)[:200],
         )
         _record_quality_alert("长期判断管线失败：已跳过本次判断更新。")
         judgment_section = None
@@ -504,27 +513,32 @@ def main() -> int:
             signals=signals,
             state_dir=_STATE_DIR,
             config_dir=_PROJECT_ROOT / "config",
+            checked_at=now_bj,
             download_original=False,
             prior_freshness=valuation_freshness,
             reviewer=llm,
             morningstar_provider=morningstar_provider,
+            qqqm_display=qqqm_display,
         )
         publishable = sum(
             1 for value in (valuation_displays or {}).values() if not value.is_pending
         )
-        if publishable < len(COMPANY_HOLDINGS):
+        expected_valuations = len(COMPANY_HOLDINGS) + (1 if qqqm_display is not None else 0)
+        if publishable < expected_valuations:
             _record_quality_alert(
                 f"{'公允价值' if settings.morningstar_fair_value_enabled else '内在价值'}"
-                f"数据未完全就绪：{publishable}/{len(COMPANY_HOLDINGS)} 只通过来源与复算闸门。"
+                f"数据未完全就绪：{publishable}/{expected_valuations} 只通过来源与复算闸门。"
             )
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
     # 刊头图统一走 inline CID(Android QQ 邮箱不会自动加载远程图,iOS/桌面正常)。
     # header_image.pick_header_image 三层都会下载到本地并返回 local_path。
-    inline_images.append(InlineImage(
-        cid="header_image",
-        path=header["local_path"],
-        subtype=None,
-    ))
+    inline_images.append(
+        InlineImage(
+            cid="header_image",
+            path=header["local_path"],
+            subtype=None,
+        )
+    )
     html = render_email(
         signals=signals,
         generated_at=now_bj,
@@ -535,7 +549,7 @@ def main() -> int:
         valuation_checked_at=(
             max((item.checked_at for item in valuation_freshness.values()), default=None)
             if valuation_freshness
-            else None
+            else (now_bj if qqqm_display is not None else None)
         ),
         # 加工产物；失败区块使用受控占位语，不展示未经筛选的原始列表。
         sentiment=sentiment_bundle,
@@ -563,6 +577,7 @@ def main() -> int:
     # ---------- 主题生成(M5.11:DeepSeek 8 字两段四言古典对仗) ----------
     from src.processors.subject.extractor import extract_subject_data
     from src.processors.subject.generator import generate_subject
+
     subject_data = extract_subject_data(
         today_bj=now_bj.date(),
         signals=signals,
@@ -572,14 +587,19 @@ def main() -> int:
         macro_news_summary=macro_news_summary,
         email_html=html,
     )
-    subject = generate_subject(subject_data, llm=llm, today_bj=now_bj.date(), use_cache=not force_send)
+    subject = generate_subject(
+        subject_data, llm=llm, today_bj=now_bj.date(), use_cache=not force_send
+    )
 
     # 所有 LLM 调用（包括邮件主题）完成后再汇总，避免日用量少计。
     cum = llm.cumulative
     cost_cny = llm.estimate_cost_cny()
     logger.info(
         "llm.summary input=%d output=%d reasoning=%d cache_hit=%d est_cost=¥%.4f",
-        cum.input_tokens, cum.output_tokens, cum.reasoning_tokens, cum.cache_hit_tokens,
+        cum.input_tokens,
+        cum.output_tokens,
+        cum.reasoning_tokens,
+        cum.cache_hit_tokens,
         cost_cny,
     )
     if cost_cny > 0.5:
