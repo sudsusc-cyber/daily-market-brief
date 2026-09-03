@@ -207,6 +207,28 @@ def test_web_search_is_forced_and_domain_guard_is_injected(monkeypatch) -> None:
     assert response.usage.cache_hit_tokens == 2
 
 
+def test_web_search_extracts_deepseek_output_content_when_output_text_is_empty(monkeypatch) -> None:
+    class FakeResponses:
+        def create(self, **_kwargs):
+            return SimpleNamespace(
+                output_text="",
+                output=[SimpleNamespace(content=[SimpleNamespace(text='{"status":"ok"}')])],
+                usage=None,
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", FakeOpenAI)
+    response = LLMClient(api_key="secret").search_web(
+        "查找最新数据", allowed_domains=("invesco.com",)
+    )
+
+    assert response.text == '{"status":"ok"}'
+    assert response.error is None
+
+
 def test_web_search_requires_domain_allowlist(monkeypatch) -> None:
     monkeypatch.setattr("src.processors.llm_client.OpenAI", lambda **_kwargs: object())
     response = LLMClient(api_key="secret").search_web(
