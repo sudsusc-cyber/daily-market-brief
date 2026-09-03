@@ -52,21 +52,21 @@ def _build_mock_signals() -> list[StockSignal]:
     错误态视觉若需复核,临时把任一行最后一个字段填字符串错误信息即可。
     """
     cases: list[tuple[Holding, float | None, float | None, float | None, str | None]] = [
-        (HOLDINGS[0], 432.10, 410.50, 360.20, None),   # MSFT, NONE
-        (HOLDINGS[1], 968.45, 875.20, 720.40, None),   # COST, NONE
-        (HOLDINGS[2], 232.80, 215.60, 188.10, None),   # AAPL, NONE
-        (HOLDINGS[3], 209.25, 140.29, 96.22, None),    # NVDA, 低于250日线 → DCA
-        (HOLDINGS[4], 160.80, 168.20, 132.40, None),   # TSM, 低于120周线 → LUMP_SUM
-        (HOLDINGS[5], 478.30, 502.80, 390.50, None),   # MCO, 无120周 DCA
-        (HOLDINGS[6], 198.40, 185.60, 152.30, None),   # GOOG, NONE
-        (HOLDINGS[7], 462.10, 451.20, 388.40, None),   # BRK.B, NONE(无 logo,走文字 fallback)
-        (HOLDINGS[8], 64.20, 68.40, 60.10, None),      # KO, 无120周 DCA
-        (HOLDINGS[9], 268.90, 295.40, 312.80, None),   # AXP, LUMP_SUM
+        (HOLDINGS[0], 432.10, 410.50, 360.20, None),  # MSFT, NONE
+        (HOLDINGS[1], 968.45, 875.20, 720.40, None),  # COST, NONE
+        (HOLDINGS[2], 232.80, 215.60, 188.10, None),  # AAPL, NONE
+        (HOLDINGS[3], 209.25, 140.29, 96.22, None),  # NVDA, 低于250日线 → DCA
+        (HOLDINGS[4], 160.80, 168.20, 132.40, None),  # TSM, 低于120周线 → LUMP_SUM
+        (HOLDINGS[5], 478.30, 502.80, 390.50, None),  # MCO, 无120周 DCA
+        (HOLDINGS[6], 198.40, 185.60, 152.30, None),  # GOOG, NONE
+        (HOLDINGS[7], 462.10, 451.20, 388.40, None),  # BRK.B, NONE(无 logo,走文字 fallback)
+        (HOLDINGS[8], 64.20, 68.40, 60.10, None),  # KO, 无120周 DCA
+        (HOLDINGS[9], 268.90, 295.40, 312.80, None),  # AXP, LUMP_SUM
         (HOLDINGS[10], 412.40, 380.60, 340.20, None),  # 0700.HK, NONE
-        (HOLDINGS[11], 157.10, 136.01, 89.67, None),   # 9992.HK 泡泡玛特, NONE
+        (HOLDINGS[11], 157.10, 136.01, 89.67, None),  # 9992.HK 泡泡玛特, NONE
         (HOLDINGS[12], 512.30, 478.20, 412.60, None),  # MA 万事达, NONE
         (HOLDINGS[13], 445.80, 462.10, 398.40, None),  # LIN, 无120周 DCA
-        (HOLDINGS[14], 310.00, 270.00, 230.00, None), # QQQM, 样例行情, NONE
+        (HOLDINGS[14], 310.00, 270.00, 230.00, None),  # QQQM, 样例行情, NONE
     ]
 
     signals: list[StockSignal] = []
@@ -80,9 +80,18 @@ def _build_mock_signals() -> list[StockSignal]:
         delta_200 = (last - sma200) / sma200
         sma250d = {"NVDA": 220.40, "TSM": 190.60}.get(holding.ticker)
         sig = _judge_signal(last, sma120, sma200, ticker=holding.ticker, sma_250d=sma250d)
-        signals.append(StockSignal(
-            holding, last, sma120, sma200, delta_120, delta_200, sig, sma_250d=sma250d,
-        ))
+        signals.append(
+            StockSignal(
+                holding,
+                last,
+                sma120,
+                sma200,
+                delta_120,
+                delta_200,
+                sig,
+                sma_250d=sma250d,
+            )
+        )
     return signals
 
 
@@ -98,6 +107,7 @@ def _logo_path(h: Holding):
 def _hashed_cid(h: Holding) -> str | None:
     """与 main.py._load_logo_assets 同款 CID:logo_<slug>_<sha8>。"""
     import hashlib
+
     p = _logo_path(h)
     if p is None:
         return None
@@ -132,6 +142,7 @@ def _build_mock_valuations() -> dict[str, ValuationDisplay]:
         "9992.HK": (280.00, "HK$"),
         "MA": (550.00, "$"),
         "LIN": (540.00, "$"),
+        "QQQM": (320.00, "$"),
     }
     prices = {signal.holding.ticker: signal.last_close for signal in _build_mock_signals()}
     return {
@@ -173,6 +184,7 @@ def render_preview(*, inline_assets: bool = True) -> str:
     from types import SimpleNamespace
 
     from src.collectors.header_image import pick_header_image
+
     header = pick_header_image(dt.date.today())
     header_url = header["url"]
     # cid: 在浏览器无法加载,换用固定 Pexels URL 供预览
@@ -184,18 +196,55 @@ def render_preview(*, inline_assets: bool = True) -> str:
 
     from src.renderer.render import render_email
 
-    mock_sentiment = SimpleNamespace(metrics=[
-        SimpleNamespace(name="CNN Fear & Greed", unit="", stale_from=None, error=None,
-                        current=67.5, prior=64.0, delta=3.5),
-        SimpleNamespace(name="VIX", unit="", stale_from=None, error=None,
-                        current=20.0, prior=20.4, delta=-0.4),
-        SimpleNamespace(name="高收益债利差", unit="%", stale_from=None, error=None,
-                        current=4.0, prior=4.1, delta=-0.1),
-        SimpleNamespace(name="Shiller PE", unit="", stale_from=None, error=None,
-                        current=25.0, prior=25.0, delta=0.0),
-        SimpleNamespace(name="DXY", unit="", stale_from=None, error=None,
-                        current=100.0, prior=100.2, delta=-0.2),
-    ])
+    mock_sentiment = SimpleNamespace(
+        metrics=[
+            SimpleNamespace(
+                name="CNN Fear & Greed",
+                unit="",
+                stale_from=None,
+                error=None,
+                current=67.5,
+                prior=64.0,
+                delta=3.5,
+            ),
+            SimpleNamespace(
+                name="VIX",
+                unit="",
+                stale_from=None,
+                error=None,
+                current=20.0,
+                prior=20.4,
+                delta=-0.4,
+            ),
+            SimpleNamespace(
+                name="高收益债利差",
+                unit="%",
+                stale_from=None,
+                error=None,
+                current=4.0,
+                prior=4.1,
+                delta=-0.1,
+            ),
+            SimpleNamespace(
+                name="Shiller PE",
+                unit="",
+                stale_from=None,
+                error=None,
+                current=25.0,
+                prior=25.0,
+                delta=0.0,
+            ),
+            SimpleNamespace(
+                name="DXY",
+                unit="",
+                stale_from=None,
+                error=None,
+                current=100.0,
+                prior=100.2,
+                delta=-0.2,
+            ),
+        ]
+    )
     mock_sentiment_verdict = {
         "verdict": "今日情绪 · 偏热",
         "argument": "CNN 恐惧贪婪指数回升且 VIX 保持低位，风险偏好偏热，暂缓加仓并守住现金仓位。",
@@ -204,6 +253,7 @@ def render_preview(*, inline_assets: bool = True) -> str:
 
     # mock 昨日动态:用 news_summarizer 的真实渲染逻辑跑一段
     from src.processors.news_summarizer import CompanyNewsSummary, Footnote
+
     mock_lines = [
         "<strong>苹果</strong> —— App Store 抽成案被驳回,案件移交最高法院。",
         "<strong>英伟达</strong> —— Arrive AI 部署 Isaac Sim 与 Blackwell GPU 用于机器人视觉训练。",
@@ -219,6 +269,7 @@ def render_preview(*, inline_assets: bool = True) -> str:
     )
     body_html = ""
     import re as _re
+
     row_re = _re.compile(r"<strong>(.+?)</strong>\s*[——\-:、]+\s*(.+)")
     for line in mock_lines:
         m = row_re.match(line)
@@ -228,12 +279,14 @@ def render_preview(*, inline_assets: bool = True) -> str:
                 f'<div style="{row_style}">'
                 f'<span style="{name_style}">{cn}</span>'
                 f'<span style="{sep_style}">│</span>'
-                f'{summary}</div>'
+                f"{summary}</div>"
             )
     mock_summary = CompanyNewsSummary(
         summary_html=body_html,
-        footnotes=[Footnote(index=1, url='https://example.com/1', source='新浪财经'),
-                   Footnote(index=2, url='https://example.com/2', source='Reuters')],
+        footnotes=[
+            Footnote(index=1, url="https://example.com/1", source="新浪财经"),
+            Footnote(index=2, url="https://example.com/2", source="Reuters"),
+        ],
     )
 
     html = render_email(
@@ -246,9 +299,12 @@ def render_preview(*, inline_assets: bool = True) -> str:
         # company_news 只需 truthy(jinja2 if 检查),company_news_summary 提供真实 mock
         sentiment=mock_sentiment,
         sentiment_verdict=mock_sentiment_verdict,
-        company_news=[1], company_news_summary=mock_summary,
-        figures=None, figure_summaries=None,
-        macro_news=None, macro_news_summary=None,
+        company_news=[1],
+        company_news_summary=mock_summary,
+        figures=None,
+        figure_summaries=None,
+        macro_news=None,
+        macro_news_summary=None,
         buffett_13f=None,
     )
     return _inline_logos_as_data_uri(html) if inline_assets else html

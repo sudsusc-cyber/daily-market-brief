@@ -268,15 +268,15 @@
                   </td>
                   {% if show_valuations %}
                   <td class="holding-valuation" valign="top" align="right" style="padding:18px 0 18px 10px; border-bottom:1px solid {{ row_rule }}; white-space:nowrap; overflow:hidden;">
-                    {% if s.holding.asset_type == 'etf' %}
-                    <div class="holding-valuation-unavailable" style="font-size:13.5px; color:{{ color_faint }}; line-height:1.1;">—</div>
-                    {% elif valuation and valuation.intrinsic_value is not none %}
+                    {% if valuation and valuation.intrinsic_value is not none %}
                     <div class="holding-valuation-main" style="font-size:13.5px; font-weight:500; color:{{ color_ink }}; line-height:1.1; white-space:nowrap;">{{ valuation.intrinsic_value | price }}</div>
                       {% if valuation.implied_return is not none %}
                     <div class="holding-implied-return" style="font-size:8.5px; color:{{ color_accent if valuation.is_attractive else color_muted }}; margin-top:4px; line-height:1.1; letter-spacing:0.08em; white-space:nowrap;">{{ valuation.return_label }}&nbsp;{{ valuation.implied_return | rate }}</div>
                       {% else %}
                     <div class="holding-implied-return" style="font-size:8.5px; color:{{ color_muted }}; margin-top:4px; line-height:1.1; letter-spacing:0.08em; white-space:nowrap;">{{ valuation.return_label }}&nbsp;待更新</div>
                       {% endif %}
+                    {% elif s.holding.asset_type == 'etf' %}
+                    <div class="holding-valuation-unavailable" style="font-size:13.5px; color:{{ color_faint }}; line-height:1.1;">—</div>
                     {% else %}
                     <div class="holding-valuation-pending" style="font-size:10.5px; color:{{ color_muted }}; line-height:1.35; white-space:nowrap;">待更新</div>
                     {% endif %}
@@ -309,7 +309,7 @@
                 <td style="font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
                   参考线依次为 DCA / 大额；* 组仅 200 周触发大额。每日持续显示。<br />
                   行情：Yahoo Finance；250 日指交易日；小字为距参考线幅度。
-                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：Morningstar 最新公开值；IRR（1年）＝公允价值 ÷ 现价 − 1（不含股息，仅供参考）。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
+                  {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：个股采用 Morningstar 最新公开值，QQQM 按 v1.5 固定模型每日重算；IRR（1年）＝公允价值 ÷ 现价 − 1（不含股息，仅供参考）。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
                 </td>
               </tr>
             </table>
