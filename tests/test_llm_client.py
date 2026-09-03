@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 import requests
 
 from src.config import BUY_STRATEGIES
@@ -266,3 +267,53 @@ def test_market_search_reserves_visible_output_and_requires_real_search(monkeypa
     response = client.search_web("查基金数据", allowed_domains=("invesco.com",), market_data=True)
     assert response.text is None
     assert response.error.startswith("WebSearchNotExecuted")
+
+
+def _timed_client(monkeypatch, *, active=10, wall=100, fail=False):
+    clock = [0.0]
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        clock[0] += min(6.0, kwargs["timeout"])
+        if fail:
+            raise requests.Timeout("simulated")
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+                               output_text="ok", usage=None)
+
+    monkeypatch.setattr("src.processors.llm_client.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("src.processors.llm_client.OpenAI", lambda **kwargs: SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
+        responses=SimpleNamespace(create=create)))
+    client = LLMClient(api_key="test", total_timeout_seconds=active, wall_timeout_seconds=wall)
+    return client, clock, calls
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_shared_api_budget_counts_success_failure_and_excludes_collection(monkeypatch, fail):
+    client, clock, calls = _timed_client(monkeypatch, fail=fail)
+    clock[0] = 50  # Non-LLM collection time does not consume the 10s API budget.
+    client.chat("one")
+    assert calls[0]["timeout"] == 10
+    clock[0] += 10
+    client.search_web("two", allowed_domains=("invesco.com",))
+    assert calls[1]["timeout"] == 4
+    assert client.api_elapsed_seconds == 10
+    for response in (client.chat("three"), client.search_web("four", allowed_domains=("invesco.com",))):
+        assert response.error.startswith("LLMStageDeadlineExceeded")
+    assert len(calls) == 2
+
+
+def test_wall_deadline_preserves_send_reserve_even_with_unused_api_budget(monkeypatch):
+    client, clock, calls = _timed_client(monkeypatch, active=100, wall=60)
+    clock[0] = 59.75
+    client.chat("last")
+    assert calls[0]["timeout"] == .25  # Must not round the remaining time up to 1s.
+    assert client.chat("no late retry").error.startswith("LLMStageDeadlineExceeded")
+    assert len(calls) == 1
+
+
+def test_expired_cutoff_never_starts_a_call(monkeypatch):
+    client, _, calls = _timed_client(monkeypatch, wall=0)
+    assert client.chat("skip").error.startswith("LLMStageDeadlineExceeded")
+    assert calls == []

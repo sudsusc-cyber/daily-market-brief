@@ -22,6 +22,7 @@ PAIR_URL = "https://historyofmarket.com/api/ndx/forward-pe.json"
 PE_URL = "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio"
 PE_READER_URL = "https://r.jina.ai/" + PE_URL
 DAILY_FORWARD_BASIS = "dl-blended-fy1fy2"
+DIV_BACKUP_URL = "https://stockanalysis.com/etf/qqqm/dividend/"
 
 
 def latest_closed_date(checked_at: datetime) -> date:
@@ -54,7 +55,10 @@ def _fetch(url: str) -> dict | None:
 def _positive(value) -> float:
     if isinstance(value, bool):
         raise ValueError("boolean is not a source value")
-    number = float(value)
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("invalid source value") from exc
     if not math.isfinite(number) or number <= 0:
         raise ValueError("invalid source value")
     return number
@@ -117,9 +121,76 @@ def _series(rows: list, *, daily: bool = False) -> dict[str, float]:
     return {key: value for key, value in values.items() if key not in conflicts}
 
 
+def dividend_rows(payload: dict, *, anchor: date) -> dict[str, float]:
+    if payload.get("cusip") != "46138G649" or payload.get("currencyCode") != "USD":
+        raise ValueError("QQQM dividend identity/currency mismatch")
+    try:
+        start = anchor.replace(year=anchor.year - 1)
+    except ValueError:
+        start = anchor.replace(year=anchor.year - 1, day=28)
+    rows = payload.get("distributions", [])
+    if not any(date.fromisoformat(row["exDate"]) <= start for row in rows):
+        raise ValueError("QQQM dividend history does not cover twelve months")
+    selected = [row for row in rows if start < date.fromisoformat(row["exDate"]) <= anchor]
+    dates = [row["exDate"] for row in selected]
+    if not selected or len(dates) != len(set(dates)):
+        raise ValueError("QQQM empty or duplicate dividend rows")
+    # QQQM pays quarterly. Missing a whole row must not silently reduce TTM.
+    # A future distribution-schedule change requires review, not guessing.
+    ordered = sorted(date.fromisoformat(day) for day in dates)
+    boundaries = [start, *ordered, anchor]
+    if len(ordered) != 4 or any((b - a).days > 110 for a, b in zip(boundaries, boundaries[1:], strict=False)):
+        raise ValueError("QQQM quarterly dividend coverage incomplete or schedule changed")
+    # Use actual total cash per share in both providers, not a tax-income subset.
+    return {row["exDate"]: _positive(row.get("distributionAmountPerUnit")) for row in selected}
+
+
+def parse_dividend_backup(html: str, *, anchor: date) -> dict:
+    soup = BeautifulSoup(html, "html.parser")
+    if [h.get_text(" ", strip=True) for h in soup.find_all("h1")] != ["QQQM Dividend Information"]:
+        raise ValueError("QQQM backup page identity mismatch")
+    text = soup.get_text(" ", strip=True)
+    checked = re.search(r"Last checked:\s*([A-Z][a-z]{2} \d{1,2}, \d{4})", text)
+    if (not checked or datetime.strptime(checked[1], "%b %d, %Y").date() < anchor
+            or not re.search(r"\bUSD\b", text)):
+        raise ValueError("QQQM backup freshness/currency unverified")
+    candidates = []
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if not rows:
+            continue
+        headers = [cell.get_text(" ", strip=True) for cell in rows[0].find_all("th")]
+        if len(headers) != 4 or not headers[0].startswith("Ex-Div") or "Amount" not in headers[1]:
+            continue
+        parsed = []
+        for row in rows[1:]:
+            cells = [cell.get_text(" ", strip=True) for cell in row.find_all("td")]
+            if len(cells) != 4:
+                raise ValueError("QQQM backup dividend row layout changed")
+            parsed.append({"exDate": datetime.strptime(cells[0], "%b %d, %Y").date().isoformat(),
+                           "distributionAmountPerUnit": _positive(cells[1].removeprefix("$"))})
+        candidates.append(parsed)
+    if len(candidates) != 1:
+        raise ValueError("QQQM backup dividend table missing or ambiguous")
+    normalized = {"cusip": "46138G649", "currencyCode": "USD", "distributions": candidates[0]}
+    dividend_rows(normalized, anchor=anchor)
+    return normalized
+
+
+def fetch_dividend_backup(*, anchor: date) -> dict | None:
+    try:
+        response = requests.get(DIV_BACKUP_URL, timeout=15)
+        response.raise_for_status()
+        return parse_dividend_backup(response.text, anchor=anchor)
+    except (requests.RequestException, TypeError, ValueError) as exc:
+        logger.info("valuation.qqqm_dividend_backup_unavailable reason=%s", str(exc)[:120])
+        return None
+
+
 def build_source_packet(
     nav: dict, dividends: dict, pair: dict | None, *, checked_at: datetime,
     allow_daily_forward: bool = False,
+    dividends_url: str = DIV_URL,
 ) -> dict:
     """Check fund identity and observation dates before passing evidence to the LLM."""
     anchor = latest_closed_date(checked_at)
@@ -129,25 +200,16 @@ def build_source_packet(
     if nav.get("effectiveDate") != anchor.isoformat():
         raise ValueError("QQQM official NAV is not from latest closed trading day")
     nav_value = _positive(nav.get("nav"))
-    try:
-        start = anchor.replace(year=anchor.year - 1)
-    except ValueError:  # Feb 29
-        start = anchor.replace(year=anchor.year - 1, day=28)
-    rows = dividends.get("distributions", [])
-    if not any(date.fromisoformat(row["exDate"]) <= start for row in rows):
-        raise ValueError("QQQM dividend history does not cover twelve months")
-    selected = [row for row in rows if start < date.fromisoformat(row["exDate"]) <= anchor]
-    dates = [row["exDate"] for row in selected]
-    if not selected or len(dates) != len(set(dates)):
-        raise ValueError("QQQM empty or duplicate dividend rows")
-    div_value = sum(_positive(row.get("ordinaryIncomeDistribution")) for row in selected)
+    if dividends_url not in {DIV_URL, DIV_BACKUP_URL}:
+        raise ValueError("QQQM dividend source not approved")
+    div_value = sum(dividend_rows(dividends, anchor=anchor).values())
     packet = {
         "data_date": anchor.isoformat(), "nav_anchor": nav_value, "div_ttm": div_value,
         "pe_pair_t": None, "pe_pair_f": None, "fwd_date": None,
-        "source_urls": [NAV_URL, DIV_URL],
+        "source_urls": [NAV_URL, dividends_url],
         "citations": [
             {"field": "nav_anchor", "source": NAV_URL, "date": anchor.isoformat(), "quote": str(nav_value)},
-            {"field": "div_ttm", "source": DIV_URL, "date": anchor.isoformat(), "quote": str(round(div_value, 8))},
+            {"field": "div_ttm", "source": dividends_url, "date": anchor.isoformat(), "quote": str(round(div_value, 8))},
         ],
     }
     # Always pair actual dated observations. The daily consensus blend is a
@@ -189,15 +251,37 @@ def build_source_packet(
 
 
 def fetch_source_packet(*, checked_at: datetime, allow_daily_forward: bool = False) -> dict | None:
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        pe_future = pool.submit(fetch_gurufocus_pe, anchor=latest_closed_date(checked_at))
+    anchor = latest_closed_date(checked_at)
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        pe_future = pool.submit(fetch_gurufocus_pe, anchor=anchor)
+        backup_future = pool.submit(fetch_dividend_backup, anchor=anchor)
         nav, dividends, pair = list(pool.map(_fetch, (NAV_URL, DIV_URL, PAIR_URL)))
         pe = pe_future.result()
-    if nav is None or dividends is None:
+        backup = backup_future.result()
+    if nav is None:
         return None
     try:
+        primary_rows = None
+        if dividends is not None:
+            try:
+                primary_rows = dividend_rows(dividends, anchor=anchor)
+            except (KeyError, TypeError, ValueError):
+                logger.warning("valuation.qqqm_dividend_primary_invalid")
+        dividends_url = DIV_URL
+        if primary_rows is None:
+            if backup is None:
+                return None
+            dividends, dividends_url = backup, DIV_BACKUP_URL
+            logger.info("valuation.qqqm_dividend_backup_used source=%s", dividends_url)
+        elif backup is not None:
+            backup_rows = dividend_rows(backup, anchor=anchor)
+            if primary_rows.keys() != backup_rows.keys() or any(
+                not math.isclose(value, backup_rows[day], rel_tol=1e-8, abs_tol=1e-8)
+                for day, value in primary_rows.items()
+            ):
+                raise ValueError("QQQM 分红主备源逐笔冲突，需核对，不静默选值")
         packet = build_source_packet(nav, dividends, pair, checked_at=checked_at,
-                                     allow_daily_forward=allow_daily_forward)
+                                     allow_daily_forward=allow_daily_forward, dividends_url=dividends_url)
         if pe is not None:
             packet.update(pe_ttm=pe["value"], pe_transport=pe["transport"])
             packet["source_urls"].append(PE_URL)

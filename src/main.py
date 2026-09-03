@@ -62,6 +62,7 @@ from src.utils.dates import now_beijing
 from src.utils.delivery import clear_delivery_receipt, write_delivery_receipt
 from src.utils.holidays import should_send_today
 from src.utils.idempotency import already_sent_today
+from src.utils.runtime_budget import llm_wall_timeout_seconds
 from src.utils.secrets import mask_emails
 from src.valuation.models import FreshnessResult, ValuationDisplay
 from src.valuation.morningstar import MorningstarPublicProvider
@@ -201,6 +202,7 @@ def main() -> int:
         api_key=settings.deepseek_api_key,
         model=deepseek_model,
         total_timeout_seconds=720.0 if settings.valuation_enabled else 480.0,
+        wall_timeout_seconds=llm_wall_timeout_seconds(),
     )
 
     logger.info("main.start  generated_at=%s", now_bj.isoformat(timespec="seconds"))
@@ -594,6 +596,7 @@ def main() -> int:
     # 所有 LLM 调用（包括邮件主题）完成后再汇总，避免日用量少计。
     cum = llm.cumulative
     cost_cny = llm.estimate_cost_cny()
+    llm.log_timing_summary()
     logger.info(
         "llm.summary input=%d output=%d reasoning=%d cache_hit=%d est_cost=¥%.4f",
         cum.input_tokens,

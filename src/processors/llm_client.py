@@ -170,6 +170,7 @@ class LLMClient:
         base_url: str = DEFAULT_BASE_URL,
         max_retries: int = 0,
         total_timeout_seconds: float = 480.0,
+        wall_timeout_seconds: float | None = None,
     ):
         self._client = OpenAI(
             api_key=api_key,
@@ -177,9 +178,23 @@ class LLMClient:
             max_retries=max(0, max_retries),
         )
         self._model = model
-        self._deadline = time.monotonic() + max(1.0, total_timeout_seconds)
+        self._started_at = time.monotonic()
+        self._call_budget = max(0.0, total_timeout_seconds)
+        self.api_elapsed_seconds = 0.0
+        # Keep the old wall bound for callers that do not opt into a separate
+        # collection allowance. Production sets both limits explicitly.
+        wall_budget = total_timeout_seconds if wall_timeout_seconds is None else wall_timeout_seconds
+        self._deadline = self._started_at + max(0.0, wall_budget)
         # 累积本次进程所有调用的 token 数,用于 main 收尾打印 token 预算
         self.cumulative = LLMUsage()
+
+    def _remaining_seconds(self) -> float:
+        return min(self._call_budget - self.api_elapsed_seconds, self._deadline - time.monotonic())
+
+    def log_timing_summary(self) -> None:
+        logger.info("llm.timing api_seconds=%.2f api_budget_seconds=%.2f wall_seconds=%.2f remaining_seconds=%.2f",
+                    self.api_elapsed_seconds, self._call_budget, time.monotonic() - self._started_at,
+                    max(0.0, self._remaining_seconds()))
 
     def chat(
         self,
@@ -204,27 +219,23 @@ class LLMClient:
         - thinking:显式开关 DeepSeek 思考模式。None 保留服务端默认;
           False 用于翻译、格式化摘要等确定性任务，避免思考 token
           耗尽 max_tokens 后没有可见正文。
-        - timeout:默认 45s。daily.yml job timeout 是 15 分钟,主流程串行调用
-          translator + news_summarizer + macro_filter + 最多 13×figure_filter
-          + sentiment_judge + holdings_intro + subject ≈ 12 次 LLM。
-          原 90s 默认的最坏情况(全部 timeout)= 18 分钟,撞 job timeout。
-          45s 给单调用余量足够(DeepSeek V4-Flash 实测 P95 ~ 30s),
-          总最坏 ~ 9 分钟,留 6 分钟给数据采集与渲染。
-          若某个调用真需要更长(如 subject 用 10s 短超时是反向),
-          可显式传 timeout 覆盖。
+        - timeout:默认 45s，可按任务覆盖。所有串行 chat/search 共用实际
+          API 耗时预算（成功和失败都计时）；取数等待不扣该预算。
+          另有绝对截止时间，为渲染/发送留余量，不能靠重试重置。
         """
         if system_override is not None:
             system = system_override
         else:
             system = build_system_prompt(task_extra=task_extra)
-        remaining = self._deadline - time.monotonic()
+        remaining = self._remaining_seconds()
         if remaining <= 0:
             return LLMResponse(
                 text=None,
                 usage=LLMUsage(),
                 error="LLMStageDeadlineExceeded: cumulative LLM budget exhausted",
             )
-        effective_timeout = max(1.0, min(float(timeout), remaining))
+        effective_timeout = min(float(timeout), remaining)
+        started = time.monotonic()
         try:
             kwargs: dict[str, Any] = {
                 "model": self._model,
@@ -259,6 +270,8 @@ class LLMClient:
                 usage=LLMUsage(),
                 error=f"{type(exc).__name__}: {redacted_msg}",
             )
+        finally:
+            self.api_elapsed_seconds += max(0.0, time.monotonic() - started)
 
         text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
         usage = _extract_usage(resp)
@@ -306,14 +319,14 @@ class LLMClient:
                 usage=LLMUsage(),
                 error="WebSearchDomainAllowlistRequired",
             )
-        remaining = self._deadline - time.monotonic()
+        remaining = self._remaining_seconds()
         if remaining <= 0:
             return LLMResponse(
                 text=None,
                 usage=LLMUsage(),
                 error="LLMStageDeadlineExceeded: cumulative LLM budget exhausted",
             )
-        effective_timeout = max(1.0, min(float(timeout), remaining))
+        effective_timeout = min(float(timeout), remaining)
         domains = ", ".join(allowed_domains)
         guard = (
             "你正在执行官方财务文件发现，不是一般新闻搜索。"
@@ -329,6 +342,7 @@ class LLMClient:
                 "不可将抓取日期当作数据日期，不可用示例或记忆填补缺失数据。"
             )
         system = build_system_prompt(task_extra="\n".join(filter(None, [task_extra, guard])))
+        started = time.monotonic()
         try:
             search_options = {}
             if market_data:
@@ -361,6 +375,8 @@ class LLMClient:
                 usage=LLMUsage(),
                 error=f"{type(exc).__name__}: {redacted_msg}",
             )
+        finally:
+            self.api_elapsed_seconds += max(0.0, time.monotonic() - started)
         text = _extract_responses_text(response)
         output_types = [
             item.get("type") if isinstance(item, dict) else getattr(item, "type", None)

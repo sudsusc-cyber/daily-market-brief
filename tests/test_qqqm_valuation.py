@@ -12,6 +12,7 @@ from src.valuation.qqqm import (
     calculate_qqqm,
     parse_qqqm_inputs,
     prepare_qqqm_display,
+    verify_searched_inputs,
 )
 
 NOW = datetime(2026, 9, 3, 4, 0, tzinfo=UTC)
@@ -22,6 +23,9 @@ def no_live_sources(monkeypatch, tmp_path):
     monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: None)
     monkeypatch.setenv("QQQM_DAILY_FORWARD_ENABLED", "false")
     monkeypatch.setattr("src.valuation.qqqm._BOOTSTRAP_PATH", tmp_path / "missing-bootstrap.json")
+    # Unit fixtures stand in for a successful independent source re-read.
+    # Dedicated verification tests below exercise the real re-read function.
+    monkeypatch.setattr("src.valuation.qqqm.verify_searched_inputs", lambda *args, **kwargs: None)
 
 
 def _payload(*, data_date: str = "2026-09-02") -> str:
@@ -43,7 +47,7 @@ def _payload(*, data_date: str = "2026-09-02") -> str:
             "field": field,
             "source": fields["source_urls"][2 if field.startswith("pe_pair") else (1 if field == "pe_ttm" else 0)],
             "date": data_date,
-            "quote": "verified",
+            "quote": str(fields.get(field, "")),
         }
         for index, field in enumerate(
             ("nav_anchor", "pe_ttm", "pe_pair_t", "pe_pair_f", "div_ttm", "data_date")
@@ -350,3 +354,87 @@ def test_shipped_bootstrap_has_complete_dated_inputs_and_cannot_live_forever():
     with pytest.raises(ValueError, match="14 天"):
         parse_qqqm_inputs(snapshot["source_response"], price=300,
                            checked_at=checked_at + timedelta(days=15), allow_daily_forward=True)
+
+
+def test_production_331_28_matches_independent_decimal_reference():
+    from decimal import Decimal, localcontext
+
+    snapshot = json.loads((Path(__file__).parents[1] / "config/qqqm_verified_snapshot.json").read_text())
+    inputs = parse_qqqm_inputs(snapshot["source_response"], price=292.0199890136719,
+                               checked_at=NOW, allow_daily_forward=True)
+    with localcontext() as context:
+        context.prec = 40
+        d = Decimal
+        e0 = d("292.029084") / d("28.28")
+        payout = d("1.3053") / e0
+        first = e0 * d("28.06") / d("21.21")
+        earnings = [first * d("1.15") ** min(y - 1, 4) * d("1.07") ** max(y - 5, 0)
+                    for y in range(1, 11)]
+        expected = sum(e * payout / d("1.1015") ** y for y, e in enumerate(earnings, 1))
+        expected += earnings[-1] * d("24.65") / d("1.1015") ** 10
+        assert expected.quantize(d("0.01")) == d("331.28")
+        assert calculate_qqqm(inputs).value == pytest.approx(float(expected), rel=1e-12)
+
+
+def test_numeric_claim_must_match_citation():
+    payload = json.loads(_payload())
+    payload["data"]["pe_ttm"] = 20
+    with pytest.raises(ValueError, match="引文"):
+        parse_qqqm_inputs(json.dumps(payload), price=300, checked_at=NOW)
+
+
+@pytest.mark.parametrize("mismatch", [None, "pe_ttm", "data_date", "pe_pair_f"])
+def test_real_search_verification_rejects_unreadable_or_different_original(monkeypatch, mismatch):
+    inputs = parse_qqqm_inputs(_payload(), price=300, checked_at=NOW)
+    packet = _packet() if mismatch else None
+    if mismatch:
+        packet[mismatch] = "2026-09-01" if mismatch == "data_date" else 99
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: packet)
+    with pytest.raises(ValueError, match="回读"):
+        verify_searched_inputs(inputs, checked_at=NOW, allow_daily_forward=False)
+
+
+def test_real_search_verification_accepts_matching_original(monkeypatch):
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: _packet())
+    verify_searched_inputs(parse_qqqm_inputs(_payload(), price=300, checked_at=NOW),
+                           checked_at=NOW, allow_daily_forward=False)
+
+
+def test_old_live_response_cannot_replace_newer_cache(tmp_path):
+    path = tmp_path / "qqqm_valuation.json"
+    original = json.dumps({"source_response": _payload()})
+    path.write_text(original)
+    client = _Client(LLMResponse(text=_payload(data_date="2026-08-28"), usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW)
+    assert display.financial_as_of == "2026-09-02"
+    assert display.status == "not_due"
+    assert path.read_text() == original
+
+
+@pytest.mark.parametrize("nav,pe,div", [(1e308, 10, 1e306), (1e-320, 1e308, 1e-320), (500, 10**400, 1.5)])
+def test_extreme_finite_numbers_cannot_crash_or_block_good_cache(tmp_path, nav, pe, div):
+    payload = json.loads(_payload())
+    payload["data"].update(nav_anchor=nav, pe_ttm=pe, div_ttm=div)
+    for item in payload["citations"]:
+        item["quote"] = str(payload["data"].get(item["field"], ""))
+    bad = json.dumps(payload)
+    with pytest.raises(ValueError):
+        calculate_qqqm(parse_qqqm_inputs(bad, price=300, checked_at=NOW))
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({"source_response": bad}))
+    (tmp_path / "qqqm_valuation.daily.json").write_text(json.dumps({"source_response": _payload()}))
+    display = prepare_qqqm_display(price=300, client=_Client(LLMResponse(text=bad, usage=LLMUsage())),
+                                   state_dir=tmp_path, checked_at=NOW)
+    assert not display.is_pending
+    assert display.intrinsic_value == pytest.approx(calculate_qqqm(
+        parse_qqqm_inputs(_payload(), price=300, checked_at=NOW)).value)
+
+
+def test_unexpected_adapter_exceptions_still_recover_cache(tmp_path, monkeypatch):
+    def crash(*args, **kwargs):
+        raise RuntimeError("adapter failure")
+
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", crash)
+    client = _Client(LLMResponse(text=None, usage=LLMUsage()))
+    client.search_web = crash
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({"source_response": _payload()}))
+    assert not prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW).is_pending
