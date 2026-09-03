@@ -223,7 +223,8 @@ def prepare_qqqm_display(
         allowed_domains=_ALLOWED_DOMAINS,
         task_extra="QQQM v1.5：只整理公开数据输入，禁止改变固定公式；Python 将复算最终公允价值和 IRR。",
         max_output_tokens=1800,
-        timeout=45,
+        # 网页搜索需要等待来源页面聚合；单次最多 90 秒，仍受 LLM 总预算约束。
+        timeout=90,
     )
     result: QQQMResult | None = None
     warning: str | None = None
