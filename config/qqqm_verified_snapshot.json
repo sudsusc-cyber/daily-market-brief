@@ -1,0 +1,22 @@
+{
+  "inputs": {
+    "price": 292.029084,
+    "nav_anchor": 292.029084,
+    "pe_ttm": 28.28,
+    "pe_pair_t": 28.06,
+    "pe_pair_f": 21.21,
+    "div_ttm": 1.3053,
+    "data_date": "2026-09-02",
+    "source_urls": [
+      "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF",
+      "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/distribution?idType=cusip&productType=ETF",
+      "https://historyofmarket.com/api/ndx/forward-pe.json",
+      "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio"
+    ],
+    "stale_days": 1,
+    "fwd_date": "2026-09-02",
+    "forward_basis": "dl-blended-fy1fy2"
+  },
+  "source_response": "{\"status\": \"ok\", \"data\": {\"data_date\": \"2026-09-02\", \"nav_anchor\": 292.029084, \"div_ttm\": 1.3053, \"pe_pair_t\": 28.06, \"pe_pair_f\": 21.21, \"fwd_date\": \"2026-09-02\", \"source_urls\": [\"https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF\", \"https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/distribution?idType=cusip&productType=ETF\", \"https://historyofmarket.com/api/ndx/forward-pe.json\", \"https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio\"], \"citations\": [{\"field\": \"nav_anchor\", \"source\": \"https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF\", \"date\": \"2026-09-02\", \"quote\": \"292.029084\"}, {\"field\": \"div_ttm\", \"source\": \"https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/distribution?idType=cusip&productType=ETF\", \"date\": \"2026-09-02\", \"quote\": \"1.3053\"}, {\"field\": \"pe_pair_t\", \"source\": \"https://historyofmarket.com/api/ndx/forward-pe.json\", \"date\": \"2026-09-02\", \"quote\": \"28.06\", \"basis\": \"dl-blended-fy1fy2\"}, {\"field\": \"pe_pair_f\", \"source\": \"https://historyofmarket.com/api/ndx/forward-pe.json\", \"date\": \"2026-09-02\", \"quote\": \"21.21\", \"basis\": \"dl-blended-fy1fy2\"}, {\"field\": \"pe_ttm\", \"source\": \"https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio\", \"date\": \"2026-09-02\", \"quote\": \"28.28\"}], \"forward_basis\": \"dl-blended-fy1fy2\", \"pe_ttm\": 28.28, \"pe_transport\": \"https://r.jina.ai/https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio\"}, \"citations\": [{\"field\": \"nav_anchor\", \"source\": \"https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF\", \"date\": \"2026-09-02\", \"quote\": \"292.029084\"}, {\"field\": \"div_ttm\", \"source\": \"https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/distribution?idType=cusip&productType=ETF\", \"date\": \"2026-09-02\", \"quote\": \"1.3053\"}, {\"field\": \"pe_pair_t\", \"source\": \"https://historyofmarket.com/api/ndx/forward-pe.json\", \"date\": \"2026-09-02\", \"quote\": \"28.06\", \"basis\": \"dl-blended-fy1fy2\"}, {\"field\": \"pe_pair_f\", \"source\": \"https://historyofmarket.com/api/ndx/forward-pe.json\", \"date\": \"2026-09-02\", \"quote\": \"21.21\", \"basis\": \"dl-blended-fy1fy2\"}, {\"field\": \"pe_ttm\", \"source\": \"https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio\", \"date\": \"2026-09-02\", \"quote\": \"28.28\"}]}",
+  "verified_at": "2026-09-03T12:30:06.062917+00:00"
+}

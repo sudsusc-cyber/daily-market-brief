@@ -41,6 +41,7 @@ jobs:
       # 试发必须与正式定时任务使用同一套内在价值开关，避免预览路径漏掉新列。
       VALUATION_ENABLED: ${{ vars.VALUATION_ENABLED || 'false' }}
       MORNINGSTAR_FAIR_VALUE_ENABLED: ${{ vars.MORNINGSTAR_FAIR_VALUE_ENABLED || 'false' }}
+      QQQM_DAILY_FORWARD_ENABLED: ${{ vars.QQQM_DAILY_FORWARD_ENABLED || 'true' }}
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -119,8 +120,13 @@ jobs:
         if: ${{ !inputs.qqqm_check_only }}
         run: uv run python -m src.utils.delivery full .delivery-receipt.json
 
+      - name: Validate QQQM snapshot before saving
+        id: qqqm-cache
+        if: ${{ success() }}
+        run: uv run python -m scripts.qqqm_cache normalize
+
       - name: Save verified QQQM snapshot
-        if: ${{ success() && github.ref == 'refs/heads/main' && hashFiles('state/qqqm_valuation.json') != '' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.qqqm-cache.outputs.valid == 'true' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: state/qqqm_valuation.json

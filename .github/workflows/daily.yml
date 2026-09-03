@@ -51,6 +51,7 @@ jobs:
       VALUATION_ENABLED: ${{ vars.VALUATION_ENABLED || 'false' }}
       # 无需登录的 Morningstar 公开研究链路；独立开关便于先验收再替换价值栏。
       MORNINGSTAR_FAIR_VALUE_ENABLED: ${{ vars.MORNINGSTAR_FAIR_VALUE_ENABLED || 'false' }}
+      QQQM_DAILY_FORWARD_ENABLED: ${{ vars.QQQM_DAILY_FORWARD_ENABLED || 'true' }}
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -88,8 +89,10 @@ jobs:
           restore-keys: |
             daily-state-
 
-      - name: Restore QQQM startup snapshot when daily state has none
-        if: ${{ hashFiles('state/qqqm_valuation.json') == '' }}
+      - name: Preserve daily QQQM snapshot before independent recovery
+        run: uv run python -m scripts.qqqm_cache preserve
+
+      - name: Restore independent QQQM snapshot
         continue-on-error: true
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -136,6 +139,11 @@ jobs:
         if: ${{ hashFiles('.delivery-receipt.json') != '' }}
         run: uv run python -m src.utils.delivery full .delivery-receipt.json
 
+      - name: Validate QQQM snapshot before saving
+        id: qqqm-cache
+        if: ${{ always() && hashFiles('.delivery-receipt.json') != '' }}
+        run: uv run python -m scripts.qqqm_cache normalize
+
       # 仅至少一位收件人被接受后保存 state；follower/节假日无 receipt，不再写冗余 cache。
       - name: Save state for next run
         if: ${{ always() && hashFiles('.delivery-receipt.json') != '' }}
@@ -152,3 +160,10 @@ jobs:
         with:
           path: state/morningstar_fair_values.json
           key: morningstar-verified-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save verified QQQM snapshot
+        if: ${{ always() && github.ref == 'refs/heads/main' && hashFiles('.delivery-receipt.json') != '' && steps.qqqm-cache.outputs.valid == 'true' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/qqqm_valuation.json
+          key: qqqm-verified-${{ github.run_id }}-${{ github.run_attempt }}
