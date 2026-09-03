@@ -53,3 +53,11 @@ def test_qqqm_restore_preserves_daily_copy_and_never_saves_unvalidated_inputs():
         assert "steps.qqqm-cache.outputs.valid == 'true'" in save
         assert "-m scripts.qqqm_cache normalize" in workflow
         assert "QQQM_DAILY_FORWARD_ENABLED" in workflow
+
+
+def test_daily_and_formal_jobs_share_extended_timeout_and_early_send_reserve():
+    for name in ("daily.yml", "formal-test-send.yml"):
+        workflow = _WORKFLOW.with_name(name).read_text(encoding="utf-8")
+        assert "timeout-minutes: 20" in workflow
+        assert "BRIEF_LLM_CUTOFF_EPOCH=$(( $(date +%s) + 17 * 60 ))" in workflow
+        assert workflow.index("Set LLM cutoff before setup") < workflow.index("actions/checkout@")

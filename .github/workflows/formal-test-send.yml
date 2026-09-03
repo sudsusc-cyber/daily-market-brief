@@ -33,7 +33,7 @@ jobs:
     name: collect + render + send formal test
     environment: production
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       FORCE_SEND: "true"
       PYTHONPATH: .
@@ -44,6 +44,9 @@ jobs:
       QQQM_DAILY_FORWARD_ENABLED: ${{ vars.QQQM_DAILY_FORWARD_ENABLED || 'true' }}
 
     steps:
+      - name: Set LLM cutoff before setup
+        run: echo "BRIEF_LLM_CUTOFF_EPOCH=$(( $(date +%s) + 17 * 60 ))" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false

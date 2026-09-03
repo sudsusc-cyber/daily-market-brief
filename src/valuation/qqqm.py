@@ -98,11 +98,27 @@ def _number(data: dict[str, Any], key: str) -> float:
         raise ValueError(f"QQQM {key} 不得为布尔值")
     try:
         number = float(value)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"QQQM {key} 缺失或非数值") from exc
     if not math.isfinite(number) or number <= 0:
         raise ValueError(f"QQQM {key} 必须为正有限数")
     return number
+
+
+def _numeric_basis(inputs: QQQMInputs) -> tuple[float, float]:
+    data = asdict(inputs)
+    for key in ("price", "nav_anchor", "pe_ttm", "div_ttm"):
+        _number(data, key)
+    try:
+        e0 = inputs.nav_anchor / inputs.pe_ttm
+        if not math.isfinite(e0) or e0 <= 0:
+            raise ValueError("QQQM 盈利基数溢出或下溢")
+        payout = inputs.div_ttm / e0
+    except ArithmeticError as exc:
+        raise ValueError("QQQM 派生数值异常") from exc
+    if not math.isfinite(payout) or not 0.05 <= payout <= 0.40:
+        raise ValueError("QQQM 派息率超出固定校验区间")
+    return e0, payout
 
 
 def parse_qqqm_inputs(
@@ -153,6 +169,18 @@ def parse_qqqm_inputs(
     }
     if not required_fields <= cited:
         raise ValueError("QQQM 每个输入字段都必须有来源引文")
+    for item in citations:
+        if not isinstance(item, dict):
+            continue
+        field = item.get("field")
+        if field not in required_fields | {"pe_pair_t", "pe_pair_f"} or data.get(field) is None:
+            continue
+        claimed = _number(data, field)
+        tokens = re.findall(r"(?<![\w.])[-+]?\d+(?:,\d{3})*(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w.])",
+                            str(item.get("quote", "")))
+        if not any(math.isclose(claimed, float(token.replace(",", "")), rel_tol=1e-8, abs_tol=0)
+                   for token in tokens):
+            raise ValueError(f"QQQM {field} 数值与引文不符")
     data_date = str(data.get("data_date", "")).strip()
     try:
         anchor = date.fromisoformat(data_date)
@@ -247,10 +275,7 @@ def parse_qqqm_inputs(
         fwd_date=fwd_date,
         forward_basis=forward_basis,
     )
-    e0 = inputs.nav_anchor / inputs.pe_ttm
-    payout = inputs.div_ttm / e0
-    if not 0.05 <= payout <= 0.40:
-        raise ValueError("QQQM 派息率超出固定校验区间")
+    _numeric_basis(inputs)
     return inputs
 
 
@@ -275,14 +300,18 @@ def calculate_qqqm(inputs: QQQMInputs) -> QQQMResult:
         raise ValueError("QQQM 乐观情景缺少有效远期 PE 配对，不回退至基准或加权值") from exc
     if not -0.10 <= pair_t / pair_f - 1 <= 0.40:
         raise ValueError("QQQM 乐观情景隐含增速超出固定校验区间")
-    e0 = inputs.nav_anchor / inputs.pe_ttm
-    k = inputs.div_ttm / e0
-    e_fwd = e0 * pair_t / pair_f
+    e0, k = _numeric_basis(inputs)
+    e_fwd = e0 * (pair_t / pair_f)
+    if not math.isfinite(e_fwd) or e_fwd <= 0:
+        raise ValueError("QQQM 前瞻盈利溢出或下溢")
 
     def value(rate: float) -> float:
         return _scenario(e0, k, e_fwd, 0.15, 0.07, _PE_EXIT, rate)
 
     intrinsic = value(_DISCOUNT + _FEE)
+    if (not math.isfinite(intrinsic) or intrinsic <= 0
+            or not math.isfinite(intrinsic / inputs.price - 1)):
+        raise ValueError("QQQM 估值或差额收益率不是有限有效数")
     low, high = -0.50, 1.00
     if value(low) < inputs.price or value(high) > inputs.price:
         implied = None
@@ -314,13 +343,33 @@ def cache_paths(state_dir: Path) -> tuple[Path, ...]:
     return (state_dir / _CACHE_NAME, state_dir / _DAILY_CACHE_NAME, _BOOTSTRAP_PATH)
 
 
+def verify_searched_inputs(inputs: QQQMInputs, *, checked_at: datetime, allow_daily_forward: bool) -> None:
+    """An LLM citation is a lead, never independent proof of a missing number."""
+    packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily_forward)
+    if packet is None:
+        raise ValueError("QQQM 搜索结果无法从原始来源独立回读，不采纳模型补数")
+    for field in ("nav_anchor", "pe_ttm", "div_ttm", "pe_pair_t", "pe_pair_f",
+                  "data_date", "fwd_date", "forward_basis"):
+        expected = packet.get(field, "terminal-consensus" if field == "forward_basis" else None)
+        actual = getattr(inputs, field)
+        matches = (math.isclose(actual, expected, rel_tol=1e-9, abs_tol=0)
+                   if isinstance(actual, (float, int)) and isinstance(expected, (float, int))
+                   else actual == expected)
+        if expected is None or not matches:
+            raise ValueError(f"QQQM {field} 搜索数值未通过原始来源回读")
+
+
 def prepare_qqqm_display(
     *, price: float, client: LLMClient, state_dir: Path, checked_at: datetime
 ) -> ValuationDisplay:
     """每日整理输入；失败时只用 14 日内能重算乐观情景的完整快照。"""
     allow_daily = daily_forward_enabled()
     prompt = build_qqqm_prompt(checked_at=checked_at, price=price, allow_daily_forward=allow_daily)
-    source_packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily)
+    try:
+        source_packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily)
+    except Exception as exc:  # Source adapter failures must not bypass recovery.
+        logger.warning("valuation.qqqm_source_exception type=%s", type(exc).__name__)
+        source_packet = None
     if source_packet is not None:
         prompt += (
             "\n以下是程序本次直接从官方公开 API 获取并核验的完整来源包。"
@@ -339,18 +388,23 @@ def prepare_qqqm_display(
         logger.info("valuation.qqqm_direct_inputs data_date=%s forward_basis=%s",
                     source_packet["data_date"], source_packet.get("forward_basis"))
     else:
-        response = client.search_web(
-            prompt, allowed_domains=_ALLOWED_DOMAINS, market_data=True,
-            task_extra="QQQM：只补齐缺失的已核验输入；不改乐观公式，IRR 保持差额收益率。",
-            max_output_tokens=1800, timeout=90,
-        )
-        text, error = response.text, response.error
+        try:
+            response = client.search_web(
+                prompt, allowed_domains=_ALLOWED_DOMAINS, market_data=True,
+                task_extra="QQQM：只补齐缺失的已核验输入；不改乐观公式，IRR 保持差额收益率。",
+                max_output_tokens=1800, timeout=90,
+            )
+            text, error = response.text, response.error
+        except Exception as exc:  # The last-good complete snapshot remains usable.
+            error = f"搜索接口异常 {type(exc).__name__}"
     result: QQQMResult | None = None
     warning: str | None = None
     if text:
         try:
             inputs = parse_qqqm_inputs(text, price=price, checked_at=checked_at,
                                        allow_daily_forward=allow_daily)
+            if inputs.data_date != latest_closed_date(checked_at).isoformat():
+                raise ValueError("QQQM 联网响应不是最新已收盘交易日，不覆盖较新缓存")
             if source_packet is not None:
                 for field in (*required, "forward_basis", "data_date"):
                     expected = source_packet.get(field)
@@ -363,6 +417,11 @@ def prepare_qqqm_display(
                         matches = actual == expected
                     if not matches:
                         raise ValueError(f"QQQM {field} 被模型改写，与官方原始数据不符")
+            if not complete:
+                try:
+                    verify_searched_inputs(inputs, checked_at=checked_at, allow_daily_forward=allow_daily)
+                except Exception as exc:
+                    raise ValueError("QQQM 搜索结果独立核验失败：" + str(exc)[:120]) from exc
             result = calculate_qqqm(inputs)
             state_dir.mkdir(parents=True, exist_ok=True)
             cache_path = state_dir / _CACHE_NAME

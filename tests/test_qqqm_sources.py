@@ -4,11 +4,16 @@ import pytest
 
 from src.valuation.qqqm_sources import (
     DAILY_FORWARD_BASIS,
+    DIV_BACKUP_URL,
+    DIV_URL,
+    NAV_URL,
     PE_READER_URL,
     PE_URL,
     build_source_packet,
     fetch_gurufocus_pe,
+    fetch_source_packet,
     latest_closed_date,
+    parse_dividend_backup,
     parse_gurufocus_pe,
 )
 
@@ -19,7 +24,7 @@ def _sources():
     nav = {"cusip": "46138G649", "currency": "USD", "nav": 292.029084,
            "effectiveDate": "2026-09-02"}
     dividends = {"cusip": "46138G649", "currencyCode": "USD", "distributions": [
-        {"exDate": d, "ordinaryIncomeDistribution": v}
+        {"exDate": d, "distributionAmountPerUnit": v}
         for d, v in (("2026-06-22", .35215), ("2026-03-23", .32769),
                      ("2025-12-22", .32301), ("2025-09-22", .30245), ("2025-06-23", .3161))
     ]}
@@ -145,3 +150,70 @@ def test_weekend_pair_is_not_a_closed_trading_observation():
     pair = {"trailing": [{"date": "2026-08-30", "value": 28}],
             "forward": [{"date": "2026-08-30", "value": 22}]}
     assert build_source_packet(nav, dividends, pair, checked_at=NOW)["pe_pair_f"] is None
+
+
+def _backup_html():
+    rows = (("Jun 22, 2026", ".35215"), ("Mar 23, 2026", ".32769"),
+            ("Dec 22, 2025", ".32301"), ("Sep 22, 2025", ".30245"), ("Jun 23, 2025", ".3161"))
+    return ('<h1>QQQM Dividend Information</h1><p>USD Last checked: Sep 2, 2026</p>'
+            '<table><tr><th>Ex-Dividend Date</th><th>Cash Amount</th><th>Record Date</th><th>Pay Date</th></tr>'
+            + ''.join(f'<tr><td>{day}</td><td>${amount}</td><td>x</td><td>y</td></tr>' for day, amount in rows)
+            + '</table>')
+
+
+def test_independent_dividend_backup_uses_exact_rows_not_rounded_summary():
+    backup = parse_dividend_backup(_backup_html() + '<p>Annual dividend $1.31</p>', anchor=date(2026, 9, 2))
+    packet = build_source_packet(_sources()[0], backup, None, checked_at=NOW, dividends_url=DIV_BACKUP_URL)
+    assert packet["div_ttm"] == pytest.approx(1.3053)
+    assert packet["citations"][1]["source"] == DIV_BACKUP_URL
+
+
+@pytest.mark.parametrize("old,new", [("QQQM Dividend", "QQQ Dividend"), ("USD", "HKD"),
+                                    ("Sep 2, 2026", "Aug 31, 2026"),
+                                    (".35215", "NaN"), ("Jun 23, 2025", "Jun 23, 2026"),
+                                    ("Sep 22, 2025", "Jun 22, 2026")])
+def test_backup_rejects_wrong_identity_stale_incomplete_duplicate_or_bad_numbers(old, new):
+    with pytest.raises(ValueError):
+        parse_dividend_backup(_backup_html().replace(old, new), anchor=date(2026, 9, 2))
+
+
+@pytest.mark.parametrize("primary_mode", ["missing", "invalid", "matching", "conflict"])
+def test_source_packet_backup_recovery_and_cross_check(monkeypatch, primary_mode):
+    import copy
+
+    nav, primary = _sources()
+    backup = copy.deepcopy(primary)
+    if primary_mode == "missing":
+        primary = None
+    elif primary_mode == "invalid":
+        primary["currencyCode"] = "HKD"
+    elif primary_mode == "conflict":
+        primary["distributions"][0]["distributionAmountPerUnit"] = .4
+    monkeypatch.setattr("src.valuation.qqqm_sources._fetch",
+                        lambda url: nav if url == NAV_URL else primary if url == DIV_URL else None)
+    monkeypatch.setattr("src.valuation.qqqm_sources.fetch_gurufocus_pe", lambda **kwargs: None)
+    monkeypatch.setattr("src.valuation.qqqm_sources.fetch_dividend_backup", lambda **kwargs: backup)
+    packet = fetch_source_packet(checked_at=NOW)
+    if primary_mode == "conflict":
+        assert packet is None
+    else:
+        assert packet["div_ttm"] == pytest.approx(1.3053)
+        assert packet["citations"][1]["source"] == (DIV_URL if primary_mode == "matching" else DIV_BACKUP_URL)
+
+
+@pytest.mark.parametrize("missing", ["Jun 22, 2026", "Mar 23, 2026"])
+def test_dividend_backup_rejects_missing_whole_quarter(missing):
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(_backup_html(), "html.parser")
+    for row in soup.find_all("tr"):
+        if missing in row.get_text():
+            row.decompose()
+    with pytest.raises(ValueError, match="coverage"):
+        parse_dividend_backup(str(soup), anchor=date(2026, 9, 2))
+
+
+def test_primary_uses_total_cash_not_ordinary_income_tax_subset():
+    nav, dividends = _sources()
+    dividends["distributions"][0]["ordinaryIncomeDistribution"] = .2
+    assert build_source_packet(nav, dividends, None, checked_at=NOW)["div_ttm"] == pytest.approx(1.3053)
