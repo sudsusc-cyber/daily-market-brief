@@ -241,6 +241,7 @@ def test_holdings_table_labels_morningstar_value_without_changing_irr() -> None:
     assert "IRR&nbsp;50.0%" in html
     assert "IRR＝公允价值 ÷ 现价 − 1" in html
     assert "差额收益率，非年化、不含息" in html
+    assert "QQQM 乐观情景" in html
     assert "10 年模型年化" not in html
     assert "逐股固定模型按当前价格独立反推" not in html
     assert "48 小时内最后一次已验证快照" not in html

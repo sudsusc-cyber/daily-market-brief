@@ -6,7 +6,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from src.processors.llm_client import LLMResponse, LLMUsage
-from src.valuation.qqqm import calculate_qqqm, parse_qqqm_inputs, prepare_qqqm_display
+from src.valuation.qqqm import (
+    build_qqqm_prompt,
+    calculate_qqqm,
+    parse_qqqm_inputs,
+    prepare_qqqm_display,
+)
 
 NOW = datetime(2026, 9, 3, 4, 0, tzinfo=UTC)
 
@@ -54,13 +59,24 @@ class _Client:
         return self.response
 
 
-def test_parse_and_calculate_qqqm_v15() -> None:
+def test_parse_and_calculate_only_original_optimistic_scenario() -> None:
     inputs = parse_qqqm_inputs(_payload(), price=300.0, checked_at=NOW)
     result = calculate_qqqm(inputs)
     assert inputs.stale_days == 1
     assert result.value > 0
     assert result.implied_return is not None
     assert result.inputs.price == 300.0
+    # Independent cash-flow reference: E_fwd is already year 1, so there is
+    # no extra 15% growth in year 1. No conservative/base weights enter here.
+    earnings = 24.0  # (500 / 25) * (30 / 25)
+    dividends_pv = 0.0
+    for year in range(1, 11):
+        if year > 1:
+            earnings *= 1.15 if year <= 5 else 1.07
+        dividends_pv += earnings * 0.075 / 1.1015**year
+    expected = dividends_pv + 24.65 * earnings / 1.1015**10
+    assert result.value == pytest.approx(expected)
+    assert result.warning is None
 
 
 def test_parse_accepts_search_text_wrapping_valid_json() -> None:
@@ -81,16 +97,18 @@ def test_parse_rejects_missing_field_citation_and_future_data() -> None:
         parse_qqqm_inputs(_payload(data_date="2026-09-04"), price=300.0, checked_at=NOW)
 
 
-def test_missing_forward_pair_keeps_base_value_available() -> None:
+def test_missing_forward_pair_never_substitutes_base_value(tmp_path) -> None:
     payload = json.loads(_payload())
     payload["data"]["pe_pair_t"] = None
     payload["data"]["pe_pair_f"] = None
     payload["citations"] = [item for item in payload["citations"] if not item["field"].startswith("pe_pair")]
     inputs = parse_qqqm_inputs(json.dumps(payload), price=300.0, checked_at=NOW)
-    result = calculate_qqqm(inputs)
-    assert result.value > 0
-    assert result.implied_return is not None
-    assert result.warning == "B类：乐观缺失，展示基准价值"
+    with pytest.raises(ValueError, match="乐观情景缺少有效远期 PE 配对"):
+        calculate_qqqm(inputs)
+    client = _Client(LLMResponse(text=json.dumps(payload), usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW)
+    assert display.is_pending
+    assert not (tmp_path / "qqqm_valuation.json").exists()
 
 
 def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) -> None:
@@ -100,6 +118,8 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     assert first.intrinsic_value is not None
     assert first.implied_return == pytest.approx(first.intrinsic_value / 300.0 - 1)
     assert first.financial_as_of == "2026-09-02"
+    assert first.formula_id == "qqqm_optimistic_cashflow_v1_6"
+    assert first.model_version == "1.6"
 
     failed = _Client(LLMResponse(text=None, error="rate limit", usage=LLMUsage()))
     second = prepare_qqqm_display(price=305.0, client=failed, state_dir=tmp_path, checked_at=NOW)
@@ -146,3 +166,47 @@ def test_startup_seed_rechecks_live_values(tmp_path):
     packet["nav_anchor"] = 600.0
     with pytest.raises(ValueError, match="differs from live"):
         seed_snapshot(_payload(), packet=packet, state_dir=tmp_path, checked_at=NOW)
+
+
+def test_old_base_only_cache_is_not_relabeled_optimistic(tmp_path):
+    payload = json.loads(_payload())
+    payload["data"].update(pe_pair_t=None, pe_pair_f=None, fwd_date=None)
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({
+        "source_response": json.dumps(payload), "value": 241.51, "model_version": "1.5",
+    }))
+    failed = _Client(LLMResponse(text=None, error="offline", usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=failed, state_dir=tmp_path, checked_at=NOW)
+    assert display.is_pending
+    assert display.intrinsic_value is None
+
+
+def test_complete_legacy_cache_is_recomputed_not_reused_as_weighted_value(tmp_path):
+    (tmp_path / "qqqm_valuation.json").write_text(json.dumps({
+        "source_response": _payload(), "value": 1.0, "model_version": "1.5",
+    }))
+    failed = _Client(LLMResponse(text=None, error="offline", usage=LLMUsage()))
+    display = prepare_qqqm_display(price=300, client=failed, state_dir=tmp_path, checked_at=NOW)
+    expected = calculate_qqqm(parse_qqqm_inputs(_payload(), price=300, checked_at=NOW))
+    assert display.intrinsic_value == pytest.approx(expected.value)
+    assert display.intrinsic_value != 1.0
+    assert display.implied_return == pytest.approx(expected.value / 300 - 1)
+    assert display.formula_id == "qqqm_optimistic_cashflow_v1_6"
+
+
+def test_stale_forward_pair_cannot_produce_an_optimistic_value():
+    payload = json.loads(_payload())
+    payload["data"]["fwd_date"] = "2026-08-05"
+    for citation in payload["citations"]:
+        if citation["field"].startswith("pe_pair"):
+            citation["date"] = "2026-08-05"
+    inputs = parse_qqqm_inputs(json.dumps(payload), price=300, checked_at=NOW)
+    with pytest.raises(ValueError, match="乐观情景缺少"):
+        calculate_qqqm(inputs)
+
+
+def test_prompt_and_display_keep_single_scenario_and_gap_return():
+    prompt = build_qqqm_prompt(checked_at=NOW, price=300)
+    assert "仅采用乐观情景，不做加权平均" in prompt
+    assert "不得再乘1.15" in prompt
+    assert "20%/40%/40%" not in prompt
+    assert "差额收益率，非年化" in prompt
