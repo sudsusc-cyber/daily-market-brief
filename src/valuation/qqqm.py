@@ -1,4 +1,4 @@
-"""QQQM/QQQ v1.5 估值：DeepSeek 只整理当天输入，Python 固定公式复算。"""
+"""QQQM v1.6：仅采用原 v1.5 的乐观情景，Python 固定公式复算。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _STALE_DAYS = 14
 _FEE = 0.0015
 _DISCOUNT = 0.10
 _PE_EXIT = 24.65
-_WEIGHTS = (0.20, 0.40, 0.40)
+_MODEL_VERSION = "1.6"
 _BEIJING = ZoneInfo("Asia/Shanghai")
 _ALLOWED_DOMAINS = (
     "invesco.com",
@@ -66,8 +66,8 @@ def build_qqqm_prompt(*, checked_at: datetime, price: float) -> str:
 数据日 D_anchor 是最近已收盘美股交易日 {latest_closed_date(checked_at).isoformat()}。NAV_anchor 和 PE_ttm 必须同为 D_anchor 日，DIV_ttm 是截至该日的过去12个月分红合计。
 GuruFocus 唯一目标页面是 {PE_URL}，不是 FRA:NDX 的 Nordex 股票，也不是 QQQM 基金本身的 PE。若页面标题和旧统计表日期不同，取实际数据日匹配的最新读数。最多搜索3次；缺失则立即输出 needs_review JSON，不输出过程叙述。
 优先搜索 site:gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio "As of {latest_closed_date(checked_at).isoformat()}"。若原页返回403，可读取搜索结果中完全相同URL的公开标题或原文摘要，但必须同时明确包含 Nasdaq 100 PE Ratio、数值与匹配的数据日期；不得用其他网址的二手转述或猜测。
-请搜索 QQQM 的 Invesco 官方 NAV、GuruFocus Nasdaq 100 PE Ratio（PE_ttm）以及 Invesco 分红历史（允许 stockanalysis.com/etf/qqqm/dividend/）；可选的 PE_pair_t/PE_pair_f 仅取 historyofmarket.com 的同日 NDX trailing/forward PE 配对，记录 fwd_date，距 D_anchor 最多3个交易日。找不到配对时将两个值及 fwd_date 写 null，仍返回已确认的 NAV、PE_ttm、DIV_ttm；不要反复搜索配对。无法确认核心字段时 status=needs_review，不可猜测。
-固定规则（不可改）：E0= NAV_anchor/PE_ttm；k=DIV_ttm/E0；g_mkt=PE_pair_t/PE_pair_f-1；三情景权重=20%/40%/40%；第1年盈利分别为 E0×1.08、E0×1.12、E0×(1+g_mkt)，之后保守 8%/5%、基准 12%/6%、乐观 15%/7%；PE_exit=24.65；QQQM fee=0.15%；折现率=10%；预测期=10年。你只整理输入，不计算 IV 或 IRR。
+请搜索 QQQM 的 Invesco 官方 NAV、GuruFocus Nasdaq 100 PE Ratio（PE_ttm）以及 Invesco 分红历史（允许 stockanalysis.com/etf/qqqm/dividend/）；乐观情景必需的 PE_pair_t/PE_pair_f 仅取 historyofmarket.com 的同日 NDX trailing/forward PE 配对，记录 fwd_date，距 D_anchor 最多3个交易日。找不到配对时将两个值及 fwd_date 写 null、status=needs_review，并保留已确认的 NAV、PE_ttm、DIV_ttm；不要反复搜索或猜测配对，不得回退到基准或保守情景。
+固定规则（QQQM v1.6，不可改）：仅采用乐观情景，不做加权平均。E0=NAV_anchor/PE_ttm；k=DIV_ttm/E0；g_mkt=PE_pair_t/PE_pair_f-1；第1年盈利 E1=E0×(1+g_mkt)，不得再乘1.15；第2–5年增速15%，第6–10年增速7%；PE_exit=24.65；QQQM fee=0.15%；折现率=10%；预测期=10年。邮件 IRR 是公允价值/现价-1 的差额收益率，非年化。你只整理输入，不计算 IV 或 IRR。
 只返回 JSON：{{"status":"ok|needs_review","data":{{"nav_anchor":数值,"pe_ttm":数值,"pe_pair_t":数值或null,"pe_pair_f":数值或null,"fwd_date":"YYYY-MM-DD或null","div_ttm":数值,"data_date":"YYYY-MM-DD","source_urls":["https://..."]}},"citations":[{{"field":"nav_anchor|pe_ttm|div_ttm|pe_pair_t|pe_pair_f","source":"URL","date":"真实数据日YYYY-MM-DD","quote":"不超过25字"}}]}}。核心字段 nav_anchor、pe_ttm、div_ttm 各有引文；有配对数值才需要配对引文。"""
 
 
@@ -227,26 +227,20 @@ def _scenario(
 
 
 def calculate_qqqm(inputs: QQQMInputs) -> QQQMResult:
+    """Use the optimistic case only; missing forward data is not a base-case switch."""
+    try:
+        pair_t = _number(asdict(inputs), "pe_pair_t")
+        pair_f = _number(asdict(inputs), "pe_pair_f")
+    except ValueError as exc:
+        raise ValueError("QQQM 乐观情景缺少有效远期 PE 配对，不回退至基准或加权值") from exc
+    if not -0.10 <= pair_t / pair_f - 1 <= 0.40:
+        raise ValueError("QQQM 乐观情景隐含增速超出固定校验区间")
     e0 = inputs.nav_anchor / inputs.pe_ttm
     k = inputs.div_ttm / e0
-    e_fwd = (e0 * inputs.pe_pair_t / inputs.pe_pair_f
-             if inputs.pe_pair_t and inputs.pe_pair_f else None)
+    e_fwd = e0 * pair_t / pair_f
 
     def value(rate: float) -> float:
-        if e_fwd is None:
-            return _scenario(e0, k, e0 * 1.12, 0.12, 0.06, _PE_EXIT, rate)
-        return sum(
-            weight * scenario
-            for weight, scenario in zip(
-                _WEIGHTS,
-                (
-                    _scenario(e0, k, e0 * 1.08, 0.08, 0.05, _PE_EXIT * 0.81, rate),
-                    _scenario(e0, k, e0 * 1.12, 0.12, 0.06, _PE_EXIT, rate),
-                    _scenario(e0, k, e_fwd, 0.15, 0.07, _PE_EXIT, rate),
-                ),
-                strict=True,
-            )
-        )
+        return _scenario(e0, k, e_fwd, 0.15, 0.07, _PE_EXIT, rate)
 
     intrinsic = value(_DISCOUNT + _FEE)
     low, high = -0.50, 1.00
@@ -260,8 +254,7 @@ def calculate_qqqm(inputs: QQQMInputs) -> QQQMResult:
             else:
                 high = mid
         implied = (low + high) / 2 - _FEE
-    return QQQMResult(value=intrinsic, implied_return=implied, inputs=inputs,
-                      warning="B类：乐观缺失，展示基准价值" if e_fwd is None else None)
+    return QQQMResult(value=intrinsic, implied_return=implied, inputs=inputs)
 
 
 def _from_cache(path: Path, *, price: float, checked_at: datetime) -> QQQMResult | None:
@@ -277,7 +270,7 @@ def _from_cache(path: Path, *, price: float, checked_at: datetime) -> QQQMResult
 def prepare_qqqm_display(
     *, price: float, client: LLMClient, state_dir: Path, checked_at: datetime
 ) -> ValuationDisplay:
-    """每日一次 DeepSeek 输入整理，失败时仅回退 14 日内完整同日快照。"""
+    """每日整理输入；失败时只用 14 日内能重算乐观情景的完整快照。"""
     prompt = build_qqqm_prompt(checked_at=checked_at, price=price)
     source_packet = fetch_source_packet(checked_at=checked_at)
     if source_packet is not None:
@@ -291,7 +284,7 @@ def prepare_qqqm_display(
         prompt,
         allowed_domains=_ALLOWED_DOMAINS,
         market_data=True,
-        task_extra="QQQM v1.5：只整理公开数据输入，禁止改变固定公式；Python 将复算最终公允价值和 IRR。",
+        task_extra="QQQM v1.6：只整理公开数据输入；Python 仅按乐观情景复算公允价值，邮件 IRR 保持差额收益率。",
         max_output_tokens=1800,
         # 网页搜索需要等待来源页面聚合；单次最多 90 秒，仍受 LLM 总预算约束。
         timeout=90,
@@ -357,9 +350,9 @@ def prepare_qqqm_display(
         currency_symbol="$",
         financial_as_of=result.inputs.data_date,
         source_url=result.inputs.source_urls[0],
-        source_document_id=f"qqqm-v1.5:{result.inputs.data_date}",
-        formula_id="qqqm_three_scenario_cashflow_v1_5",
-        model_version="1.5",
+        source_document_id=f"qqqm-v{_MODEL_VERSION}:{result.inputs.data_date}",
+        formula_id="qqqm_optimistic_cashflow_v1_6",
+        model_version=_MODEL_VERSION,
         return_label="IRR",
         value_label="公允价值",
         warnings=tuple(item for item in (warning, result.warning) if item),
