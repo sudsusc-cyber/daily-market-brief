@@ -53,9 +53,11 @@ jobs:
         run: uv sync --frozen
 
       - name: Install Morningstar report OCR
+        if: ${{ !inputs.qqqm_check_only }}
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr
 
       - name: Restore verified Morningstar snapshot only
+        if: ${{ !inputs.qqqm_check_only }}
         continue-on-error: true
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
