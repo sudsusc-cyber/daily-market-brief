@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
@@ -84,7 +85,23 @@ def parse_qqqm_inputs(text: str, *, price: float, checked_at: datetime) -> QQQMI
         if len(parts) != 2:
             raise ValueError("QQQM JSON 代码块格式无效")
         cleaned = parts[1].rsplit("```", 1)[0].strip()
-    payload = json.loads(cleaned)
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Responses web_search 可能把检索摘录和最终 JSON 一起放入 output；
+        # 只从文本中提取带 status/data 的完整对象，后续仍走全部字段与来源闸门。
+        decoder = json.JSONDecoder()
+        payload = None
+        for match in re.finditer(r"\{", cleaned):
+            try:
+                candidate, _ = decoder.raw_decode(cleaned[match.start() :])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(candidate, dict) and {"status", "data", "citations"} <= candidate.keys():
+                payload = candidate
+                break
+        if payload is None:
+            raise
     if not isinstance(payload, dict) or payload.get("status") != "ok":
         raise ValueError("DeepSeek 未返回 QQQM ok 输入")
     data = payload.get("data")

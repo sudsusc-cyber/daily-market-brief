@@ -58,6 +58,15 @@ def test_parse_and_calculate_qqqm_v15() -> None:
     assert result.inputs.price == 300.0
 
 
+def test_parse_accepts_search_text_wrapping_valid_json() -> None:
+    inputs = parse_qqqm_inputs(
+        "检索摘要：来源页面已打开。\n" + _payload() + "\n检索结束。",
+        price=300.0,
+        checked_at=NOW,
+    )
+    assert inputs.data_date == "2026-09-03"
+
+
 def test_parse_rejects_missing_field_citation_and_future_data() -> None:
     payload = json.loads(_payload())
     payload["citations"] = payload["citations"][:-1]
