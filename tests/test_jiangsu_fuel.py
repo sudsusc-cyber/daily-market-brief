@@ -4,6 +4,8 @@ import time
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 from src.collectors import jiangsu_fuel
 
 
@@ -108,6 +110,43 @@ def test_tiny_per_ton_forecast_never_renders_signed_zero() -> None:
     assert detail == "汽油约 0 元/升；柴油约 0 元/升"
     assert "+0 元/升" not in detail
     assert "-0 元/升" not in detail
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    ("预计每升上涨0.18元", "汽柴油约 +0.18 元/升"),
+    ("预计汽柴油每升上涨1至2分", "汽柴油约 +0.01 元/升 ～ +0.02 元/升"),
+    ("预计上调幅度为200元/吨", "汽油约 +0.15 元/升；柴油约 +0.17 元/升"),
+    ("92号汽油预计上调200元/吨", "汽油约 +0.15 元/升"),
+    ("汽油上调200元/吨，柴油上调180元/吨", "汽油约 +0.15 元/升；柴油约 +0.15 元/升"),
+    ("92号汽油预计上涨0.18元", "预计上调，具体幅度待更新"),
+    ("上轮上涨200元/吨，本轮预计上涨", "预计上调，具体幅度待更新"),
+    ("92号汽油每升预计上涨&nbsp;0.18元", "92 号约 +0.18 元/升"),
+])
+def test_amount_wording_and_unit_safety(text, expected) -> None:
+    assert jiangsu_fuel._detail_from_text(text, "上调") == expected
+
+
+def test_same_day_complete_forecast_beats_direction_only(monkeypatch) -> None:
+    entries = [
+        _entry("8月14日油价预计上涨", source="新华社"),
+        _entry("8月14日油价预计上调幅度为200元/吨", source="隆众资讯"),
+    ]
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", lambda _: entries)
+    alert = jiangsu_fuel.fetch(today=date(2026, 8, 12))
+    assert alert.detail == "汽油约 +0.15 元/升；柴油约 +0.17 元/升"
+    assert alert.forecast_source == "隆众资讯"
+
+
+def test_newer_direction_is_not_overwritten_by_old_amount(monkeypatch) -> None:
+    entries = [
+        _entry("8月14日油价预计上涨", published="2026-08-13 03:00:00"),
+        _entry("8月14日油价预计下调200元/吨"),
+        _entry("8月14日油价预计上调500元/吨", published="2026-08-14 03:00:00"),
+    ]
+    monkeypatch.setattr(jiangsu_fuel, "_fetch_forecast_entries", lambda _: entries)
+    alert = jiangsu_fuel.fetch(today=date(2026, 8, 13))
+    assert alert.direction == "上调"
+    assert "待更新" in alert.detail
 
 
 def test_exact_target_date_beats_newer_low_relevance_candidate(monkeypatch) -> None:
