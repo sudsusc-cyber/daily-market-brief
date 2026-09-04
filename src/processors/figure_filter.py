@@ -316,7 +316,7 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
     return _parse_output_result(text, items).items
 
 
-def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -> FigureSummary:
+def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, history=None) -> FigureSummary:
     """加工单个人物。
     流程:
       1. 规则层:候选必须含直接引语标记(双引号包句、说/表示、said/told 等)
@@ -339,6 +339,8 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
     last_error: str | None = None
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
         instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person)
+        if history is not None:
+            instruction += history.context("figures", bundle.person)
         if attempt > 1:
             instruction += """
 
@@ -367,11 +369,12 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
                 "figure_filter.ok person=%s qualified=%d kept=%d attempt=%d",
                 bundle.person, len(qualified), len(parsed.items), attempt,
             )
-            return FigureSummary(
+            summary = FigureSummary(
                 person=bundle.person,
                 person_en=bundle.person_en,
                 items=parsed.items,
             )
+            return history.filter_figure(summary) if history is not None else summary
 
         last_error = (
             "IncompleteOrInvalidOutput: "
@@ -395,9 +398,9 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5) -
 
 
 def filter_all(
-    bundles: list[FigureBundle], *, client: LLMClient, max_items: int = 5
+    bundles: list[FigureBundle], *, client: LLMClient, max_items: int = 5, history=None
 ) -> list[FigureSummary]:
-    return [filter_one(b, client=client, max_items=max_items) for b in bundles]
+    return [filter_one(b, client=client, max_items=max_items, history=history) for b in bundles]
 
 
 # ── 版面限流:质量评分后选择最优 3 位人物进入日报 ──

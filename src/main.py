@@ -49,6 +49,7 @@ from src.processors import (
     sentiment_judge,
     translator,
 )
+from src.processors.editorial_history import EditorialHistory
 from src.processors.llm_client import LLMClient
 from src.processors.thesis import consolidation as thesis_consolidation
 from src.processors.thesis import extractor as thesis_extractor
@@ -320,11 +321,12 @@ def main() -> int:
     )
 
     logger.info("processors.news_summarizer")
+    editorial_history = EditorialHistory(_STATE_DIR / "published_editorial.json", now_bj.date())
     company_news_silence_note = None
     company_news_fallback_note = None
     company_source_failures = sum(1 for bundle in cn_bundles if bundle.error)
     if any(bundle.items for bundle in cn_bundles):
-        company_news_summary = news_summarizer.summarize(cn_bundles, client=llm)
+        company_news_summary = news_summarizer.summarize(cn_bundles, client=llm, history=editorial_history)
         if company_news_summary is not None and getattr(company_news_summary, "is_silence", False):
             company_news_summary = None
             company_news_silence_note = (
@@ -371,7 +373,7 @@ def main() -> int:
         )
 
     logger.info("processors.figure_filter")
-    figure_results = figure_filter.filter_all(fig_bundles, client=llm)
+    figure_results = figure_filter.filter_all(fig_bundles, client=llm, history=editorial_history)
     figure_failures = [summary for summary in figure_results if summary.error]
     figure_summaries = [summary for summary in figure_results if summary.items]
     # M5.10 质量门槛:无 items 的人物(规则层全砍 / LLM 全 no)整个不渲染
@@ -639,6 +641,12 @@ def main() -> int:
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("valuation.commit_published_failed exc=%r", exc)
+
+    try:
+        editorial_history.capture(company_news_summary, figure_summaries)
+        editorial_history.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("editorial_history.commit_failed type=%s", type(exc).__name__)
 
     # 邮件发送成功后才提交 figures 7 天去重 state — 失败时下次 run
     # 仍能重新评估同批候选,避免"LLM 失败 + state 已写"导致永久遗漏。

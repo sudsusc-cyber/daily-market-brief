@@ -33,11 +33,7 @@ from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEAT
 from src.valuation.models import ValuationDisplay
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
-_EMAIL_HTML_BUDGET_BYTES = 98_304  # 96 KiB, 给客户端 100 KiB 裁剪线留余量
-_DUPLICATE_SOURCE_LIST_RE = re.compile(
-    r'<tr\s+data-source-list="true">.*?</tr>',
-    re.IGNORECASE | re.DOTALL,
-)
+_EMAIL_HTML_WARNING_BYTES = 98_304  # 仅作日志提醒，不触发删减或排版变更。
 
 logger = logging.getLogger(__name__)
 
@@ -306,21 +302,6 @@ def _compact_inline_styles(html: str) -> str:
     return re.sub(r'style="(?P<body>[^"]*)"', _compact, html)
 
 
-def _compact_oversize_html(html: str) -> tuple[str, bool]:
-    """在不破坏正文角标链接的前提下压缩超限邮件。
-
-    邮件客户端自行决定外链如何打开,所以 ``target`` / ``rel`` 对邮件没有实际
-    作用,可以先移除。如果仍超限,再移除章节底部与正文角标重复的来源清单；正文
-    的蓝色 ``<sup><a href=...>`` 始终保留,避免角标退化为黑色不可点击文本。
-
-    返回 ``(html, source_lists_removed)`` 供日志记录具体采用了哪一级压缩。
-    """
-    compacted = html.replace(' target="_blank"', "").replace(' rel="noopener"', "")
-    if len(compacted.encode("utf-8")) <= _EMAIL_HTML_BUDGET_BYTES:
-        return compacted, False
-    return _DUPLICATE_SOURCE_LIST_RE.sub("", compacted), True
-
-
 def render_email(
     *,
     signals: list[StockSignal],
@@ -430,22 +411,11 @@ def render_email(
     compacted = _compact_inline_styles(html)
     compacted = re.sub(r"(?<=>)\s+(?=<)", "", compacted).strip()
     size_bytes = len(compacted.encode("utf-8"))
-    if size_bytes > _EMAIL_HTML_BUDGET_BYTES:
-        original_size = size_bytes
-        compacted, source_lists_removed = _compact_oversize_html(compacted)
-        size_bytes = len(compacted.encode("utf-8"))
-        logger.info(
-            "render.email_html_link_preserving_compaction "
-            "before=%d after=%d budget=%d source_lists_removed=%s",
-            original_size,
-            size_bytes,
-            _EMAIL_HTML_BUDGET_BYTES,
-            source_lists_removed,
-        )
-    if size_bytes > _EMAIL_HTML_BUDGET_BYTES:
+    logger.info("render.email_html_size bytes=%d", size_bytes)
+    if size_bytes > _EMAIL_HTML_WARNING_BYTES:
         logger.warning(
-            "render.email_html_oversize bytes=%d budget=%d",
+            "render.email_html_oversize bytes=%d warning_threshold=%d content_preserved=true",
             size_bytes,
-            _EMAIL_HTML_BUDGET_BYTES,
+            _EMAIL_HTML_WARNING_BYTES,
         )
     return compacted

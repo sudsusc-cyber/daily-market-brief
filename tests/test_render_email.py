@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
 from bs4 import BeautifulSoup
 
 from src.collectors.buffett_13f import BuffettBundle, Filing13F
@@ -17,7 +18,7 @@ from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
 from src.processors.thesis.renderer import JudgmentSection
 from src.renderer.render import (
-    _EMAIL_HTML_BUDGET_BYTES,
+    _EMAIL_HTML_WARNING_BYTES,
     _build_sentiment_gauge,
     _compact_inline_styles,
     render_email,
@@ -158,7 +159,7 @@ def test_holdings_are_grouped_with_correct_average_values():
         assert row.select_one(".holding-group-lines")["align"] == "right"
         assert row.find_all("td", recursive=False)[0]["colspan"] == "2"
         assert "border-bottom" not in str(row)
-    assert len(html.encode("utf-8")) < _EMAIL_HTML_BUDGET_BYTES
+    assert len(html.encode("utf-8")) < _EMAIL_HTML_WARNING_BYTES
 
 
 def test_strategy_groups_without_valuations_have_consistent_colspans():
@@ -849,8 +850,12 @@ def test_template_does_not_render_fuel_forecast_metadata() -> None:
     assert "onmouseover=\"alert(1)" not in html
 
 
-def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
-    """全模块超限压缩后仍低于 96 KiB,且所有正文角标保持蓝色可点击。"""
+@pytest.mark.parametrize("warning_threshold", [1, 98_304, 10_000_000])
+def test_full_editorial_email_preserves_sources_above_size_warning(
+    caplog, monkeypatch, warning_threshold,
+) -> None:
+    """超过旧预算也完整保留四个板块的来源、链接及 inline 样式。"""
+    monkeypatch.setattr("src.renderer.render._EMAIL_HTML_WARNING_BYTES", warning_threshold)
     signals = [
         StockSignal(
             holding=holding,
@@ -1009,10 +1014,12 @@ def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
     ))
     assert "长 期 判 断" not in html
     assert "LONG-TERM VIEW" not in html
-    assert len(html.encode("utf-8")) <= _EMAIL_HTML_BUDGET_BYTES
+    assert len(html.encode("utf-8")) > _EMAIL_HTML_WARNING_BYTES
+    assert ("content_preserved=true" in caplog.text) == (
+        len(html.encode("utf-8")) > warning_threshold
+    )
 
-    # 超限时可以删掉章节底部重复来源清单,但每一处正文角标必须保住真实 href；
-    # 这正是 2026-08-08 邮件曾退化为黑色不可点击 [N] 的回归边界。
+    # 超限不能删除来源清单：正文蓝色角标和底部来源必须一一对应。
     soup = BeautifulSoup(html, "html.parser")
     inline_anchors = {anchor.get("href"): anchor for anchor in soup.select("sup a[href]")}
     expected_inline_urls = {
@@ -1022,7 +1029,14 @@ def test_full_editorial_email_stays_below_client_clipping_budget() -> None:
         *(long_url("frontier", index) for index in range(1, 3)),
     }
     assert expected_inline_urls <= inline_anchors.keys()
+    source_anchors = {anchor.get("href"): anchor for anchor in soup.select("a.source-link")}
+    assert len(soup.select('tr[data-source-list="true"]')) == 4
+    assert expected_inline_urls <= source_anchors.keys()
     for url in expected_inline_urls:
+        assert source_anchors[url].get_text(strip=True)
+        assert "color:#0563C1!important" in source_anchors[url].get("style", "")
+        assert "font-size:11.5px" in source_anchors[url].get("style", "")
+        assert source_anchors[url].get("target") == "_blank"
         style = inline_anchors[url].get("style", "")
         assert "color:#0563C1!important" in style
         assert "text-decoration:none!important" in style
