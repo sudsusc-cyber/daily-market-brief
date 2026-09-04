@@ -116,11 +116,11 @@ jobs:
           retention-days: 3
 
       - name: Confirm SMTP acceptance
-        if: ${{ !inputs.qqqm_check_only }}
+        if: ${{ always() && !inputs.qqqm_check_only && hashFiles('.delivery-receipt.json') != '' }}
         run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
 
       - name: Confirm full email delivery
-        if: ${{ !inputs.qqqm_check_only }}
+        if: ${{ always() && !inputs.qqqm_check_only && hashFiles('.delivery-receipt.json') != '' }}
         run: uv run python -m src.utils.delivery full .delivery-receipt.json
 
       - name: Validate QQQM snapshot before saving

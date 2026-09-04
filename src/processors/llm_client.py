@@ -45,7 +45,8 @@ INVESTMENT_FRAMEWORK = f"""\
 开源的投资框架是:
 - Buffett、Munger、Nalanda Capital 的长期价值投资体系
 - 关注"本分"(企业是否做对的事、是否做难而正确的事)
-- 估值方法是"两列法":Column 1 净金融资产 + Column 2 Owner Earnings × 合理倍数
+- 邮件个股公允价值采用经过来源核验的 Morningstar 值；QQQM 采用固定乐观情景模型，由 Python 计算。
+- 邮件 IRR 是公允价值/现价-1 的差额收益率，非年化、不含息；不得自行替换公式或补造数值。
 - 建仓规则:
 {_BUY_RULES_CONTEXT}
     - 250 日指 250 个交易日; 港股与美股独立分组展示

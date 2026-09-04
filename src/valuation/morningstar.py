@@ -20,6 +20,8 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from src.utils.runtime_budget import RuntimeBudget
+
 logger = logging.getLogger(__name__)
 
 _CACHE_NAME = "morningstar_fair_values.json"
@@ -234,6 +236,8 @@ class MorningstarFairValue:
     observation_count: int = 2
     fallback_used: bool = False
     warning: str | None = None
+    # Independent live fallback is not an old cached observation.
+    stale_cache: bool = False
 
 
 class MorningstarProvider(Protocol):
@@ -471,6 +475,8 @@ class MorningstarPublicProvider:
         else:
             self.secondary_provider = secondary_provider  # type: ignore[assignment]
         self._last_reader_request_at: float | None = None
+        self._budget = RuntimeBudget()
+        self._inflight_values: dict[str, MorningstarFairValue] = {}
         self._memo: tuple[
             datetime,
             dict[str, MorningstarFairValue],
@@ -681,17 +687,35 @@ class MorningstarPublicProvider:
         *,
         checked_at: datetime,
     ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
+        self._inflight_values = {}
+        return self._budget.run(
+            "morningstar", lambda: self._fetch_all(securities, checked_at=checked_at),
+            seconds=330,
+            fallback=lambda: (dict(self._inflight_values), {
+                ticker: "公开估值取数超时，已保留完成项并检查有效快照"
+                for ticker in securities if ticker not in self._inflight_values
+            }),
+        )
+
+    def _fetch_all(
+        self, securities: Mapping[str, MorningstarSecurity], *, checked_at: datetime,
+    ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
         values: dict[str, MorningstarFairValue] = {}
         memo_at = checked_at.astimezone(UTC)
         if self._memo is not None:
             memo_at, memo_values, _memo_failures = self._memo
-            if timedelta(0) <= checked_at.astimezone(UTC) - memo_at <= timedelta(minutes=30):
+            # Reuse only within the exact same observation request. A final check
+            # at a later time must discover/read again, even if values are unchanged.
+            if checked_at.astimezone(UTC) == memo_at:
                 values = {ticker: value for ticker, value in memo_values.items() if ticker in securities}
                 if set(values) == set(securities):
                     return values, {}
             else:
                 memo_at = checked_at.astimezone(UTC)
         pending = {ticker: security for ticker, security in securities.items() if ticker not in values}
+        # Only publish completed, reconciled observations to the timeout fallback.
+        # A signal can interrupt between the primary read and secondary validation.
+        self._inflight_values = dict(values)
         failures: dict[str, str] = {}
         secondary_values: dict[str, MorningstarFairValue] = {}
         secondary_failures: dict[str, str] = {}
@@ -795,7 +819,9 @@ class MorningstarPublicProvider:
                     f"{failures.get(ticker, 'Morningstar 官方公开页不可用')}；"
                     f"Yahoo 备源: {secondary_failures[ticker]}"
                 )[:500]
-        # 只复用成功项；发送前复核会重新尝试失败标的，而非复用失败 30 分钟。
+            if ticker in values:
+                self._inflight_values[ticker] = values[ticker]
+        # 只在同一观测请求内复用；发送前的晚时点复核会重读所有标的。
         self._memo = (memo_at, dict(values), dict(failures))
         return values, failures
 
@@ -852,6 +878,7 @@ def _snapshot_from_dict(raw: Mapping[str, Any]) -> MorningstarFairValue:
         source_url=str(raw["source_url"]),
         observation_count=int(raw.get("observation_count") or 2),
         fallback_used=bool(raw.get("fallback_used", False)),
+        stale_cache=bool(raw.get("stale_cache", False)),
         warning=str(raw["warning"]) if raw.get("warning") else None,
     )
     expected = SECURITIES.get(snapshot.ticker)
@@ -875,12 +902,16 @@ def load_cache(path: Path) -> dict[str, MorningstarFairValue]:
         rows = payload.get("fair_values") if isinstance(payload, Mapping) else None
         if not isinstance(rows, list):
             return {}
-        return {
-            snapshot.ticker: snapshot
-            for row in rows
-            if isinstance(row, Mapping)
-            for snapshot in [_snapshot_from_dict(row)]
-        }
+        valid = {}
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            try:
+                snapshot = _snapshot_from_dict(row)
+                valid[snapshot.ticker] = snapshot
+            except (KeyError, TypeError, ValueError):
+                logger.warning("morningstar.cache_row_invalid skipped=true")
+        return valid
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         logger.warning("morningstar.cache_invalid reason=%s", str(exc)[:180])
         return {}
@@ -954,18 +985,19 @@ def refresh_fair_values(
                 continue
             except ValueError as exc:
                 final_failures[ticker] = str(exc)
-        if old is not None and checked_at.astimezone(UTC) - _retrieved_at(old) <= max_cache_age:
+        if old is not None and timedelta(0) <= checked_at.astimezone(UTC) - _retrieved_at(old) <= max_cache_age:
             reason = final_failures.get(ticker, "主源本次未返回")
             accepted[ticker] = replace(
                 old,
                 fallback_used=True,
+                stale_cache=True,
                 warning=f"公开主源短时不可用，沿用最近已验证快照：{reason}",
             )
         else:
             final_failures.setdefault(ticker, "没有 48 小时内可验证的 Morningstar 快照")
 
     merged = dict(previous)
-    merged.update({ticker: value for ticker, value in accepted.items() if not value.fallback_used})
+    merged.update({ticker: value for ticker, value in accepted.items() if not value.stale_cache})
     if merged:
         _save_cache(cache_path, merged)
     logger.info(

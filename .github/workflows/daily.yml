@@ -17,10 +17,6 @@ on:
         description: "Force send even if already sent (true/false)"
         required: false
         default: "false"
-      recipient_override:
-        description: "Manual-run recipient override (single address; blank uses production recipients)"
-        required: false
-        default: ""
 
 # 防止 cron-job.org 与 GH schedule 兜底几乎同秒触发时双跑挤压幂等窗口。
 # 不取消正在跑的(发邮件 ≠ 可取消的纯计算),只串行化新触发。
@@ -114,9 +110,8 @@ jobs:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
           QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
-          # 仅 workflow_dispatch 可传 recipient_override；schedule 事件没有该输入，
-          # 因而自动回落到生产收件人 secret，不改变每天定时发送行为。
-          EMAIL_RECIPIENT: ${{ github.event.inputs.recipient_override || secrets.EMAIL_RECIPIENT }}
+          # 定向试发使用 formal-test-send.yml，不能占用正式日更身份/状态。
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 邮件仍使用受控占位语发送，但在 Actions 页面明确标注内容质量降级。
@@ -135,13 +130,13 @@ jobs:
 
       # main.py 仅在至少一位收件人被 SMTP 接受后创建凭证。
       - name: Confirm SMTP acceptance
-        if: ${{ hashFiles('.delivery-receipt.json') != '' }}
+        if: ${{ always() && hashFiles('.delivery-receipt.json') != '' }}
         run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
 
       # 部分拒收不能静默标绿；该步骤失败后 job 报红，monitor 也会告警。
       # idempotency 会识别前一步已有 SMTP acceptance，避免兜底 run 重发给已收件人。
       - name: Confirm full email delivery
-        if: ${{ hashFiles('.delivery-receipt.json') != '' }}
+        if: ${{ always() && hashFiles('.delivery-receipt.json') != '' }}
         run: uv run python -m src.utils.delivery full .delivery-receipt.json
 
       - name: Validate QQQM snapshot before saving

@@ -5,7 +5,7 @@
 本工作流。需要避免一天发两封邮件。
 
 实现:启动时通过 GitHub Actions REST API 查询本仓库今日(**BJT**)是否已有
-"成功 OR 正在运行" 的 run(排除当前 run)。已有 → exit(0) 跳过本次。
+"有 SMTP 接受凭证 OR 更早且正在运行" 的 run(排除当前 run)。已有 → 跳过本次。
 
 TODO(audit-2026-05-04 #B1): leader 失败 + follower 后保存时,cache 会回退一天 state。
 monitor.yml 能捕获 leader 失败并告警,手动 force_send 后自动恢复。
@@ -40,7 +40,8 @@ Leader election(防双 fail):
 
 幂等性策略:
 - 所有触发类型(schedule / workflow_dispatch / repository_dispatch)统一参与幂等
-- 状态判断:conclusion=success(已完成)OR status in (queued, in_progress)
+- 已结束的 run 必须有送达确认步骤；单纯 success 可能只是休市或重复触发跳过。
+- 尚在 queued / in_progress 的 run 按最小 run_id 选出唯一发送者。
   - API 调用失败 → 抛 IdempotencyUnavailableError,让 run 失败
     后续串行 follower 在 API 恢复后可自动重试,避免 poison success。
 - FORCE_SEND=true 或 FORCE_SEND=1 在 main.py 层跳过本检查(人工强制重发)
@@ -151,7 +152,7 @@ def already_sent_today() -> bool:
 
     runs = data.get("workflow_runs", []) or []
 
-    # 第一步:已经有成功的 run → 直接 skip,毫无歧义。
+    # A successful run can be a holiday/duplicate skip, not an email delivery.
     for run in runs:
         if cur_run_id is not None and run.get("id") == cur_run_id:
             continue
@@ -159,21 +160,15 @@ def already_sent_today() -> bool:
             continue
         if _bjt_date_of_iso(run.get("created_at") or "") != today:
             continue
-        if run.get("conclusion") == "success":
-            logger.info(
-                "idempotency.duplicate run_id=%s conclusion=success created_at=%s",
-                run.get("id"), run.get("created_at"),
-            )
-            return True
         # 部分送达会让 Confirm full email delivery 失败、run 结论为 failure；
         # 但至少一位收件人已经收到，不能让后续兜底给他们重发。
-        if run.get("conclusion") == "failure" and isinstance(run.get("id"), int):
+        if run.get("conclusion") in {"success", "failure", "cancelled", "timed_out"} and isinstance(run.get("id"), int):
             try:
                 accepted = _run_has_successful_step(
                     repo=repo,
                     token=token,
                     run_id=run["id"],
-                    step_names={"Confirm SMTP acceptance"},
+                    step_names={"Confirm SMTP acceptance", "Confirm full email delivery", "Confirm email delivery"},
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error("idempotency.jobs_api_failed run_id=%s reason=%r", run["id"], exc)

@@ -17,6 +17,7 @@ import smtplib
 import socket
 import ssl
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from email.header import Header
 from email.mime.image import MIMEImage
@@ -300,6 +301,7 @@ def send_html_email(
     smtp_port: int = 465,
     timeout: int = 30,
     max_attempts: int = 3,
+    on_progress: Callable[[DeliveryResult], None] | None = None,
 ) -> DeliveryResult:
     """
     发送 HTML 邮件。recipient 可为单个地址字符串或地址列表。
@@ -335,22 +337,35 @@ def send_html_email(
     final_refused: dict = {}
 
     for attempt in range(1, max(1, max_attempts) + 1):
-        server = _connect_and_login(
-            sender=sender,
-            auth_code=auth_code,
-            smtp_host=smtp_host,
-            smtp_port=smtp_port,
-            timeout=timeout,
-            context=tls_context,
-            attempts=max(1, max_attempts) if attempt == 1 else 1,
-        )
+        server = None
         try:
+            server = _connect_and_login(
+                sender=sender, auth_code=auth_code, smtp_host=smtp_host,
+                smtp_port=smtp_port, timeout=timeout, context=tls_context,
+                attempts=max(1, max_attempts) if attempt == 1 else 1,
+            )
             refused_now = _send_envelope(server, sender, pending, payload)
+        except (OSError, smtplib.SMTPException):
+            if not accepted_set:
+                raise
+            # A retry failure must not erase recipients already accepted.
+            # Do not blindly retry an envelope whose acceptance is uncertain.
+            final_refused.update({address: (451, b"Retry interrupted; acceptance unconfirmed")
+                                  for address in pending})
+            break
+        else:
+            accepted_set.update(address for address in pending if address not in refused_now)
+            # Persist acceptance before QUIT: even connection cleanup can hang.
+            if accepted_set and on_progress is not None:
+                on_progress(DeliveryResult(
+                    accepted=tuple(address for address in recipients if address in accepted_set),
+                    refused={address: refused_now.get(address, final_refused.get(
+                        address, (450, b"Pending"))) for address in recipients if address not in accepted_set},
+                ))
         finally:
-            with contextlib.suppress(Exception):
-                server.quit()
-
-        accepted_set.update(address for address in pending if address not in refused_now)
+            if server is not None:
+                with contextlib.suppress(Exception):
+                    server.quit()
         transient = {
             address: reply for address, reply in refused_now.items()
             if _is_transient_refusal(reply)

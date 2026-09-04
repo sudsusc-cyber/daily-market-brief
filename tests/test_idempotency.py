@@ -30,6 +30,7 @@ def test_workflow_dispatch_also_dedups(monkeypatch) -> None:
     run(无论是 schedule 还是 workflow_dispatch),应当跳过本次。
     """
     _clean_env(monkeypatch)
+    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_: True)
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
@@ -127,6 +128,7 @@ def _mock_api_response(monkeypatch, runs: list[dict]) -> None:
 def test_today_success_returns_true(monkeypatch) -> None:
     """今日(UTC)有成功的 schedule run → True(应该跳过)"""
     _clean_env(monkeypatch)
+    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_: True)
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "schedule")
@@ -216,6 +218,7 @@ def test_cross_utc_midnight_same_bjt_day(monkeypatch) -> None:
     其在 BJT 视角等于 _today_beijing_iso() 但 UTC 视角是昨天。
     """
     _clean_env(monkeypatch)
+    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_: True)
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")

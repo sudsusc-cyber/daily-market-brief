@@ -204,8 +204,8 @@ def test_news_summarizer_neutralizes_xss_in_company_name() -> None:
     bundle = _bundle_with_https_url()
     fake = _FakeLLM('<strong><script>alert(1)</script>微软</strong> —— 摘要[1]')
     summary = news_summarizer.summarize([bundle], client=fake)
-    assert summary is not None
-    assert "<script>" not in summary.summary_html
+    # A polluted identity is rejected, not silently attributed to the holding.
+    assert summary is None
 
 
 # ────────────────────  集成测试:macro_filter  ────────────────────

@@ -71,6 +71,8 @@ class ValuationDisplay:
     return_label: str = "IRR"
     value_label: str = "内在价值"
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    data_note: str | None = None
+    verified_at: str | None = None
 
     @property
     def is_attractive(self) -> bool:

@@ -18,7 +18,7 @@ NYSE 全休日(10 个,2022 年起含 Juneteenth):
   9. Thanksgiving:11 月第 4 个周四
  10. Christmas 12/25(观察日)
 
-NYSE 观察日规则:周六→前一周五休市,周日→后一周一休市。
+NYSE 一般观察日规则:周六→前一周五休市,周日→后一周一休市；元旦在周六时不补休。
 
 不含半日交易(感恩节后周五等),M6 仅按全休跳过发送。
 
@@ -66,7 +66,7 @@ def _easter_sunday(year: int) -> date:
 
 
 def _observed(d: date) -> date:
-    """NYSE 观察日规则:周六→前一周五,周日→后一周一,工作日不变。"""
+    """一般观察日:周六→前一周五,周日→后一周一；元旦例外由调用方处理。"""
     if d.weekday() == 5:  # 周六
         return d - timedelta(days=1)
     if d.weekday() == 6:  # 周日
@@ -77,7 +77,6 @@ def _observed(d: date) -> date:
 def compute_us_holidays(year: int) -> set[date]:
     """指定年份 NYSE 全休节假日集合(纯算法,无外部依赖)。"""
     holidays: set[date] = {
-        _observed(date(year, 1, 1)),                # 元旦
         _nth_weekday(year, 1, 3, 0),                # MLK Day
         _nth_weekday(year, 2, 3, 0),                # Presidents' Day
         _easter_sunday(year) - timedelta(days=2),   # Good Friday
@@ -87,6 +86,10 @@ def compute_us_holidays(year: int) -> set[date]:
         _nth_weekday(year, 11, 4, 3),               # Thanksgiving
         _observed(date(year, 12, 25)),              # Christmas
     }
+    # NYSE does not observe Saturday New Year's Day on the preceding Friday.
+    # https://ir.theice.com/press/news-details/2025/NYSE-Group-Announces-2026-2027-and-2028-Holiday-and-Early-Closings-Calendar/
+    if date(year, 1, 1).weekday() != 5:
+        holidays.add(_observed(date(year, 1, 1)))
     if year >= 2022:
         # Juneteenth 自 2022 年起成为 NYSE 全休日(联邦假日 2021 年立法)
         holidays.add(_observed(date(year, 6, 19)))
@@ -97,9 +100,7 @@ def is_us_market_open(d: date) -> bool:
     """美股该日是否开盘:工作日 + 非 NYSE 节假日。"""
     if d.weekday() >= 5:  # 周六(5) / 周日(6)
         return False
-    # 次年元旦若落在周六，观察日会前移到本年 12 月 31 日；只计算 d.year
-    # 会漏掉这个跨年休市日（如 2021-12-31、2027-12-31）。
-    holidays = compute_us_holidays(d.year) | compute_us_holidays(d.year + 1)
+    holidays = compute_us_holidays(d.year)
     return d not in holidays
 
 

@@ -438,6 +438,7 @@ def prepare_qqqm_display(
             warning = f"QQQM 当日输入校验失败：{str(exc)[:120]}"
     else:
         warning = f"QQQM DeepSeek 输入失败：{error or '空响应'}"
+    used_cache = result is None
     if result is None:
         candidates = [cached for path in cache_paths(state_dir)
                       if (cached := _from_cache(path, price=price,
@@ -458,19 +459,38 @@ def prepare_qqqm_display(
             value_label="公允价值",
             warnings=(warning or "QQQM 没有可验证的同日输入",),
         )
+    return _display_result(result, price=price, warning=warning, checked_at=checked_at, cached=used_cache)
+
+
+def cached_qqqm_display(*, price: float, state_dir: Path, checked_at: datetime) -> ValuationDisplay:
+    """Local-only recovery after the collection deadline; never invent inputs."""
+    candidates = [cached for path in cache_paths(state_dir)
+                  if (cached := _from_cache(path, price=price, checked_at=checked_at,
+                                            allow_daily_forward=daily_forward_enabled())) is not None]
+    if not candidates:
+        return ValuationDisplay(ticker="QQQM", status="source_unavailable", value_label="公允价值",
+                                warnings=("QQQM 取数超时且没有有效快照",))
+    result = max(candidates, key=lambda row: (row.inputs.data_date, row.inputs.fwd_date or ""))
+    return _display_result(result, price=price, warning="取数超时，沿用已验证快照", checked_at=checked_at, cached=True)
+
+
+def _display_result(result: QQQMResult, *, price: float, warning: str | None,
+                    checked_at: datetime, cached: bool = False) -> ValuationDisplay:
     logger.info(
         "valuation.qqqm_ready value=%.4f gap_return=%.6f data_date=%s forward_basis=%s fallback=%s",
-        result.value, result.value / price - 1, result.inputs.data_date, result.inputs.forward_basis, bool(warning),
+        result.value, result.value / price - 1, result.inputs.data_date, result.inputs.forward_basis, cached,
     )
     return ValuationDisplay(
         ticker="QQQM",
-        status="not_due" if warning else "current",
+        status="not_due" if cached else "current",
         intrinsic_value=result.value,
         # Email IRR is the user's value-gap return, not the document's 10Y IRR.
         implied_return=result.value / price - 1,
         hurdle_rate=_DISCOUNT,
         currency_symbol="$",
         financial_as_of=result.inputs.data_date,
+        verified_at=None if cached else checked_at.isoformat(),
+        data_note=f"QQQM 沿用 {result.inputs.data_date} 输入" if cached else None,
         source_url=result.inputs.source_urls[0],
         source_document_id=(f"qqqm-v{_MODEL_VERSION}:{result.inputs.data_date}:"
                             f"{result.inputs.fwd_date}:{result.inputs.forward_basis}"),

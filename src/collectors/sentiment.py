@@ -409,11 +409,11 @@ def fetch_all(
     # 每个指标独立 try-except,失败也不影响其他
     fetchers: list[tuple[str, str, Callable[[], SentimentMetric]]] = [
         # (label, cache_key, fn)
-        ("CNN F&G",   "CNN",        _fetch_cnn_fear_greed),
+        ("CNN Fear & Greed", "CNN", _fetch_cnn_fear_greed),
         ("VIX",       "VIX",        _fetch_vix_primary),
         ("DXY",       "DXY",        lambda: _fetch_simple_index("DX-Y.NYB", "DXY")),
-        ("ShillerPE", "ShillerPE",  _fetch_shiller_pe),
-        ("FRED HY",   "FREDHY",     lambda: _fetch_fred_hy_spread(fred_api_key)),
+        ("Shiller PE", "ShillerPE", _fetch_shiller_pe),
+        ("高收益债利差", "FREDHY", lambda: _fetch_fred_hy_spread(fred_api_key)),
     ]
     for label, cache_key, fn in fetchers:
         try:

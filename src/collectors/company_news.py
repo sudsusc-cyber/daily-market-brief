@@ -51,6 +51,8 @@ class NewsItem:
     url: str
     source: str  # 媒体名
     summary: str = ""  # 摘要 / 描述,Finnhub 提供;用于相关性过滤
+    holding_ticker: str | None = None
+    related_holding_tickers: tuple[str, ...] = ()
 
 
 @dataclass

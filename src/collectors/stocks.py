@@ -10,12 +10,15 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
+import pandas as pd
 import requests
 import yfinance as yf
 
 from src.config import BuyLine, BuyStrategy, Holding, buy_strategy
+from src.utils.market_clock import validate_history, validate_quote
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -39,6 +42,7 @@ class StockSignal:
     error: str | None = None
     data_source: str = ""
     sma_250d: float | None = None
+    observed_at: str | None = None
 
     @property
     def strategy(self) -> BuyStrategy:
@@ -102,7 +106,7 @@ def _yf_history(ticker: yf.Ticker):
 
     yfinance 偶尔返回空 DataFrame 而不抛异常（Yahoo 端间歇性问题）；
     此处显式 raise 让 @retry 退避重试，避免一次空响应就判为失败。"""
-    hist = ticker.history(period="5y", interval="1wk", auto_adjust=False)
+    hist = ticker.history(period="5y", interval="1wk", auto_adjust=False, timeout=20)
     if hist is None or hist.empty:
         raise RuntimeError(f"yfinance 返回空数据 for {ticker.ticker}")
     return hist
@@ -111,7 +115,7 @@ def _yf_history(ticker: yf.Ticker):
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
 def _yf_daily_history(ticker: yf.Ticker):
     """250 日线使用 250 个真实交易日，不能用 50 周近似。"""
-    hist = ticker.history(period="2y", interval="1d", auto_adjust=False)
+    hist = ticker.history(period="2y", interval="1d", auto_adjust=False, timeout=20)
     if hist is None or hist.empty:
         raise RuntimeError(f"yfinance 返回空日线 for {ticker.ticker}")
     return hist
@@ -147,9 +151,17 @@ def _yahoo_chart_history(
     if not results:
         raise RuntimeError("Yahoo Chart 返回空 result")
     result = results[0]
+    now = datetime.now(UTC)
+    stamps = result.get("timestamp") or []
+    index = pd.to_datetime(stamps, unit="s", utc=True)
+    observed = validate_history(index, symbol=symbol, interval=interval, now=now)
     quotes = ((result.get("indicators") or {}).get("quote") or [{}])[0]
     closes = [float(value) if value is not None else float("nan")
               for value in quotes.get("close") or []]
+    if len(stamps) != len(closes):
+        raise ValueError("行情时间戳与价格数量不一致")
+    quote_day = validate_quote((result.get("meta") or {}).get("regularMarketTime"), symbol=symbol, now=now)
+    closes = PriceHistory(closes, observed_at=quote_day.isoformat(), bar_date=observed.isoformat())
     _checked_mean(closes, minimum)
     live_raw = (result.get("meta") or {}).get("regularMarketPrice")
     try:
@@ -180,11 +192,19 @@ def _checked_mean(closes: list[float], periods: int) -> float:
     return sum(window) / periods
 
 
-def _history_closes(hist) -> list[float]:
+class PriceHistory(list):
+    def __init__(self, values, *, observed_at: str, bar_date: str | None = None):
+        super().__init__(values)
+        self.observed_at = observed_at
+        self.bar_date = bar_date or observed_at
+
+
+def _history_closes(hist, *, symbol: str, interval: str = "1wk") -> list[float]:
     if hist is None or hist.empty or "Close" not in hist:
         raise ValueError("yfinance 返回空行情")
-    return [float(value) if value is not None else float("nan")
-            for value in hist["Close"].tolist()]
+    observed = validate_history(hist.index, symbol=symbol, interval=interval, now=datetime.now(UTC))
+    return PriceHistory([float(value) if value is not None else float("nan")
+                         for value in hist["Close"].tolist()], observed_at=observed.isoformat())
 
 
 def _build_signal(
@@ -238,6 +258,7 @@ def _build_signal(
         signal=signal,
         data_source=data_source,
         sma_250d=sma_250d,
+        observed_at=getattr(closes, "observed_at", None),
     )
 
 
@@ -256,7 +277,7 @@ def fetch_one(holding: Holding) -> StockSignal:
     daily_source = ""
     if buy_strategy(holding.ticker).dca_line == "250d":
         try:
-            daily_closes = _history_closes(_yf_daily_history(yf.Ticker(symbol)))
+            daily_closes = _history_closes(_yf_daily_history(yf.Ticker(symbol)), symbol=symbol, interval="1d")
             _checked_mean(daily_closes, 250)
             daily_source = "+daily:yfinance"
         except Exception as exc:  # noqa: BLE001
@@ -271,7 +292,12 @@ def fetch_one(holding: Holding) -> StockSignal:
     try:
         ticker = yf.Ticker(symbol)
         hist = _yf_history(ticker)
-        closes = _history_closes(hist)
+        closes = _history_closes(hist, symbol=symbol)
+        metadata = ticker.history_metadata
+        if not isinstance(metadata, dict):
+            raise ValueError("行情缺少报价时间元数据")
+        closes.observed_at = validate_quote(metadata.get("regularMarketTime"), symbol=symbol,
+                                           now=datetime.now(UTC)).isoformat()
         try:
             live_price: float | None = float(ticker.fast_info.last_price)
         except Exception:  # noqa: BLE001 — 取不到 live 价是已知降级路径

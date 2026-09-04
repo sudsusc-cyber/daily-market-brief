@@ -137,6 +137,7 @@ def apply_morningstar_fair_values(
             reason = failures.get(ticker, "公开 Morningstar 来源本次不可用")
             updated[ticker] = replace(
                 display,
+                status="source_unavailable",
                 intrinsic_value=None,
                 implied_return=None,
                 hurdle_rate=0.10,
@@ -154,6 +155,9 @@ def apply_morningstar_fair_values(
         warning = (fair_value.warning,) if fair_value.warning else ()
         updated[ticker] = replace(
             display,
+            status="not_due" if fair_value.stale_cache else "current",
+            verified_at=fair_value.retrieved_at,
+            data_note=(f"{ticker} 沿用 {fair_value.retrieved_at[:10]} 核验值" if fair_value.stale_cache else None),
             intrinsic_value=fair_value.fair_value,
             implied_return=implied_return,
             hurdle_rate=0.10,

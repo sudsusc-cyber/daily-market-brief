@@ -39,11 +39,11 @@ class TestIsUsMarketOpen:
         # 11/27 周五是半日交易,M6 仍当作开盘日(只跳全休)
         assert is_us_market_open(date(2026, 11, 27)) is True
 
-    def test_next_year_new_year_observed_on_current_year_december_31(self) -> None:
-        """次年元旦为周六时，NYSE 在本年最后一个周五休市。"""
-        assert is_us_market_open(date(2021, 12, 31)) is False
-        assert is_us_market_open(date(2027, 12, 31)) is False
-        assert is_us_market_open(date(2032, 12, 31)) is False
+    def test_saturday_new_year_has_no_friday_observance(self) -> None:
+        """NYSE official calendar: no observed holiday for Saturday Jan 1."""
+        assert is_us_market_open(date(2021, 12, 31)) is True
+        assert is_us_market_open(date(2027, 12, 31)) is True
+        assert is_us_market_open(date(2032, 12, 31)) is True
 
 
 class TestShouldSendToday:
@@ -131,12 +131,13 @@ class TestComputeUsHolidays:
         assert date(2022, 6, 20) in compute_us_holidays(2022)  # 6/19 周日 → 6/20 观察
 
     def test_count_per_year(self) -> None:
-        # 2022 起每年应该是 10 个节假日
+        # Saturday New Year's Day has no observed weekday holiday.
         for year in range(2022, 2030):
-            assert len(compute_us_holidays(year)) == 10, f"年份 {year} 节假日数错"
+            expected = 9 if date(year, 1, 1).weekday() == 5 else 10
+            assert len(compute_us_holidays(year)) == expected, f"年份 {year} 节假日数错"
 
     def test_far_future_year_runs(self) -> None:
         # 2050 年也能算出来,不会崩
         out = compute_us_holidays(2050)
         assert isinstance(out, set)
-        assert len(out) == 10
+        assert len(out) == 9
