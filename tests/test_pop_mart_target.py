@@ -14,6 +14,7 @@ from src.valuation.pop_mart import (
     RECOVERY_NAME,
     STATE_NAME,
     AnalystTarget,
+    Candidate,
     PopMartTargetProvider,
     load_target,
     parse_article,
@@ -230,14 +231,17 @@ def test_discovery_only_reads_matching_broker_articles(monkeypatch):
     provider = PopMartTargetProvider()
     html = '<a href="/tc/stocks/analysis/stock-aafn-con/09992/AAFN/NOW.123/hk-stock-news">大摩下调泡泡瑪特目标价</a><a href="/tc/stocks/analysis/stock-aafn-con/09992/AAFN/NOW.456/hk-stock-news">汇丰下调泡泡瑪特目标价</a>'
     monkeypatch.setattr(provider, "_get", lambda *args, **kwargs: html)
-    assert provider._discover("https://www.aastocks.com/example", deadline=time.monotonic() + 1) == ["https://secure.aastocks.com/tc/mobile/News.aspx?NewsID=NOW.123&NewsSource=HK6"]
+    assert provider._discover("https://www.aastocks.com/example", deadline=time.monotonic() + 1) == [Candidate("https://secure.aastocks.com/tc/mobile/News.aspx?NewsID=NOW.123&NewsSource=HK6")]
 
 
 def test_provider_requires_two_agreeing_full_article_reads(monkeypatch):
     import threading
 
     provider = PopMartTargetProvider()
-    monkeypatch.setattr(provider, "_discover", lambda *args, **kwargs: [SINA])
+    monkeypatch.setattr("src.valuation.pop_mart._DISCOVERY", (
+        "https://www.aastocks.com/", "https://stock.finance.sina.com.cn/",
+    ))
+    monkeypatch.setattr(provider, "_discover", lambda url, **kwargs: [SINA] if "sina" in url else [AA])
     counts, lock = {}, threading.Lock()
 
     def get(url, **kwargs):
