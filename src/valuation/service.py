@@ -24,6 +24,8 @@ from src.valuation.morningstar import (
     refresh_fair_values,
 )
 from src.valuation.policy import POLICIES
+from src.valuation.pop_mart import TICKER as POP_MART_TICKER
+from src.valuation.pop_mart import load_target, refresh_target, target_display
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +211,7 @@ def cached_morningstar_displays(
         prices=prices,
         baseline_path=config_dir / "morningstar_verified_snapshot.json",
     )
-    return apply_morningstar_fair_values(
+    displays = apply_morningstar_fair_values(
         {
             ticker: ValuationDisplay(ticker=ticker, status="not_due", value_label="公允价值")
             for ticker in POLICIES
@@ -221,6 +223,10 @@ def cached_morningstar_displays(
         failures={},
         prices=prices,
     )
+    pop_mart = load_target(state_dir=state_dir, config_dir=config_dir, checked_at=checked_at)
+    if pop_mart is not None:
+        displays[POP_MART_TICKER] = target_display(pop_mart, price=prices.get(POP_MART_TICKER), retained=True)
+    return displays
 
 
 def prepare_valuation_displays(
@@ -243,6 +249,12 @@ def prepare_valuation_displays(
     # 晨星模式的展示值只依赖公开公允价值与现价。旧的逐股 DCF/SOTP 底稿
     # 最终会被完整覆盖，因此不再下载财报或调用 DeepSeek 做 14 次无效复核。
     if morningstar_provider is not None:
+        # Fixed, explicitly approved exception. Refresh before the slower
+        # Morningstar stage so the outer watchdog can recover this saved value.
+        pop_mart = refresh_target(
+            state_dir=state_dir, config_dir=config_dir, checked_at=checked_at,
+            price=prices.get(POP_MART_TICKER),
+        ) if POP_MART_TICKER in prices else None
         displays = {
             ticker: ValuationDisplay(
                 ticker=ticker,
@@ -260,6 +272,7 @@ def prepare_valuation_displays(
             prices=prices,
             checked_at=checked_at,
             baseline_path=config_dir / "morningstar_verified_snapshot.json",
+            excluded_tickers=frozenset({POP_MART_TICKER}),
         )
         displays = apply_morningstar_fair_values(
             displays,
@@ -267,6 +280,8 @@ def prepare_valuation_displays(
             failures=fair_value_failures,
             prices=prices,
         )
+        if pop_mart is not None:
+            displays[POP_MART_TICKER] = pop_mart
         if qqqm_display is not None:
             displays["QQQM"] = qqqm_display
         displays = enforce_jump_guard(displays, state_dir=state_dir)

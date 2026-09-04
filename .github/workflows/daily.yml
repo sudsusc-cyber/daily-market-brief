@@ -105,6 +105,18 @@ jobs:
       - name: Merge verified Morningstar history
         run: uv run python -m scripts.morningstar_cache normalize
 
+      - name: Restore isolated Pop Mart analyst target
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/pop_mart_analyst_recovery.json
+          key: pop-mart-target-read-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            pop-mart-target-
+
+      - name: Merge verified Pop Mart target history
+        run: uv run python -m scripts.pop_mart_cache
+
       - name: Preserve daily QQQM snapshot before independent recovery
         run: uv run python -m scripts.qqqm_cache preserve
 
@@ -194,6 +206,13 @@ jobs:
         with:
           path: state/morningstar_fair_values.json
           key: morningstar-verified-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save isolated Pop Mart analyst target
+        if: ${{ always() && github.ref == 'refs/heads/main' && hashFiles('.delivery-receipt.json') != '' && hashFiles('state/pop_mart_analyst_recovery.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/pop_mart_analyst_recovery.json
+          key: pop-mart-target-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Save verified QQQM snapshot
         if: ${{ always() && github.ref == 'refs/heads/main' && hashFiles('.delivery-receipt.json') != '' && steps.qqqm-cache.outputs.valid == 'true' }}
