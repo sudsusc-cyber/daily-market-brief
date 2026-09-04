@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "User-approved Pop Mart exception: Morgan Stanley HKD target price, not Morningstar fair value. Two public full articles each read twice on 2026-09-04. Publication date is retained; retrieval date is not a report revision date.",
+  "description": "User-approved Pop Mart exception: Morgan Stanley HKD target price, not Morningstar fair value. Four public full articles each read twice on 2026-09-04. Three channels confirm HKD 203 on Aug 21; ETNet HKD 214 on Aug 18 is older and must not override it. Publication date is retained; retrieval date is not a report revision date. MoneyDJ evidence is scoped to its unambiguous Morgan Stanley paragraph.",
   "observations": [
     {
       "target_price": 203.0,
@@ -19,6 +19,28 @@
       "verified_at": "2026-09-04T13:23:26.078182+00:00",
       "source_url": "https://finance.sina.com.cn/stock/usstock/c/2026-08-21/doc-ininztwt6444665.shtml",
       "evidence_sha256": "6a05b734bda06308f3cd9b04efeef96aff209befbd4acaf8c05a862d87b3e55c",
+      "ticker": "9992.HK",
+      "currency": "HKD",
+      "institution": "Morgan Stanley",
+      "value_type": "analyst_target_price"
+    },
+    {
+      "target_price": 203.0,
+      "published_at": "2026-08-21T15:05:00+08:00",
+      "verified_at": "2026-09-04T13:43:34.660573+00:00",
+      "source_url": "https://m.moneydj.com/f1a.aspx?a=4498ccbb-7bcc-449f-ad17-e94ac1404692",
+      "evidence_sha256": "58f3d5458dc7104f953d50fc6e608e1d9a473a2349711bd49d2701f1ea61f813",
+      "ticker": "9992.HK",
+      "currency": "HKD",
+      "institution": "Morgan Stanley",
+      "value_type": "analyst_target_price"
+    },
+    {
+      "target_price": 214.0,
+      "published_at": "2026-08-18T08:52:00+08:00",
+      "verified_at": "2026-09-04T13:43:34.660573+00:00",
+      "source_url": "https://www.etnet.com.hk/www/tc/stocks/realtime/quote_news_detail.php?newsid=20260818992&section=research&code=9992",
+      "evidence_sha256": "936e993490da1fe0371396fc98b41bf03a4e4809c3e8810218d59ed64a531801",
       "ticker": "9992.HK",
       "currency": "HKD",
       "institution": "Morgan Stanley",

@@ -12,12 +12,13 @@ import logging
 import math
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -32,20 +33,36 @@ BACKUP_NAME = "pop_mart_analyst_target_backup.json"
 RECOVERY_NAME = "pop_mart_analyst_recovery.json"
 BASELINE_NAME = "pop_mart_analyst_target.json"
 HK = ZoneInfo("Asia/Hong_Kong")
-_HOSTS = {"finance.sina.com.cn", "secure.aastocks.com"}
+_HOSTS = {"finance.sina.com.cn", "secure.aastocks.com", "m.moneydj.com", "www.etnet.com.hk"}
 _MOBILE = "https://secure.aastocks.com/tc/mobile/News.aspx?NewsID={}&NewsSource=HK6"
+_MONEYDJ = "https://m.moneydj.com/f1a.aspx?a=4498ccbb-7bcc-449f-ad17-e94ac1404692"
+_ETNET = "https://www.etnet.com.hk/www/tc/stocks/realtime/quote_news_detail.php?newsid=20260818992&section=research&code=9992"
 _SEED_ARTICLES = (
     _MOBILE.format("NOW.1539842"),
     "https://finance.sina.com.cn/stock/usstock/c/2026-08-21/doc-ininztwt6444665.shtml",
+    _MONEYDJ,
+    _ETNET,
 )
 _DISCOVERY = (
     "https://www.aastocks.com/tc/stocks/analysis/stock-aafn/09992/0/hk-stock-news/1",
     "https://stock.finance.sina.com.cn/hkstock/quotes/09992.html",
+    "https://m.moneydj.com/indexPart/search_news.aspx?k=" + quote("泡泡瑪特"),
+    "https://www.etnet.com.hk/www/tc/stocks/realtime/quote_news_list.php?section=research&code=9992",
 )
 _POP = re.compile(r"泡泡[玛瑪]特")
 _BROKER = re.compile(r"摩根士丹利|大摩|Morgan Stanley", re.I)
-_OTHER_BROKER = re.compile(r"摩根大通|摩通|小摩|高盛|美銀|美银|滙豐|汇丰|瑞銀|瑞银|富瑞|花旗|野村|交銀|交银")
+_OTHER_BROKER = re.compile(r"摩根大通|摩通|小摩|高盛|美銀|美银|滙豐|匯豐|汇丰|瑞銀|瑞银|富瑞|花旗|野村|交銀|交银")
 _TRANS = str.maketrans("標價從調維將為於幣給瑪", "标价从调维将为于币给玛")
+
+
+class NoMatchingTargetError(ValueError):
+    """A complete article discusses other brokers, not the chosen estimator."""
+
+
+@dataclass(frozen=True)
+class Candidate:
+    url: str
+    published_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,7 +91,62 @@ def _allowed_article(url: str) -> bool:
         return False
     if parsed.hostname == "finance.sina.com.cn":
         return bool(re.search(r"/\d{4}-\d{2}-\d{2}/doc-[a-z0-9]+\.shtml$", parsed.path))
-    return parsed.path == "/tc/mobile/News.aspx" and bool(re.search(r"NewsID=NOW\.\d+", parsed.query))
+    query = parse_qs(parsed.query)
+    if parsed.hostname == "secure.aastocks.com":
+        return parsed.path == "/tc/mobile/News.aspx" and bool(re.fullmatch(r"NOW\.\d+", query.get("NewsID", [""])[0]))
+    if parsed.hostname == "m.moneydj.com":
+        return parsed.path == "/f1a.aspx" and bool(re.fullmatch(r"[a-f0-9-]{36}", query.get("a", [""])[0]))
+    return (parsed.path == "/www/tc/stocks/realtime/quote_news_detail.php"
+            and query.get("code") == ["9992"] and query.get("section") == ["research"]
+            and bool(re.fullmatch(r"\d+", query.get("newsid", [""])[0])))
+
+
+def _channel(url: str) -> str:
+    host = urlparse(url).hostname or ""
+    return {"secure.aastocks.com": "aastocks", "www.aastocks.com": "aastocks",
+            "finance.sina.com.cn": "sina", "stock.finance.sina.com.cn": "sina",
+            "m.moneydj.com": "moneydj", "www.etnet.com.hk": "etnet"}.get(host, "")
+
+
+def _source_day(value: str) -> str:
+    return _date(value).astimezone(HK).date().isoformat()
+
+
+def _etnet_target(soup: BeautifulSoup) -> float:
+    body = soup.select_one("#NewsContent")
+    if body is None:
+        raise ValueError("ETNet article body missing")
+    table = body.find("table")
+    if table is None:
+        raise NoMatchingTargetError("not an ETNet broker-target table")
+    rows = table.find_all("tr")
+    if not rows:
+        raise ValueError("empty ETNet target table")
+    headers = [re.sub(r"\s+", "", cell.get_text()) for cell in rows[0].find_all(["td", "th"])]
+    if len(headers) != 5 or "股份" not in headers[0] or "券商" not in headers[1] or "目標價" not in headers[2] or "元" not in headers[2]:
+        raise ValueError("ETNet table columns changed")
+    issuer, numbers = "", set()
+    # Only the first/latest table. Later tables are explicitly historical.
+    for row in rows[1:]:
+        cells = row.find_all(["td", "th"], recursive=False)
+        if len(cells) != 5 or any(cell.get("rowspan") or cell.get("colspan") for cell in cells):
+            issuer = ""  # do not carry identity across a layout we cannot validate
+            continue
+        texts = [re.sub(r"\s+", "", cell.get_text()) for cell in cells]
+        if texts[0]:
+            issuer = texts[0]
+        if not _POP.search(issuer) or not re.search(r"\(0?9992\)", issuer) or not _BROKER.fullmatch(texts[1]):
+            continue
+        target = texts[2].translate(_TRANS)
+        match = re.fullmatch(r"(?:\d+(?:\.\d+)?→|维持|首予)?(\d+(?:\.\d+)?)", target)
+        if not match:
+            raise ValueError("ambiguous ETNet HKD target cell")
+        numbers.add(float(match.group(1)))
+    if not numbers:
+        raise NoMatchingTargetError("ETNet latest table has no Morgan Stanley Pop Mart target")
+    if len(numbers) != 1:
+        raise ValueError("conflicting ETNet target rows")
+    return next(iter(numbers))
 
 
 def validate_target(value: AnalystTarget, *, checked_at: datetime) -> AnalystTarget:
@@ -114,14 +186,15 @@ def parse_article(url: str, html: str, *, checked_at: datetime) -> AnalystTarget
     if not _allowed_article(url):
         raise ValueError("unapproved article URL")
     soup = BeautifulSoup(html, "lxml")
-    if urlparse(url).hostname == "finance.sina.com.cn":
+    channel = _channel(url)
+    if channel == "sina":
         title_node = soup.find("h1")
         body_node = soup.select_one("#artibody")
         published_node = soup.select_one('meta[property="article:published_time"]')
         if not title_node or not body_node or not published_node:
             raise ValueError("Sina article/date missing")
         published = _date(str(published_node.get("content", "")))
-    else:
+    elif channel == "aastocks":
         title_node = soup.select_one(".quote_table_header_text")
         body_node = soup.select_one("#lblContent")
         container = soup.select_one('[id$="pNewsContent"] .padding2')
@@ -132,9 +205,48 @@ def parse_article(url: str, html: str, *, checked_at: datetime) -> AnalystTarget
         if not match:
             raise ValueError("AASTOCKS publication timestamp missing")
         published = datetime.fromisoformat(match.group()).replace(tzinfo=HK)
+    elif channel == "moneydj":
+        title_node = soup.select_one("h1#NewsHD")
+        body_node = soup.select_one("#f1a_newsData")
+        metadata = []
+        for script in soup.select('script[type="application/ld+json"]'):
+            try:
+                item = json.loads(script.get_text())
+                if isinstance(item, dict) and item.get("@type") == "NewsArticle":
+                    metadata.append(item)
+            except (ValueError, TypeError):
+                continue
+        if not title_node or not body_node or len(metadata) != 1:
+            raise ValueError("MoneyDJ article/date missing")
+        published = _date(str(metadata[0].get("datePublished", "")))
+        if metadata[0].get("headline") != title_node.get_text(strip=True):
+            raise ValueError("MoneyDJ headline metadata mismatch")
+    else:
+        title_node = soup.select_one("h1.ArticleHdr")
+        body_node = soup.select_one("#NewsContent")
+        date_node = soup.select_one('.DivArticleList[itemtype="https://schema.org/Article"] .date')
+        if not title_node or not body_node or not date_node:
+            raise ValueError("ETNet article/date missing")
+        published = datetime.strptime(date_node.get_text(strip=True), "%d/%m/%Y %H:%M").replace(tzinfo=HK)
     title = title_node.get_text(" ", strip=True)
     body = body_node.get_text(" ", strip=True)
-    if not _POP.search(title) or not _BROKER.search(title) or _OTHER_BROKER.search(title + body):
+    if channel == "etnet" and body_node.find("table") is not None:
+        target = _etnet_target(soup)
+        return validate_target(AnalystTarget(
+            target, published.isoformat(), checked_at.isoformat(), url,
+            hashlib.sha256((title + "\n" + body).encode()).hexdigest(),
+        ), checked_at=checked_at)
+    if channel == "moneydj":
+        if not _POP.search(title) or not re.search(r"目[标標][价價]", title):
+            raise NoMatchingTargetError("MoneyDJ article is not a Pop Mart target update")
+        # Multi-broker articles are common. Only a full paragraph explicitly
+        # identifying BOTH Morgan Stanley and Pop Mart may supply the target.
+        sections = [part for part in body_node.get_text("\n", strip=True).splitlines()
+                    if _BROKER.search(part) and _POP.search(part) and not _OTHER_BROKER.search(part)]
+        if not sections:
+            raise NoMatchingTargetError("no unambiguous Morgan Stanley Pop Mart paragraph")
+        body = "\n".join(sections)
+    elif not _POP.search(title) or not _BROKER.search(title) or _OTHER_BROKER.search(title + body):
         raise ValueError("not an unambiguous Morgan Stanley Pop Mart report")
     if not re.search(r"目[标標][价價]", title) or not _BROKER.search(body) or not _POP.search(body):
         raise ValueError("headline/body security and broker do not match")
@@ -198,10 +310,11 @@ def save_target(value: AnalystTarget, *, state_dir: Path) -> None:
 
 
 class PopMartTargetProvider:
-    """Bounded daily discovery on two free channels; verify full article text."""
+    """Independent rolling discovery/read pipelines; one failure cannot starve peers."""
 
     def __init__(self, *, budget_seconds: float = 24):
         self.budget_seconds = budget_seconds
+        self.diagnostic: dict = {}
 
     def _get(self, url: str, *, deadline: float) -> str:
         remaining = deadline - time.monotonic()
@@ -222,9 +335,42 @@ class PopMartTargetProvider:
             encoding = charset.group(1).decode("ascii") if charset else "utf-8"
             return raw.decode(encoding, errors="replace")
 
-    def _discover(self, url: str, *, deadline: float) -> list[str]:
+    def _discover(self, url: str, *, deadline: float) -> list[Candidate]:
         html = self._get(url, deadline=deadline)
+        channel = _channel(url)
+        if channel == "moneydj":
+            rows = json.loads(html)
+            if not isinstance(rows, list):
+                raise ValueError("MoneyDJ search response changed")
+            found = []
+            for row in rows[:50]:
+                title = str(row.get("Title", ""))
+                if not _POP.search(title) or not re.search(r"目[标標][价價]", title):
+                    continue
+                candidate = urljoin(url, "/" + str(row.get("Url", "")).lstrip("/"))
+                if _allowed_article(candidate):
+                    date = datetime.fromisoformat(str(row["Date"]))
+                    date = date.replace(tzinfo=HK) if date.tzinfo is None else date
+                    found.append(Candidate(candidate, date.isoformat()))
+            return sorted(found, key=lambda row: row.published_at, reverse=True)[:8]
         soup = BeautifulSoup(html, "lxml")
+        if channel == "etnet":
+            rows = soup.select("div.DivArticleList.dotLine")
+            if not rows:
+                raise ValueError("ETNet research listing missing")
+            found = []
+            for row in rows:
+                link = row.select_one('a[href*="quote_news_detail.php"][href*="newsid="]')
+                date_node = row.select_one(".date")
+                if not link or not date_node:
+                    continue
+                candidate = urljoin(url, str(link.get("href", "")))
+                if _allowed_article(candidate):
+                    date = datetime.strptime(date_node.get_text(strip=True), "%d/%m/%Y %H:%M").replace(tzinfo=HK)
+                    found.append(Candidate(candidate, date.isoformat()))
+            if not found:
+                raise ValueError("ETNet research dates/links missing")
+            return sorted(set(found), key=lambda row: row.published_at, reverse=True)
         found = []
         news_found = False
         for link in soup.find_all("a", href=True):
@@ -237,48 +383,113 @@ class PopMartTargetProvider:
                 candidate = _MOBILE.format(match.group(1)) if match else None
             news_found |= bool(candidate and title.strip())
             if candidate and _POP.search(title) and _BROKER.search(title):
-                found.append(candidate)
+                date_match = re.search(r"/(\d{4}-\d{2}-\d{2})/", candidate)
+                published = date_match.group(1) + "T00:00:00+08:00" if date_match else None
+                found.append(Candidate(candidate, published))
         if not news_found:
             raise ValueError("stock news listing missing; cannot confirm discovery")
         return list(dict.fromkeys(found))[:6]
 
     def fetch(self, *, known: AnalystTarget | None, checked_at: datetime) -> tuple[list[AnalystTarget], bool]:
         deadline = time.monotonic() + self.budget_seconds
-        pool = ThreadPoolExecutor(max_workers=4)
-        discovery_ok = False
-        candidates = ([known.source_url] if known else []) + list(_SEED_ARTICLES)
-        values = []
+        lock = threading.Lock()
+        accepting = True
+        values: list[AnalystTarget] = []
+        reports: dict[str, dict] = {}
+        unresolved: list[Candidate] = []
+        inflight: dict[str, list[Candidate]] = {}
+
+        def channel_worker(discovery_url: str) -> None:
+            channel = _channel(discovery_url)
+            report = {"discovery_ok": False, "completed": False, "read": 0, "no_match": 0, "errors": []}
+            try:
+                discovered = self._discover(discovery_url, deadline=deadline)
+                # Retain support for simple injected test providers.
+                discovered = [Candidate(row) if isinstance(row, str) else row for row in discovered]
+                report["discovery_ok"] = True
+            except Exception as exc:  # noqa: BLE001
+                discovered = []
+                report["errors"].append(f"discovery: {str(exc)[:160]}")
+            # Dated archives let the backup catch up after an outage without
+            # re-reading every historical report at each scheduled run.
+            relevant = [row for row in discovered if not known or not row.published_at
+                        or _source_day(row.published_at) >= _source_day(known.published_at)]
+            report["discovered"] = len(relevant)
+            with lock:
+                if accepting:
+                    inflight[channel] = list(relevant)
+            seeds = ([known.source_url] if known and _channel(known.source_url) == channel else [])
+            seeds += [url for url in _SEED_ARTICLES if _channel(url) == channel]
+            candidates = {row.url: row for row in relevant}
+            for url in seeds:
+                candidates.setdefault(url, Candidate(url))
+            visited: set[str] = set()
+            capped = False
+            for index, candidate in enumerate(candidates.values()):
+                if index >= 8 or time.monotonic() >= deadline:
+                    capped = True
+                    with lock:
+                        if accepting:
+                            unresolved.extend(row for row in relevant if row.url not in visited)
+                    break
+                visited.add(candidate.url)
+                try:
+                    first = parse_article(candidate.url, self._get(candidate.url, deadline=deadline), checked_at=checked_at)
+                    second = parse_article(candidate.url, self._get(candidate.url, deadline=deadline), checked_at=checked_at)
+                    if (first.target_price, first.published_at) != (second.target_price, second.published_at):
+                        raise ValueError("article changed between verification reads")
+                    if candidate.published_at and _source_day(candidate.published_at) != _source_day(second.published_at):
+                        raise ValueError("discovery and article publication dates disagree")
+                    with lock:
+                        if accepting:
+                            values.append(second)
+                    report["read"] += 1
+                except NoMatchingTargetError:
+                    report["no_match"] += 1
+                except Exception as exc:  # noqa: BLE001
+                    report["errors"].append(f"{candidate.url}: {str(exc)[:160]}")
+                    # An unavailable old seed must not veto successful updates
+                    # from other channels; an unreadable newly discovered report
+                    # remains a freshness caveat until peers cover that date.
+                    if candidate.url in {row.url for row in relevant}:
+                        with lock:
+                            if accepting:
+                                unresolved.append(candidate)
+                finally:
+                    with lock:
+                        if accepting:
+                            inflight[channel] = [row for row in inflight.get(channel, []) if row.url != candidate.url]
+            report["completed"] = not capped and time.monotonic() < deadline
+            with lock:
+                if accepting:
+                    reports[channel] = report
+
+        # Each channel starts reading as soon as its own discovery completes.
+        # Partial verified results are retained even if another channel hangs.
+        def run_channel(url: str) -> None:
+            try:
+                channel_worker(url)
+            except Exception as exc:  # noqa: BLE001
+                with lock:
+                    if accepting:
+                        reports[_channel(url)] = {"discovery_ok": False, "completed": False,
+                                                  "errors": [str(exc)[:160]]}
+
+        pool = ThreadPoolExecutor(max_workers=len(_DISCOVERY))
         try:
-            discoveries = [pool.submit(self._discover, url, deadline=deadline) for url in _DISCOVERY]
-            done, pending = wait(discoveries, timeout=max(0, deadline - time.monotonic()))
-            for future in done:
-                try:
-                    urls = future.result()
-                    discovery_ok = True
-                    candidates.extend(urls)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("pop_mart.discovery_failed reason=%s", exc)
+            futures = [pool.submit(run_channel, url) for url in _DISCOVERY]
+            _, pending = wait(futures, timeout=max(0, deadline - time.monotonic()))
             for future in pending:
                 future.cancel()
-
-            def read(url: str) -> AnalystTarget:
-                first = parse_article(url, self._get(url, deadline=deadline), checked_at=checked_at)
-                second = parse_article(url, self._get(url, deadline=deadline), checked_at=checked_at)
-                if (first.target_price, first.published_at) != (second.target_price, second.published_at):
-                    raise ValueError("article changed between verification reads")
-                return second
-
-            reads = [pool.submit(read, url) for url in list(dict.fromkeys(candidates))[:8]]
-            done, pending = wait(reads, timeout=max(0, deadline - time.monotonic()))
-            for future in done:
-                try:
-                    values.append(future.result())
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("pop_mart.article_rejected reason=%s", exc)
-                    discovery_ok = False
-            for future in pending:
-                future.cancel()
-                discovery_ok = False
+            with lock:
+                accepting = False
+                values = list({(row.source_url, row.published_at, row.target_price): row for row in values}.values())
+                unresolved = list(dict.fromkeys(unresolved + [row for rows in inflight.values() for row in rows]))
+                latest = max((_source_day(row.published_at) for row in values), default="")
+                unresolved_newer = any(not row.published_at or _source_day(row.published_at) > latest for row in unresolved)
+                discovery_ok = any(row["discovery_ok"] and row["completed"] for row in reports.values()) and not unresolved_newer
+                self.diagnostic = {"channels": reports, "unresolved_reports": [asdict(row) for row in unresolved],
+                                   "timed_out_channels": len(pending), "discovery_ok": discovery_ok}
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
         return values, discovery_ok
@@ -322,8 +533,25 @@ def refresh_target(*, state_dir: Path, config_dir: Path, checked_at: datetime,
         else:
             logger.warning("pop_mart.conflicting_or_older_report retained_last_verified=true")
     if selected is None:
+        _save_source_diagnostic(state_dir, checked_at, provider, values, None, True)
         return None
     save_target(selected, state_dir=state_dir)
+    _save_source_diagnostic(state_dir, checked_at, provider, values, selected, retained)
     logger.info("pop_mart.selected target=%.2f published=%s retained=%s source=%s",
                 selected.target_price, selected.published_at, retained, selected.source_url)
     return target_display(selected, price=price, retained=retained)
+
+
+def _save_source_diagnostic(state_dir: Path, checked_at: datetime, provider: PopMartTargetProvider,
+                            values: list[AnalystTarget], selected: AnalystTarget | None, retained: bool) -> None:
+    payload = {"checked_at": checked_at.isoformat(), "fetch": getattr(provider, "diagnostic", {}),
+               "observations": [asdict(row) for row in values],
+               "selected": asdict(selected) if selected else None, "retained": retained}
+    path = state_dir / "pop_mart_source_diagnostic.json"
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, path)
+    except (OSError, TypeError, ValueError) as exc:
+        logger.warning("pop_mart.diagnostic_write_failed reason=%s", exc)

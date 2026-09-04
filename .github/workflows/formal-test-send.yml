@@ -108,6 +108,9 @@ jobs:
         env:
           QQQM_VERIFIED_SEED: ${{ inputs.qqqm_verified_seed }}
 
+      - name: Clear previous Pop Mart source diagnostic
+        run: rm -f state/pop_mart_source_diagnostic.json
+
       - name: Send formal test email
         if: ${{ !inputs.qqqm_check_only }}
         run: uv run python src/main.py
@@ -147,6 +150,14 @@ jobs:
         with:
           name: morningstar-source-decisions
           path: state/morningstar_diagnostic.json
+          retention-days: 30
+
+      - name: Upload Pop Mart source decisions
+        if: ${{ always() && !inputs.qqqm_check_only && hashFiles('state/pop_mart_source_diagnostic.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pop-mart-source-decisions
+          path: state/pop_mart_source_diagnostic.json
           retention-days: 30
 
       - name: Save verified Morningstar history

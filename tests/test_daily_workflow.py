@@ -78,3 +78,14 @@ def test_pop_mart_recovery_never_overwrites_daily_history_and_saves_only_on_main
         assert "github.ref == 'refs/heads/main'" in save
         assert "hashFiles('.delivery-receipt.json') != ''" in save
         assert "path: state/pop_mart_analyst_recovery.json" in save
+
+
+def test_pop_mart_source_diagnostics_are_current_run_only_and_retained():
+    for name, send in (("daily.yml", "Send daily market brief"), ("formal-test-send.yml", "Send formal test email")):
+        workflow = _WORKFLOW.with_name(name).read_text(encoding="utf-8")
+        clear = workflow.index("run: rm -f state/pop_mart_source_diagnostic.json")
+        assert clear < workflow.index("- name: " + send)
+        upload = workflow.split("- name: Upload Pop Mart source decisions", 1)[1].split("- name:", 1)[0]
+        assert "always()" in upload
+        assert "path: state/pop_mart_source_diagnostic.json" in upload
+        assert "retention-days: 30" in upload
