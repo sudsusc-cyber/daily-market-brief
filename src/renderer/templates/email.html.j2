@@ -273,12 +273,12 @@
                       {% if valuation.implied_return is not none %}
                     <div class="holding-implied-return" style="font-size:8.5px; color:{{ color_accent if valuation.is_attractive else color_muted }}; margin-top:4px; line-height:1.1; letter-spacing:0.08em; white-space:nowrap;">{{ valuation.return_label }}&nbsp;{{ valuation.implied_return | rate }}</div>
                       {% else %}
-                    <div class="holding-implied-return" style="font-size:8.5px; color:{{ color_muted }}; margin-top:4px; line-height:1.1; letter-spacing:0.08em; white-space:nowrap;">{{ valuation.return_label }}&nbsp;待更新</div>
+                    <div class="holding-implied-return" style="font-size:8.5px; color:{{ color_muted }}; margin-top:4px; line-height:1.1; letter-spacing:0.08em; white-space:nowrap;">&nbsp;</div>
                       {% endif %}
                     {% elif s.holding.asset_type == 'etf' %}
-                    <div class="holding-valuation-unavailable" style="font-size:13.5px; color:{{ color_faint }}; line-height:1.1;">—</div>
+                    <div class="holding-valuation-unavailable" style="font-size:13.5px; color:{{ color_faint }}; line-height:1.1;">&nbsp;</div>
                     {% else %}
-                    <div class="holding-valuation-pending" style="font-size:10.5px; color:{{ color_muted }}; line-height:1.35; white-space:nowrap;">待更新</div>
+                    <div class="holding-valuation-pending" style="font-size:13.5px; color:{{ color_muted }}; line-height:1.1; white-space:nowrap;">&nbsp;</div>
                     {% endif %}
                   </td>
                   {% endif %}
@@ -311,6 +311,7 @@
                   行情：Yahoo Finance；250 日指交易日；小字为距参考线幅度。
                   {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：个股 Morningstar；QQQM 乐观情景。IRR＝公允价值 ÷ 现价 − 1（差额收益率，非年化、不含息）。仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
                   {% if show_valuations %}{% set notes = valuations.values() | selectattr('data_note') | map(attribute='data_note') | list %}{% if notes %}<br />{{ notes | join('；') }}。{% endif %}{% endif %}
+                  {% if show_valuations %}{% set missing = namespace(tickers=[]) %}{% for s in signals %}{% set v = valuations.get(s.holding.ticker) %}{% if s.last_close is not none and (not v or v.intrinsic_value is none) %}{% set missing.tickers = missing.tickers + [s.holding.ticker] %}{% endif %}{% endfor %}{% if missing.tickers %}<br />公允价值未核验：{{ missing.tickers | join('、') }}；对应数值及 IRR 暂留空。{% endif %}{% endif %}
                 </td>
               </tr>
             </table>

@@ -1,14 +1,16 @@
-"""QQQM v1.7：可靠的同源输入、完整快照恢复；乐观现金流公式不变。"""
+"""QQQM v1.8：确定性计算、双读校验、可重放输入；乐观现金流公式不变。"""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
 import os
 import re
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Context, Decimal, localcontext
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -33,7 +35,12 @@ _STALE_DAYS = 14
 _FEE = 0.0015
 _DISCOUNT = 0.10
 _PE_EXIT = 24.65
-_MODEL_VERSION = "1.7"
+_MODEL_VERSION = "1.8"
+_VALUE_FIELDS = ("nav_anchor", "pe_ttm", "pe_pair_t", "pe_pair_f", "div_ttm")
+_OBSERVATION_FIELDS = ("data_date", "fwd_date", "forward_basis")
+_AUDIT_NAME = "qqqm_calculation_audit.json"
+_GROWTH_EARLY = 0.15
+_GROWTH_LATE = 0.07
 _BEIJING = ZoneInfo("Asia/Shanghai")
 _ALLOWED_DOMAINS = (
     "invesco.com",
@@ -291,6 +298,55 @@ def _scenario(
     return pv + exit_pe * earnings / ((1 + rate) ** 10)
 
 
+def calculation_record(inputs: QQQMInputs) -> dict:
+    """A price/date/transport-independent key and reproducible cash-flow ledger.
+
+    Decimal uses an explicit local context so another caller's precision or
+    rounding settings cannot move this value. No intermediate cent rounding.
+    """
+    data = asdict(inputs)
+    # Keep validation outside Decimal; reject booleans, NaN and missing values.
+    numbers = {key: _number(data, key) for key in _VALUE_FIELDS}
+    with localcontext(Context(prec=40)):
+        numeric = {key: str(Decimal(str(value)).normalize()) for key, value in numbers.items()}
+        recipe = {"formula": "qqqm_optimistic_cashflow_v1_6", "scenario": "optimistic",
+                  "discount": str(_DISCOUNT), "fee": str(_FEE), "exit_pe": str(_PE_EXIT),
+                  "growth_years_2_5": str(_GROWTH_EARLY), "growth_years_6_10": str(_GROWTH_LATE),
+                  "years": 10, "precision": 40}
+        identity = {"numeric_inputs": numeric, "forward_basis": inputs.forward_basis, "recipe": recipe}
+        key = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        nav, pe, pair_t, pair_f, div = (Decimal(numeric[field]) for field in _VALUE_FIELDS)
+        e0 = nav / pe
+        payout = div / e0
+        first = e0 * pair_t / pair_f
+        discount = 1 + Decimal(str(_DISCOUNT)) + Decimal(str(_FEE))
+        rows = []
+        for year in range(1, 11):
+            earnings = (first * (1 + Decimal(str(_GROWTH_EARLY))) ** min(year - 1, 4)
+                        * (1 + Decimal(str(_GROWTH_LATE))) ** max(year - 5, 0))
+            rows.append({"year": year, "earnings": str(earnings),
+                         "dividend_pv": str(earnings * payout / discount ** year)})
+        terminal = Decimal(str(_PE_EXIT)) * earnings / discount ** 10
+        value = sum(Decimal(row["dividend_pv"]) for row in rows) + terminal
+        return {**identity, "input_key": key, "value": str(value), "cashflows": rows,
+                "terminal_pv": str(terminal)}
+
+
+def snapshot_payload(result: QQQMResult, *, source_response: str, checked_at: datetime) -> dict:
+    return {"schema_version": 2, "model_version": _MODEL_VERSION,
+            "verified_at": checked_at.astimezone(UTC).isoformat(),
+            "inputs": asdict(result.inputs), "source_response": source_response,
+            "source_response_sha256": hashlib.sha256(source_response.encode()).hexdigest(),
+            "calculation": calculation_record(result.inputs)}
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+    temporary.replace(path)
+
+
 def calculate_qqqm(inputs: QQQMInputs) -> QQQMResult:
     """Use the optimistic case only; missing forward data is not a base-case switch."""
     try:
@@ -306,9 +362,9 @@ def calculate_qqqm(inputs: QQQMInputs) -> QQQMResult:
         raise ValueError("QQQM 前瞻盈利溢出或下溢")
 
     def value(rate: float) -> float:
-        return _scenario(e0, k, e_fwd, 0.15, 0.07, _PE_EXIT, rate)
+        return _scenario(e0, k, e_fwd, _GROWTH_EARLY, _GROWTH_LATE, _PE_EXIT, rate)
 
-    intrinsic = value(_DISCOUNT + _FEE)
+    intrinsic = float(calculation_record(inputs)["value"])
     if (not math.isfinite(intrinsic) or intrinsic <= 0
             or not math.isfinite(intrinsic / inputs.price - 1)):
         raise ValueError("QQQM 估值或差额收益率不是有限有效数")
@@ -334,7 +390,15 @@ def _from_cache(
         # Re-run all value/date/source gates, not just the cache age check.
         inputs = parse_qqqm_inputs(payload["source_response"], price=price, checked_at=checked_at,
                                    allow_daily_forward=allow_daily_forward)
-        return calculate_qqqm(inputs)
+        result = calculate_qqqm(inputs)
+        # Legacy snapshots contain source evidence only; always recompute them.
+        # New snapshots must tie to the exact input key, recipe and calculation.
+        if ("schema_version" in payload or "calculation" in payload) and (
+                payload.get("schema_version") != 2 or payload.get("calculation") != calculation_record(inputs)
+                or payload.get("source_response_sha256")
+                != hashlib.sha256(payload["source_response"].encode()).hexdigest()):
+            raise ValueError("QQQM 快照校验指纹或计算结果不一致")
+        return result
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
 
@@ -343,20 +407,75 @@ def cache_paths(state_dir: Path) -> tuple[Path, ...]:
     return (state_dir / _CACHE_NAME, state_dir / _DAILY_CACHE_NAME, _BOOTSTRAP_PATH)
 
 
-def verify_searched_inputs(inputs: QQQMInputs, *, checked_at: datetime, allow_daily_forward: bool) -> None:
-    """An LLM citation is a lead, never independent proof of a missing number."""
-    packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily_forward)
+def select_cached_snapshot(state_dir: Path, *, price: float, checked_at: datetime,
+                           allow_daily_forward: bool) -> tuple[Path, QQQMResult] | None:
+    """Both runtime and workflow merge use the same explicit recency order.
+
+    A same-observation-date correction must not lose to an older daily cache
+    just because its file path sorts later. Never use filesystem mtime.
+    """
+    candidates = []
+    for priority, path in enumerate(cache_paths(state_dir)):
+        result = _from_cache(path, price=price, checked_at=checked_at, allow_daily_forward=allow_daily_forward)
+        if result is None:
+            continue
+        verified = datetime.min.replace(tzinfo=UTC)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            timestamp = datetime.fromisoformat(payload["verified_at"])
+            if timestamp.tzinfo is not None and timestamp <= checked_at:
+                verified = timestamp.astimezone(UTC)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        rank = (result.inputs.data_date, result.inputs.fwd_date or "", verified, -priority)
+        candidates.append((rank, path, result))
+    if not candidates:
+        return None
+    _, path, result = max(candidates, key=lambda row: row[0])
+    return path, result
+
+
+def _write_audit(state_dir: Path, audit: dict, *, result: QQQMResult | None = None,
+                 previous: QQQMResult | None = None, warning: str | None = None) -> None:
+    if result is not None:
+        audit["selected"] = {"inputs": asdict(result.inputs), "calculation": calculation_record(result.inputs)}
+        if previous is not None:
+            changed = {key: {"before": getattr(previous.inputs, key), "after": getattr(result.inputs, key)}
+                       for key in (*_VALUE_FIELDS, *_OBSERVATION_FIELDS)
+                       if getattr(previous.inputs, key) != getattr(result.inputs, key)}
+            audit["change"] = {"fields": changed, "value_before": previous.value,
+                               "value_after": result.value, "value_delta": result.value - previous.value,
+                               "same_calculation_inputs": calculation_record(previous.inputs)["input_key"]
+                               == calculation_record(result.inputs)["input_key"]}
+    audit["warning"] = warning
+    try:
+        _write_json(state_dir / _AUDIT_NAME, audit)
+    except (OSError, ValueError) as exc:
+        logger.warning("valuation.qqqm_audit_save_failed type=%s", type(exc).__name__)
+
+
+def _verify_packet(inputs: QQQMInputs, packet: dict | None, *, checked_at: datetime,
+                   allow_daily_forward: bool) -> None:
     if packet is None:
-        raise ValueError("QQQM 搜索结果无法从原始来源独立回读，不采纳模型补数")
-    for field in ("nav_anchor", "pe_ttm", "div_ttm", "pe_pair_t", "pe_pair_f",
-                  "data_date", "fwd_date", "forward_basis"):
+        raise ValueError("QQQM 原始来源无法再次回读，不采纳未经复核的新输入")
+    for field in (*_VALUE_FIELDS, *_OBSERVATION_FIELDS):
         expected = packet.get(field, "terminal-consensus" if field == "forward_basis" else None)
         actual = getattr(inputs, field)
-        matches = (math.isclose(actual, expected, rel_tol=1e-9, abs_tol=0)
-                   if isinstance(actual, (float, int)) and isinstance(expected, (float, int))
-                   else actual == expected)
-        if expected is None or not matches:
-            raise ValueError(f"QQQM {field} 搜索数值未通过原始来源回读")
+        if expected is None or actual != expected:
+            raise ValueError(f"QQQM {field} 两次来源回读不一致，不混用输入")
+    # Independently check the second observation's dates/citations as well.
+    repeated = parse_qqqm_inputs(json.dumps({"status": "ok", "data": packet,
+                                            "citations": packet.get("citations")}),
+                                 price=inputs.price, checked_at=checked_at,
+                                 allow_daily_forward=allow_daily_forward)
+    calculate_qqqm(repeated)
+
+
+def verify_searched_inputs(inputs: QQQMInputs, *, checked_at: datetime, allow_daily_forward: bool) -> dict | None:
+    """An LLM citation is a lead, never independent proof of a missing number."""
+    packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily_forward)
+    _verify_packet(inputs, packet, checked_at=checked_at, allow_daily_forward=allow_daily_forward)
+    return packet
 
 
 def prepare_qqqm_display(
@@ -364,12 +483,22 @@ def prepare_qqqm_display(
 ) -> ValuationDisplay:
     """每日整理输入；失败时只用 14 日内能重算乐观情景的完整快照。"""
     allow_daily = daily_forward_enabled()
+    prior = select_cached_snapshot(state_dir, price=price, checked_at=checked_at, allow_daily_forward=allow_daily)
+    previous = prior[1] if prior else None
+    audit = {"checked_at": checked_at.isoformat(), "model_version": _MODEL_VERSION,
+             "status": "collecting", "price": price,
+             "previous": {"inputs": asdict(previous.inputs), "calculation": calculation_record(previous.inputs),
+                          "price_rebased_for_current_gap_return": True}
+             if previous else None}
+    _write_audit(state_dir, audit)
     prompt = build_qqqm_prompt(checked_at=checked_at, price=price, allow_daily_forward=allow_daily)
     try:
         source_packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily)
     except Exception as exc:  # Source adapter failures must not bypass recovery.
         logger.warning("valuation.qqqm_source_exception type=%s", type(exc).__name__)
         source_packet = None
+    audit["first_source_packet"] = source_packet
+    _write_audit(state_dir, audit)
     if source_packet is not None:
         prompt += (
             "\n以下是程序本次直接从官方公开 API 获取并核验的完整来源包。"
@@ -401,6 +530,7 @@ def prepare_qqqm_display(
     warning: str | None = None
     if text:
         try:
+            audit["source_response"] = text
             inputs = parse_qqqm_inputs(text, price=price, checked_at=checked_at,
                                        allow_daily_forward=allow_daily)
             if inputs.data_date != latest_closed_date(checked_at).isoformat():
@@ -417,20 +547,27 @@ def prepare_qqqm_display(
                         matches = actual == expected
                     if not matches:
                         raise ValueError(f"QQQM {field} 被模型改写，与官方原始数据不符")
-            if not complete:
+            if complete:
+                # A complete first response can still straddle a source refresh.
+                # Require a second whole observation, never stitch the two reads.
                 try:
-                    verify_searched_inputs(inputs, checked_at=checked_at, allow_daily_forward=allow_daily)
+                    second = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily)
+                    audit["confirmation_source_packet"] = second
+                    _verify_packet(inputs, second, checked_at=checked_at, allow_daily_forward=allow_daily)
+                except Exception as exc:
+                    raise ValueError("QQQM 直接取数复核失败：" + str(exc)[:120]) from exc
+            else:
+                try:
+                    audit["confirmation_source_packet"] = verify_searched_inputs(
+                        inputs, checked_at=checked_at, allow_daily_forward=allow_daily)
                 except Exception as exc:
                     raise ValueError("QQQM 搜索结果独立核验失败：" + str(exc)[:120]) from exc
+            if previous is not None and (inputs.data_date, inputs.fwd_date or "") < (
+                    previous.inputs.data_date, previous.inputs.fwd_date or ""):
+                raise ValueError("QQQM 来源观测日倒退，不覆盖较新完整快照")
             result = calculate_qqqm(inputs)
-            state_dir.mkdir(parents=True, exist_ok=True)
-            cache_path = state_dir / _CACHE_NAME
-            temporary = cache_path.with_suffix(".tmp")
-            temporary.write_text(
-                json.dumps({"inputs": asdict(result.inputs), "source_response": text}, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            temporary.replace(cache_path)
+            _write_json(state_dir / _CACHE_NAME,
+                        snapshot_payload(result, source_response=text, checked_at=checked_at))
         except OSError as exc:
             # A valid live result remains usable when persisting its cache fails.
             warning = f"QQQM 快照保存失败：{type(exc).__name__}"
@@ -440,14 +577,13 @@ def prepare_qqqm_display(
         warning = f"QQQM DeepSeek 输入失败：{error or '空响应'}"
     used_cache = result is None
     if result is None:
-        candidates = [cached for path in cache_paths(state_dir)
-                      if (cached := _from_cache(path, price=price,
-                                                checked_at=checked_at, allow_daily_forward=allow_daily)) is not None]
-        result = max(candidates, key=lambda r: (r.inputs.data_date, r.inputs.fwd_date or ""), default=None)
+        result = previous
         if result is not None:
             warning = (
                 f"{warning}；沿用 14 日内同日输入快照" if warning else "沿用 14 日内同日输入快照"
             )
+    audit["status"] = "unavailable" if result is None else "cached" if used_cache else "verified"
+    _write_audit(state_dir, audit, result=result, previous=previous, warning=warning)
     if result is None:
         logger.warning("valuation.qqqm_unavailable reason=%s", warning)
         return ValuationDisplay(
@@ -464,21 +600,29 @@ def prepare_qqqm_display(
 
 def cached_qqqm_display(*, price: float, state_dir: Path, checked_at: datetime) -> ValuationDisplay:
     """Local-only recovery after the collection deadline; never invent inputs."""
-    candidates = [cached for path in cache_paths(state_dir)
-                  if (cached := _from_cache(path, price=price, checked_at=checked_at,
-                                            allow_daily_forward=daily_forward_enabled())) is not None]
-    if not candidates:
+    selected = select_cached_snapshot(state_dir, price=price, checked_at=checked_at,
+                                      allow_daily_forward=daily_forward_enabled())
+    audit = {"checked_at": checked_at.isoformat(), "status": "timeout_cached" if selected else "unavailable"}
+    try:
+        pending = json.loads((state_dir / _AUDIT_NAME).read_text(encoding="utf-8"))
+        if pending.get("status") == "collecting":
+            audit = {**pending, **audit}
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    _write_audit(state_dir, audit, result=selected[1] if selected else None, warning="取数超时")
+    if not selected:
         return ValuationDisplay(ticker="QQQM", status="source_unavailable", value_label="公允价值",
                                 warnings=("QQQM 取数超时且没有有效快照",))
-    result = max(candidates, key=lambda row: (row.inputs.data_date, row.inputs.fwd_date or ""))
+    result = selected[1]
     return _display_result(result, price=price, warning="取数超时，沿用已验证快照", checked_at=checked_at, cached=True)
 
 
 def _display_result(result: QQQMResult, *, price: float, warning: str | None,
                     checked_at: datetime, cached: bool = False) -> ValuationDisplay:
     logger.info(
-        "valuation.qqqm_ready value=%.4f gap_return=%.6f data_date=%s forward_basis=%s fallback=%s",
+        "valuation.qqqm_ready value=%.4f gap_return=%.6f data_date=%s forward_basis=%s fallback=%s input_key=%s inputs=%s",
         result.value, result.value / price - 1, result.inputs.data_date, result.inputs.forward_basis, cached,
+        calculation_record(result.inputs)["input_key"], json.dumps(asdict(result.inputs), sort_keys=True),
     )
     return ValuationDisplay(
         ticker="QQQM",
@@ -493,7 +637,8 @@ def _display_result(result: QQQMResult, *, price: float, warning: str | None,
         data_note=f"QQQM 沿用 {result.inputs.data_date} 输入" if cached else None,
         source_url=result.inputs.source_urls[0],
         source_document_id=(f"qqqm-v{_MODEL_VERSION}:{result.inputs.data_date}:"
-                            f"{result.inputs.fwd_date}:{result.inputs.forward_basis}"),
+                            f"{result.inputs.fwd_date}:{result.inputs.forward_basis}:"
+                            f"{calculation_record(result.inputs)['input_key']}"),
         formula_id="qqqm_optimistic_cashflow_v1_6",
         model_version=_MODEL_VERSION,
         return_label="IRR",

@@ -37,7 +37,7 @@ def holding_signal():
 
 def fair_value():
     return morningstar.MorningstarFairValue(
-        "MSFT", "XNAS:MSFT", 600, "USD", "analyst", "2026-08-11", NOW.isoformat(),
+        "MSFT", "XNAS:MSFT", 600, "USD", "published-research", "2026-08-11", NOW.isoformat(),
         "Yahoo Morningstar", "https://finance.yahoo.com/research/reports/msft", fallback_used=True)
 
 

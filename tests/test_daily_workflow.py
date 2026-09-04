@@ -13,7 +13,7 @@ def test_manual_recipient_override_cannot_consume_production_delivery() -> None:
     assert "EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}" in workflow
 
 
-def test_formal_send_keeps_morningstar_and_daily_state_read_only() -> None:
+def test_formal_send_only_persists_isolated_valuation_state() -> None:
     workflow = _WORKFLOW.with_name("formal-test-send.yml").read_text(encoding="utf-8")
     block = workflow.split("- name: Restore verified Morningstar snapshot only", 1)[1].split("- name:", 1)[0]
     assert "actions/cache/restore@" in block
@@ -21,7 +21,12 @@ def test_formal_send_keeps_morningstar_and_daily_state_read_only() -> None:
     assert "morningstar-verified-" in block
     assert "daily-state-" not in block
     save = workflow.split("- name: Save verified QQQM snapshot", 1)[1]
-    assert workflow.count("actions/cache/save@") == 1
+    assert workflow.count("actions/cache/save@") == 2
+    morningstar_save = workflow.split("- name: Save verified Morningstar history", 1)[1].split("- name:", 1)[0]
+    assert "github.ref == 'refs/heads/main'" in morningstar_save
+    assert "hashFiles('.delivery-receipt.json') != ''" in morningstar_save
+    assert "path: state/morningstar_fair_values.json" in morningstar_save
+    assert "daily-state-" not in workflow
     assert "path: state/qqqm_valuation.json" in save
     assert "success() && github.ref == 'refs/heads/main'" in save
     assert "morningstar_fair_values.json" not in save

@@ -126,7 +126,7 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     assert first.implied_return == pytest.approx(first.intrinsic_value / 300.0 - 1)
     assert first.financial_as_of == "2026-09-02"
     assert first.formula_id == "qqqm_optimistic_cashflow_v1_6"
-    assert first.model_version == "1.7"
+    assert first.model_version == "1.8"
 
     failed = _Client(LLMResponse(text=None, error="rate limit", usage=LLMUsage()))
     second = prepare_qqqm_display(price=305.0, client=failed, state_dir=tmp_path, checked_at=NOW)
