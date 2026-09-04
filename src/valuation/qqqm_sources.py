@@ -202,7 +202,8 @@ def build_source_packet(
     nav_value = _positive(nav.get("nav"))
     if dividends_url not in {DIV_URL, DIV_BACKUP_URL}:
         raise ValueError("QQQM dividend source not approved")
-    div_value = sum(dividend_rows(dividends, anchor=anchor).values())
+    # Source row ordering must not introduce binary-float drift in DIV_ttm.
+    div_value = math.fsum(dividend_rows(dividends, anchor=anchor).values())
     packet = {
         "data_date": anchor.isoformat(), "nav_anchor": nav_value, "div_ttm": div_value,
         "pe_pair_t": None, "pe_pair_f": None, "fwd_date": None,

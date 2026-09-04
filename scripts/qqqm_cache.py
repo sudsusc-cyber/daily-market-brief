@@ -9,7 +9,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.valuation.qqqm import _from_cache, cache_paths, daily_forward_enabled
+from src.valuation.qqqm import daily_forward_enabled, select_cached_snapshot
 
 
 def preserve_daily(state_dir: Path) -> None:
@@ -22,15 +22,11 @@ def preserve_daily(state_dir: Path) -> None:
 
 
 def normalize_cache(state_dir: Path, *, checked_at: datetime, allow_daily_forward: bool) -> bool:
-    candidates = []
-    for path in cache_paths(state_dir):
-        result = _from_cache(path, price=1.0, checked_at=checked_at,
-                             allow_daily_forward=allow_daily_forward)
-        if result is not None:
-            candidates.append((result.inputs.data_date, result.inputs.fwd_date or "", path))
-    if not candidates:
+    selected = select_cached_snapshot(state_dir, price=1.0, checked_at=checked_at,
+                                      allow_daily_forward=allow_daily_forward)
+    if selected is None:
         return False
-    source = max(candidates)[2]
+    source, _ = selected
     # Keep the original observation dates; a new cache key is NOT fresh data.
     payload = json.loads(source.read_text(encoding="utf-8"))
     state_dir.mkdir(parents=True, exist_ok=True)

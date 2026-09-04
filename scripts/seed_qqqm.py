@@ -10,11 +10,15 @@ from __future__ import annotations
 import json
 import math
 import os
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.valuation.qqqm import calculate_qqqm, daily_forward_enabled, parse_qqqm_inputs
+from src.valuation.qqqm import (
+    calculate_qqqm,
+    daily_forward_enabled,
+    parse_qqqm_inputs,
+    snapshot_payload,
+)
 from src.valuation.qqqm_sources import fetch_source_packet
 
 
@@ -31,11 +35,12 @@ def seed_snapshot(text: str, *, packet: dict, state_dir: Path, checked_at: datet
             same = expected == actual
         if not same:
             raise ValueError(f"QQQM seed differs from live source: {field}")
-    calculate_qqqm(inputs)
+    result = calculate_qqqm(inputs)
     state_dir.mkdir(parents=True, exist_ok=True)
     target = state_dir / "qqqm_valuation.json"
     temporary = target.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"inputs": asdict(inputs), "source_response": text}, ensure_ascii=False))
+    temporary.write_text(json.dumps(snapshot_payload(result, source_response=text, checked_at=checked_at),
+                                    ensure_ascii=False))
     temporary.replace(target)
 
 

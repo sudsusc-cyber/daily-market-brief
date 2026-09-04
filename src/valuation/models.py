@@ -73,11 +73,13 @@ class ValuationDisplay:
     warnings: tuple[str, ...] = field(default_factory=tuple)
     data_note: str | None = None
     verified_at: str | None = None
+    historical_reference: bool = False
 
     @property
     def is_attractive(self) -> bool:
         return (
             self.implied_return is not None
+            and not self.historical_reference
             and self.hurdle_rate is not None
             and self.implied_return >= self.hurdle_rate
         )

@@ -292,6 +292,8 @@ class YahooMorningstarProvider:
 
         report_id, published, report_url, curated_snapshot_url = self._latest_report(security)
         snapshot_url = curated_snapshot_url or self._snapshot_url(report_url)
+        if not snapshot_url.startswith("https://s.yimg.com/"):
+            raise ValueError("Yahoo Morningstar 报告快照域名不合规")
         response = self.session.get(snapshot_url, timeout=self.timeout)
         response.raise_for_status()
         image = Image.open(BytesIO(response.content))
@@ -310,10 +312,12 @@ class YahooMorningstarProvider:
             rating_type="published-research",
             # 这是“最新报告再次确认该估值”的证据日期，不假定报告日一定改值。
             fair_value_updated_at=published.date().isoformat(),
+            report_published_at=published.isoformat(),
             retrieved_at=checked_at.astimezone(UTC).isoformat(),
             source_provider="Morningstar report distributed by Yahoo Finance",
             source_url=report_url,
             observation_count=2,
+            extraction_verified=True,
         )
 
     def fetch_all(

@@ -1,4 +1,4 @@
-"""无需登录的 Morningstar 公允价值发现、校验与短时回退。"""
+"""无需登录的 Morningstar 研究估值：发现、证据排序与持久最后核验值。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from src.utils.runtime_budget import RuntimeBudget
 logger = logging.getLogger(__name__)
 
 _CACHE_NAME = "morningstar_fair_values.json"
-_MAX_CACHE_AGE = timedelta(hours=48)
+_BACKUP_NAME = "morningstar_last_verified.json"
 _GOOGLE_NEWS = "https://news.google.com/rss/search"
 _JINA_READER = "https://r.jina.ai/http://"
 _USER_AGENT = "daily-market-brief/1.0 (+public-source-validation)"
@@ -189,10 +189,13 @@ SECURITIES: dict[str, MorningstarSecurity] = {
             "https://www.morningstar.com/company-reports/"
             "1496104-pop-mart-earnings-valuation-cut-by-20-as-weak-overseas-sales-"
             "drag-growth-shares-still-cheap?listing=0P0001L8KX",
+            "https://www.morningstar.com/company-reports/"
+            "1496076-pop-mart-should-maintain-healthy-revenue-growth-as-overseas-"
+            "penetration-deepens?listing=0P0001L8KX",
         ),
-        ("2026-08-21",),
-        # Morningstar 2026-08-21 note cut the prior HKD 280 estimate by 20%.
-        (224.0,),
+        ("2026-08-21", "2026-08-21"),
+        # Both reports require an explicit HKD amount. Rounded headline changes
+        # cannot reconstruct an estimate (March also contained a revision).
         listing_id="0P0001L8KX",
     ),
     "MA": MorningstarSecurity(
@@ -238,6 +241,14 @@ class MorningstarFairValue:
     warning: str | None = None
     # Independent live fallback is not an old cached observation.
     stale_cache: bool = False
+    # fair_value_updated_at is the legacy report-date alias, NOT the date the
+    # analyst changed their estimate. Preserve actual publication time separately.
+    report_published_at: str | None = None
+    evidence: tuple[dict[str, Any], ...] = ()
+    # Migration-only: an already-published legacy number whose original extractor
+    # substituted a constant. Retain for audit only; never display or compute IRR.
+    historical_only: bool = False
+    extraction_verified: bool = False
 
 
 class MorningstarProvider(Protocol):
@@ -278,9 +289,9 @@ def _parse_company_report_candidates(text: str) -> list[_Candidate]:
                 break  # 不把下一篇报告的日期借给当前报告。
             date_match = _REPORT_DATE_RE.search(following.strip())
             if date_match:
-                published_at = datetime.strptime(
-                    date_match.group(1), "%b %d, %Y"
-                ).replace(tzinfo=UTC)
+                published_at = datetime.strptime(date_match.group(1), "%b %d, %Y").replace(
+                    tzinfo=UTC
+                )
                 break
         if published_at is None:
             continue
@@ -291,9 +302,20 @@ def _parse_company_report_candidates(text: str) -> list[_Candidate]:
 
 def _normalise_date(value: str) -> str:
     text = value.strip()
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-        return text
     return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat()
+
+
+def _timestamp(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError("时间缺少时区")
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _report_time(value: MorningstarFairValue) -> datetime:
+    return _timestamp(value.report_published_at or value.fair_value_updated_at)
 
 
 def _currency(context: str, expected: str) -> str:
@@ -331,7 +353,8 @@ def _company_scope(text: str, security: MorningstarSecurity) -> str | None:
 
 
 def _extract_hk_headline_value(
-    headline: str, security: MorningstarSecurity,
+    headline: str,
+    security: MorningstarSecurity,
 ) -> tuple[float, str] | None:
     """仅接受本公司标题中明确以港币计价的公允价值，不用涨跌幅推算。"""
     if not security.ticker.endswith(".HK"):
@@ -348,7 +371,9 @@ def _extract_hk_headline_value(
     values = set()
     for pattern in patterns:
         for match in re.finditer(pattern, headline, re.I):
-            if re.search(r"\b(?:previous|prior|old|former|from)\s*$", headline[:match.start()], re.I):
+            if re.search(
+                r"\b(?:previous|prior|old|former|from)\s*$", headline[: match.start()], re.I
+            ):
                 continue
             values.add(float(match.group(1).replace(",", "")))
     if len(values) > 1:
@@ -385,7 +410,9 @@ def _extract_value(text: str, security: MorningstarSecurity) -> tuple[float, str
     scoped = None if dedicated else _company_scope(text, security)
     search_text = scoped or text
     if security.ticker.endswith(".HK"):
-        search_text = re.split(r"^## (?:Company Report Archive|Share This Report)\b", search_text, flags=re.M)[0]
+        search_text = re.split(
+            r"^## (?:Company Report Archive|Share This Report)\b", search_text, flags=re.M
+        )[0]
     if security.ticker == "BRK.B":
         patterns = (
             r"\$[\d,]+\s*\(\$([\d,]+(?:\.\d+)?)\)\s*per class a \(b\)",
@@ -397,10 +424,17 @@ def _extract_value(text: str, security: MorningstarSecurity) -> tuple[float, str
             r"morningstar.{0,120}?fair value estimate.{0,40}?hk\$\s*([\d,]+(?:\.\d+)?)",
             r"fair value estimate[^\n]{0,40}?(?:hkd|hk\$)\s*([\d,]+(?:\.\d+)?)",
         )
+    elif security.ticker == "TSM":
+        # The same note often quotes TWD per ordinary share and USD per ADR.
+        # Never let a local-share value (or a percentage revision) become USD.
+        patterns = (
+            r"fair value estimate[^\n\d$]{0,120}?(?:USD|US\$|(?<!HK)(?<!NT)\$)\s*([\d,]+(?:\.\d+)?)",
+            r"fair value estimates?[^\n]{0,180}?(?:USD|US\$|(?<!HK)(?<!NT)\$)\s*([\d,]+(?:\.\d+)?)\s*per\s+ADR\b",
+        )
     else:
         patterns = (
-            r"fair value estimate[^\n\d]{0,220}?(?:hkd|usd|hk\$|us\$|\$)?\s*([\d,]+(?:\.\d+)?)",
-            r"fair value estimate(?: for [^\n]{0,40})? (?:at|to|of)\s*(?:hkd|usd|hk\$|us\$|\$)\s*([\d,]+(?:\.\d+)?)",
+            r"fair value estimate[^\n$]{0,120}?(?:hkd|usd|hk\$|us\$|\$)\s*([\d,]+(?:\.\d+)?)",
+            r"(?:hkd|usd|hk\$|us\$|\$)\s*([\d,]+(?:\.\d+)?)\s*(?:per[- ]share\s+)?fair value estimate",
         )
     match = _first_match(patterns, search_text)
     if match is None:
@@ -408,16 +442,28 @@ def _extract_value(text: str, security: MorningstarSecurity) -> tuple[float, str
     value = float(match.group(1).replace(",", ""))
     if not math.isfinite(value) or value <= 0:
         raise ValueError("Morningstar 公允价值必须是正有限数")
-    context = search_text[max(0, match.start() - 120) : match.end() + 120]
+    # Currency belongs to the amount, not to neighbouring companies/listings.
+    context = match.group(0)
     return value, _currency(context, security.currency)
 
 
 def _published_date(text: str, fallback: datetime | None) -> str:
     match = re.search(r"Published Time:\s*([^\n]+)", text, re.I)
     if match:
-        return _normalise_date(match.group(1))
+        return _timestamp(match.group(1).strip()).date().isoformat()
     if fallback is not None:
         return fallback.astimezone(UTC).date().isoformat()
+    raise ValueError("来源页面缺发布日期")
+
+
+def _published_time(text: str, fallback: datetime | None) -> str:
+    match = re.search(r"Published Time:\s*([^\n]+)", text, re.I)
+    if match:
+        raw = match.group(1).strip()
+        return _timestamp(raw).isoformat() if "T" in raw else _normalise_date(raw)
+    if fallback is not None:
+        value = fallback.astimezone(UTC)
+        return value.date().isoformat() if value.time().isoformat() == "00:00:00" else value.isoformat()
     raise ValueError("来源页面缺发布日期")
 
 
@@ -467,8 +513,8 @@ class MorningstarPublicProvider:
             if session is None:
                 from src.valuation.yahoo_morningstar import YahooMorningstarProvider
 
-                self.secondary_provider: MorningstarProvider | None = (
-                    YahooMorningstarProvider(timeout=timeout)
+                self.secondary_provider: MorningstarProvider | None = YahooMorningstarProvider(
+                    timeout=timeout
                 )
             else:
                 self.secondary_provider = None
@@ -477,11 +523,14 @@ class MorningstarPublicProvider:
         self._last_reader_request_at: float | None = None
         self._budget = RuntimeBudget()
         self._inflight_values: dict[str, MorningstarFairValue] = {}
-        self._memo: tuple[
-            datetime,
-            dict[str, MorningstarFairValue],
-            dict[str, str],
-        ] | None = None
+        self._memo: (
+            tuple[
+                datetime,
+                dict[str, MorningstarFairValue],
+                dict[str, str],
+            ]
+            | None
+        ) = None
 
     def _reader_get(self, url: str) -> requests.Response:
         """节流并重试公共文本镜像，避免一封邮件的双读触发临时限流。"""
@@ -514,11 +563,7 @@ class MorningstarPublicProvider:
                     if index < len(security.curated_dates)
                     else None
                 ),
-                (
-                    security.curated_values[index]
-                    if index < len(security.curated_values)
-                    else None
-                ),
+                (security.curated_values[index] if index < len(security.curated_values) else None),
             )
             for index, url in enumerate(security.curated_urls)
         ]
@@ -627,9 +672,6 @@ class MorningstarPublicProvider:
             explicit = _extract_hk_headline_value(headline.group(1), security) if headline else None
             if explicit is not None:
                 value, currency = explicit
-            elif candidate.known_value is not None:
-                value = candidate.known_value
-                currency = security.currency
             else:
                 value, currency = _extract_value(text, security)
             return MorningstarFairValue(
@@ -639,10 +681,12 @@ class MorningstarPublicProvider:
                 currency=currency,
                 rating_type="published-research",
                 fair_value_updated_at=_published_date(text, candidate.published_at),
+                report_published_at=_published_time(text, candidate.published_at),
                 retrieved_at="",
                 source_provider=provider,
                 source_url=candidate.url,
                 observation_count=1,
+                extraction_verified=True,
             )
 
         errors: list[str] = []
@@ -689,16 +733,24 @@ class MorningstarPublicProvider:
     ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
         self._inflight_values = {}
         return self._budget.run(
-            "morningstar", lambda: self._fetch_all(securities, checked_at=checked_at),
+            "morningstar",
+            lambda: self._fetch_all(securities, checked_at=checked_at),
             seconds=330,
-            fallback=lambda: (dict(self._inflight_values), {
-                ticker: "公开估值取数超时，已保留完成项并检查有效快照"
-                for ticker in securities if ticker not in self._inflight_values
-            }),
+            fallback=lambda: (
+                dict(self._inflight_values),
+                {
+                    ticker: "公开估值取数超时，已保留完成项并检查有效快照"
+                    for ticker in securities
+                    if ticker not in self._inflight_values
+                },
+            ),
         )
 
     def _fetch_all(
-        self, securities: Mapping[str, MorningstarSecurity], *, checked_at: datetime,
+        self,
+        securities: Mapping[str, MorningstarSecurity],
+        *,
+        checked_at: datetime,
     ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
         values: dict[str, MorningstarFairValue] = {}
         memo_at = checked_at.astimezone(UTC)
@@ -707,12 +759,16 @@ class MorningstarPublicProvider:
             # Reuse only within the exact same observation request. A final check
             # at a later time must discover/read again, even if values are unchanged.
             if checked_at.astimezone(UTC) == memo_at:
-                values = {ticker: value for ticker, value in memo_values.items() if ticker in securities}
+                values = {
+                    ticker: value for ticker, value in memo_values.items() if ticker in securities
+                }
                 if set(values) == set(securities):
                     return values, {}
             else:
                 memo_at = checked_at.astimezone(UTC)
-        pending = {ticker: security for ticker, security in securities.items() if ticker not in values}
+        pending = {
+            ticker: security for ticker, security in securities.items() if ticker not in values
+        }
         # Only publish completed, reconciled observations to the timeout fallback.
         # A signal can interrupt between the primary read and secondary validation.
         self._inflight_values = dict(values)
@@ -726,12 +782,12 @@ class MorningstarPublicProvider:
                 )
             except Exception as exc:  # noqa: BLE001
                 secondary_failures = {
-                    ticker: f"独立备源整体失败: {type(exc).__name__}"
-                    for ticker in pending
+                    ticker: f"独立备源整体失败: {type(exc).__name__}" for ticker in pending
                 }
         retrieved = checked_at.astimezone(UTC).isoformat()
         for ticker, security in pending.items():
             errors: list[str] = []
+            unread_report_time: datetime | None = None
             try:
                 candidates = self._discover(security)
             except Exception as exc:  # noqa: BLE001
@@ -754,7 +810,18 @@ class MorningstarPublicProvider:
                     for index, url in enumerate(security.curated_urls)
                 ]
                 errors.append(f"发现失败: {type(exc).__name__}")
-            for candidate_index, candidate in enumerate(candidates):
+            failed_candidates = 0
+            for candidate in candidates:
+                if unread_report_time is not None and (
+                    candidate.published_at is None
+                    or candidate.published_at < unread_report_time
+                ):
+                    # Try alternate paths to the current report, not an older
+                    # report disguised as the latest. Keep this bounded so one
+                    # illiquid security cannot exhaust the whole email budget.
+                    continue
+                if failed_candidates >= 3:
+                    break
                 try:
                     first = self._read(candidate, security)
                     second = self._read(candidate, security)
@@ -762,6 +829,7 @@ class MorningstarPublicProvider:
                         first.fair_value != second.fair_value
                         or first.currency != second.currency
                         or first.fair_value_updated_at != second.fair_value_updated_at
+                        or first.report_published_at != second.report_published_at
                     ):
                         raise ValueError("同一来源双读不一致")
                     values[ticker] = replace(
@@ -769,15 +837,28 @@ class MorningstarPublicProvider:
                         retrieved_at=retrieved,
                         observation_count=2,
                     )
+                    _validate_live(
+                        values[ticker],
+                        previous=None,
+                        current_price=None,
+                        checked_at=checked_at,
+                        ticker=ticker,
+                    )
                     break
                 except Exception as exc:  # noqa: BLE001
+                    failed_candidates += 1
+                    values.pop(ticker, None)
                     host = urlparse(candidate.url).hostname or "unknown"
                     error_text = str(exc)
                     errors.append(f"{host}: {error_text[:120]}")
-                    logger.info("morningstar.candidate_failed ticker=%s url=%s reason=%s", ticker, candidate.url, error_text[:240])
-                    # 港股的公开研究页会对公允价值字段做前端混淆。若最新候选无法
-                    # 验证，宁可触发 48 小时快照回退/待更新，也不能继续采用更旧
-                    # 文章并把它误标成当天最新值。
+                    logger.info(
+                        "morningstar.candidate_failed ticker=%s url=%s reason=%s",
+                        ticker,
+                        candidate.url,
+                        error_text[:240],
+                    )
+                    # 所有标的都不得把“最新报告不可读”掩盖成旧报告是最新值。
+                    # 已有估值由持久最后核验值承接，不因公开页短时故障清空。
                     irrelevant = any(
                         marker in error_text
                         for marker in (
@@ -785,12 +866,13 @@ class MorningstarPublicProvider:
                             "多标的页面无法安全归属公允价值",
                         )
                     )
-                    if (
-                        security.ticker.endswith(".HK")
-                        and candidate_index == 0
-                        and not irrelevant
-                    ):
-                        break
+                    if not irrelevant:
+                        if candidate.published_at is None:
+                            break
+                        unread_report_time = max(
+                            unread_report_time or candidate.published_at,
+                            candidate.published_at,
+                        )
             if ticker not in values:
                 failures[ticker] = "; ".join(errors[-3:]) or "没有可验证的公开 Morningstar 值"
                 logger.warning(
@@ -800,11 +882,26 @@ class MorningstarPublicProvider:
                 )
             secondary = secondary_values.get(ticker)
             primary = values.get(ticker)
+            if secondary is not None:
+                try:
+                    _validate_live(
+                        secondary,
+                        previous=None,
+                        current_price=None,
+                        checked_at=checked_at,
+                        ticker=ticker,
+                    )
+                except (ValueError, TypeError, KeyError) as exc:
+                    secondary = None
+                    secondary_failures[ticker] = str(exc)
+                    logger.warning(
+                        "morningstar.secondary_rejected ticker=%s reason=%s", ticker, exc
+                    )
             if primary is None and secondary is not None:
                 values[ticker] = replace(
                     secondary,
                     fallback_used=True,
-                    warning="Morningstar 官方公开页不可读，采用 Yahoo 分发的最新 Morningstar 报告",
+                    warning="Morningstar 官方公开页不可读，采用 Yahoo 分发的已核验 Morningstar 报告",
                 )
                 failures.pop(ticker, None)
             elif primary is not None and secondary is not None:
@@ -819,6 +916,20 @@ class MorningstarPublicProvider:
                     f"{failures.get(ticker, 'Morningstar 官方公开页不可用')}；"
                     f"Yahoo 备源: {secondary_failures[ticker]}"
                 )[:500]
+            if (
+                ticker in values
+                and unread_report_time is not None
+                and (_report_time(values[ticker]) < unread_report_time)
+            ):
+                # A readable old distributed report is useful evidence, but not
+                # proof of what a newer inaccessible official report says.
+                values[ticker] = replace(
+                    values[ticker],
+                    stale_cache=True,
+                    fallback_used=True,
+                    warning=f"较新报告 {unread_report_time.date()} 尚未核实，保留已读取历史报告值",
+                )
+                failures[ticker] = values[ticker].warning or "较新报告未核实"
             if ticker in values:
                 self._inflight_values[ticker] = values[ticker]
         # 只在同一观测请求内复用；发送前的晚时点复核会重读所有标的。
@@ -831,41 +942,94 @@ def _reconcile_independent_sources(
     secondary: MorningstarFairValue,
 ) -> MorningstarFairValue:
     """日期不同时取较新报告；同日冲突按来源层级取官方主源。"""
-    if primary.ticker != secondary.ticker or primary.currency != secondary.currency:
+    if (primary.ticker, primary.provider_code, primary.currency) != (
+        secondary.ticker,
+        secondary.provider_code,
+        secondary.currency,
+    ):
         raise ValueError("Morningstar 主备源标的或币种不一致")
     same_value = math.isclose(primary.fair_value, secondary.fair_value, rel_tol=1e-9)
-    if primary.fair_value_updated_at == secondary.fair_value_updated_at and not same_value:
+    chronology = _compare_reports(primary, secondary)
+    evidence = _observations(primary, secondary)
+    if chronology == 0 and not same_value:
         return replace(
             primary,
-            observation_count=primary.observation_count + secondary.observation_count,
+            evidence=evidence,
             warning=(
                 "Morningstar 主备源同日冲突；按来源层级采用官方主源 "
                 f"{primary.fair_value:g} {primary.currency}，Yahoo 备源为 "
                 f"{secondary.fair_value:g} {secondary.currency}"
             ),
         )
-    if secondary.fair_value_updated_at > primary.fair_value_updated_at:
+    if chronology < 0:
         chosen, older = secondary, primary
     else:
         chosen, older = primary, secondary
     if same_value:
         warning = "独立分发报告已复核；新报告可能继续维持原公允价值"
     else:
-        warning = (
-            f"采用较新报告值；较旧来源为 {older.fair_value:g} {older.currency}"
-        )
+        warning = f"采用较新报告值；较旧来源为 {older.fair_value:g} {older.currency}"
     return replace(
         chosen,
-        observation_count=primary.observation_count + secondary.observation_count,
+        observation_count=(
+            primary.observation_count + secondary.observation_count
+            if same_value
+            else chosen.observation_count
+        ),
+        evidence=evidence,
         warning=warning,
     )
 
 
 def _retrieved_at(snapshot: MorningstarFairValue) -> datetime:
-    return datetime.fromisoformat(snapshot.retrieved_at.replace("Z", "+00:00")).astimezone(UTC)
+    if "T" not in snapshot.retrieved_at:
+        raise ValueError("核验时间必须包含时区和时刻")
+    return _timestamp(snapshot.retrieved_at)
+
+
+def _compare_reports(a: MorningstarFairValue, b: MorningstarFairValue) -> int:
+    """Order known dates; don't invent midnight precision for a date-only report."""
+    left, right = _report_time(a), _report_time(b)
+    if left.date() == right.date() and not (
+        a.report_published_at and "T" in a.report_published_at
+        and b.report_published_at and "T" in b.report_published_at
+    ):
+        return 0
+    return (left > right) - (left < right)
+
+
+def _observations(*values: MorningstarFairValue) -> tuple[dict[str, Any], ...]:
+    rows = []
+    for value in values:
+        rows.extend(
+            value.evidence
+            or (
+                {
+                    "ticker": value.ticker,
+                    "provider_code": value.provider_code,
+                    "currency": value.currency,
+                    "fair_value": value.fair_value,
+                    "report_published_at": value.report_published_at or value.fair_value_updated_at,
+                    "retrieved_at": value.retrieved_at,
+                    "source_url": value.source_url,
+                    "source_provider": value.source_provider,
+                },
+            )
+        )
+    unique = {json.dumps(row, sort_keys=True): row for row in rows}
+    return tuple(unique.values())[-8:]
+
+
+def _source_rank(value: MorningstarFairValue) -> int:
+    host = (urlparse(value.source_url).hostname or "").lower()
+    if host == "morningstar.com" or host.endswith(".morningstar.com"):
+        return 2
+    return 1
 
 
 def _snapshot_from_dict(raw: Mapping[str, Any]) -> MorningstarFairValue:
+    if isinstance(raw.get("fair_value"), bool):
+        raise ValueError("公允价值不能是布尔值")
     snapshot = MorningstarFairValue(
         ticker=str(raw["ticker"]),
         provider_code=str(raw["provider_code"]),
@@ -876,11 +1040,23 @@ def _snapshot_from_dict(raw: Mapping[str, Any]) -> MorningstarFairValue:
         retrieved_at=str(raw["retrieved_at"]),
         source_provider=str(raw["source_provider"]),
         source_url=str(raw["source_url"]),
-        observation_count=int(raw.get("observation_count") or 2),
+        observation_count=int(raw.get("observation_count", 2)),
         fallback_used=bool(raw.get("fallback_used", False)),
         stale_cache=bool(raw.get("stale_cache", False)),
         warning=str(raw["warning"]) if raw.get("warning") else None,
+        report_published_at=(
+            str(raw["report_published_at"]) if raw.get("report_published_at") else None
+        ),
+        evidence=tuple(row for row in (raw.get("evidence") or []) if isinstance(row, dict)),
+        historical_only=bool(raw.get("historical_only", False)),
+        extraction_verified=bool(raw.get("extraction_verified", False)),
     )
+    # Migrate the known hardcoded Pop Mart path. Reading its paywalled shell
+    # twice did not verify 224; old production caches must not wash that fact.
+    if (snapshot.ticker == "9992.HK" and snapshot.fair_value == 224
+            and "1496104-" in snapshot.source_url and not snapshot.extraction_verified):
+        snapshot = replace(snapshot, historical_only=True, stale_cache=True,
+                           warning="旧版推算参考缺少原文绝对数值，禁止用作邮件晨星估值")
     expected = SECURITIES.get(snapshot.ticker)
     if (
         expected is None
@@ -888,9 +1064,7 @@ def _snapshot_from_dict(raw: Mapping[str, Any]) -> MorningstarFairValue:
         or snapshot.currency != expected.currency
     ):
         raise ValueError("缓存标的或币种与固定映射不一致")
-    if not math.isfinite(snapshot.fair_value) or snapshot.fair_value <= 0:
-        raise ValueError("缓存公允价值无效")
-    _retrieved_at(snapshot)
+    _validate_live(snapshot, previous=None, current_price=None, allow_historical=True)
     return snapshot
 
 
@@ -908,7 +1082,20 @@ def load_cache(path: Path) -> dict[str, MorningstarFairValue]:
                 continue
             try:
                 snapshot = _snapshot_from_dict(row)
-                valid[snapshot.ticker] = snapshot
+                old = valid.get(snapshot.ticker)
+                if old is not None and snapshot.historical_only != old.historical_only:
+                    if not snapshot.historical_only:
+                        valid[snapshot.ticker] = snapshot
+                    continue
+                if (
+                    old is None
+                    or _compare_reports(snapshot, old) > 0
+                    or (
+                        _compare_reports(snapshot, old) == 0
+                        and _retrieved_at(snapshot) > _retrieved_at(old)
+                    )
+                ):
+                    valid[snapshot.ticker] = snapshot
             except (KeyError, TypeError, ValueError):
                 logger.warning("morningstar.cache_row_invalid skipped=true")
         return valid
@@ -920,7 +1107,7 @@ def load_cache(path: Path) -> dict[str, MorningstarFairValue]:
 def _save_cache(path: Path, values: Mapping[str, MorningstarFairValue]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "source": "Morningstar public research",
         "fair_values": [asdict(values[ticker]) for ticker in SECURITIES if ticker in values],
     }
@@ -934,24 +1121,142 @@ def _validate_live(
     *,
     previous: MorningstarFairValue | None,
     current_price: float | None,
+    checked_at: datetime | None = None,
+    ticker: str | None = None,
+    allow_historical: bool = False,
 ) -> None:
-    expected = SECURITIES[current.ticker]
+    if not isinstance(current, MorningstarFairValue):
+        raise ValueError("取数结果结构不正确")
+    expected = SECURITIES.get(ticker or current.ticker)
+    if expected is None or current.ticker != expected.ticker:
+        raise ValueError("标的代码与请求不一致")
     if current.provider_code != expected.provider_code or current.currency != expected.currency:
         raise ValueError("标的代码或币种与固定映射不一致")
-    if current.observation_count < 2:
+    if current.historical_only and not allow_historical:
+        raise ValueError("历史留存数值不能当成实时核验结果")
+    if current.observation_count < 2 and not (allow_historical and current.historical_only):
         raise ValueError("公允价值未经双读确认")
-    if current_price is not None and current_price > 0:
+    if isinstance(current.fair_value, bool) or not math.isfinite(current.fair_value) or current.fair_value <= 0:
+        raise ValueError("公允价值必须是正有限数")
+    if current.rating_type != "published-research":
+        raise ValueError("来源不是 Morningstar 研究估值")
+    host = (urlparse(current.source_url).hostname or "").lower()
+    if not (
+        host == "morningstar.com"
+        or host.endswith(".morningstar.com")
+        or host in {"finance.yahoo.com", "theedgemalaysia.com", "www.theedgesingapore.com"}
+    ):
+        raise ValueError("估值来源域名不在核准名单")
+    report, retrieved = _report_time(current), _retrieved_at(current)
+    if report.date().isoformat() != _normalise_date(current.fair_value_updated_at):
+        raise ValueError("报告日期字段不一致")
+    if report > retrieved + timedelta(minutes=5):
+        raise ValueError("报告日期晚于核验时间")
+    if checked_at is not None and retrieved > checked_at.astimezone(UTC) + timedelta(minutes=5):
+        raise ValueError("核验时间位于未来")
+    if current_price is not None and math.isfinite(current_price) and current_price > 0:
         ratio = current.fair_value / current_price
         if ratio < 0.20 or ratio > 5:
             raise ValueError("公允价值与现价数量级异常")
-    if previous is None:
-        return
-    if current.fair_value_updated_at < previous.fair_value_updated_at:
-        raise ValueError("公允价值日期倒退")
-    if current.fair_value_updated_at == previous.fair_value_updated_at and not math.isclose(
-        current.fair_value, previous.fair_value, rel_tol=1e-9
-    ):
-        raise ValueError("相同估值日期却返回不同数值")
+    # Chronology is a selection decision, not a validity failure: an older
+    # article repeating the same estimate must never erase the last good value.
+
+
+def load_verified_values(
+    *,
+    state_dir: Path,
+    checked_at: datetime,
+    prices: Mapping[str, float | None],
+    baseline_path: Path | None = None,
+) -> dict[str, MorningstarFairValue]:
+    """Merge durable baseline + redundant local stores, selecting per security."""
+    result: dict[str, MorningstarFairValue] = {}
+    paths = ([baseline_path] if baseline_path is not None else []) + [
+        state_dir / _BACKUP_NAME,
+        state_dir / _CACHE_NAME,
+    ]
+    for path in paths:
+        for ticker, value in load_cache(path).items():
+            try:
+                _validate_live(
+                    value, previous=None, current_price=prices.get(ticker), checked_at=checked_at,
+                    allow_historical=True,
+                )
+            except (ValueError, TypeError) as exc:
+                logger.warning("morningstar.saved_value_rejected ticker=%s reason=%s", ticker, exc)
+                continue
+            old = result.get(ticker)
+            if old is not None and value.historical_only != old.historical_only:
+                if not value.historical_only:
+                    result[ticker] = value
+                continue
+            chronology = _compare_reports(value, old) if old else 1
+            if (
+                old is None
+                or chronology > 0
+                or (
+                    chronology == 0
+                    and (_source_rank(value), _retrieved_at(value))
+                    >= (_source_rank(old), _retrieved_at(old))
+                )
+            ):
+                result[ticker] = value
+    return result
+
+
+def _choose_verified(
+    current: MorningstarFairValue,
+    old: MorningstarFairValue | None,
+) -> MorningstarFairValue:
+    if old is None:
+        return current
+    chronology = _compare_reports(current, old)
+    if old.historical_only and not current.historical_only:
+        # An unverified constant is not newer evidence. Keep an actually read
+        # older estimate as dated history rather than letting the constant win.
+        if chronology < 0:
+            return replace(current, stale_cache=True, fallback_used=True,
+                warning="较新报告尚未核实，保留有原文证据的历史值，丢弃旧版推算参考",
+                evidence=_observations(old, current))
+        return current
+    same_value = math.isclose(current.fair_value, old.fair_value, rel_tol=1e-9)
+    if chronology < 0:
+        reason = (
+            "较早报告确认同一数值，保留较新证据"
+            if same_value
+            else f"忽略较早报告值 {current.fair_value:g}，保留较新报告"
+        )
+        return replace(
+            old,
+            stale_cache=True,
+            fallback_used=True,
+            warning=reason,
+            evidence=_observations(old, current),
+        )
+    if chronology == 0 and not same_value:
+        if _source_rank(current) > _source_rank(old):
+            return replace(
+                current,
+                warning="同日来源分歧，采用层级更高的官方研究",
+                evidence=_observations(old, current),
+            )
+        return replace(
+            old,
+            stale_cache=True,
+            fallback_used=True,
+            warning="同日来源数值分歧且无明确先后，保留最后核验值",
+            evidence=_observations(old, current),
+        )
+    return current
+
+
+def _audit_value(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, MorningstarFairValue):
+        return {"invalid_type": type(value).__name__}
+    # Keep invalid observed numbers in the audit as strings, never non-JSON NaN.
+    return json.loads(json.dumps(asdict(value), default=str), parse_constant=str)
 
 
 def refresh_fair_values(
@@ -960,11 +1265,19 @@ def refresh_fair_values(
     state_dir: Path,
     prices: Mapping[str, float | None],
     checked_at: datetime,
-    max_cache_age: timedelta = _MAX_CACHE_AGE,
+    max_cache_age: timedelta | None = None,
+    baseline_path: Path | None = None,
 ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
-    """获取全部值；单只失败时仅允许 48 小时内最后已验证快照回退。"""
+    """Refresh all securities; outages retain dated, labelled last verified values.
+
+    Research estimates do not expire like market quotes. An explicit age limit
+    remains available to callers, but production does not erase an unchanged
+    estimate after 48 hours. No fallback ever advances its verification clock.
+    """
     cache_path = state_dir / _CACHE_NAME
-    previous = load_cache(cache_path)
+    previous = load_verified_values(
+        state_dir=state_dir, checked_at=checked_at, prices=prices, baseline_path=baseline_path
+    )
     try:
         live, failures = provider.fetch_all(SECURITIES, checked_at=checked_at)
     except Exception as exc:  # noqa: BLE001
@@ -979,32 +1292,94 @@ def refresh_fair_values(
         old = previous.get(ticker)
         if candidate is not None:
             try:
-                _validate_live(candidate, previous=old, current_price=prices.get(ticker))
-                accepted[ticker] = candidate
-                final_failures.pop(ticker, None)
+                _validate_live(
+                    candidate,
+                    previous=old,
+                    current_price=prices.get(ticker),
+                    checked_at=checked_at,
+                    ticker=ticker,
+                )
+                chosen = _choose_verified(candidate, old)
+                accepted[ticker] = chosen
+                if chosen.stale_cache:
+                    final_failures[ticker] = chosen.warning or "沿用最后核验值"
+                else:
+                    final_failures.pop(ticker, None)
                 continue
-            except ValueError as exc:
+            except (ValueError, TypeError, KeyError) as exc:
                 final_failures[ticker] = str(exc)
-        if old is not None and timedelta(0) <= checked_at.astimezone(UTC) - _retrieved_at(old) <= max_cache_age:
+        age = checked_at.astimezone(UTC) - _retrieved_at(old) if old else None
+        if (
+            old is not None
+            and age is not None
+            and age >= timedelta(0)
+            and (max_cache_age is None or age <= max_cache_age)
+        ):
             reason = final_failures.get(ticker, "主源本次未返回")
             accepted[ticker] = replace(
                 old,
                 fallback_used=True,
                 stale_cache=True,
-                warning=f"公开主源短时不可用，沿用最近已验证快照：{reason}",
+                warning=f"本次未取得较新合格证据，沿用 {old.retrieved_at[:10]} 最后核验值：{reason}",
             )
         else:
-            final_failures.setdefault(ticker, "没有 48 小时内可验证的 Morningstar 快照")
+            final_failures.setdefault(ticker, "尚无可信 Morningstar 历史核验值，不可编造")
 
     merged = dict(previous)
-    merged.update({ticker: value for ticker, value in accepted.items() if not value.stale_cache})
+    for ticker, value in accepted.items():
+        old = previous.get(ticker)
+        # A newly read, genuine historical report is still durable evidence.
+        # In particular it must replace a legacy guessed constant even when a
+        # newer official report remains unreadable; never advance its dates.
+        if not value.stale_cache or (
+            not value.historical_only
+            and (old is None or old.historical_only or _compare_reports(value, old) > 0)
+        ):
+            merged[ticker] = value
     if merged:
-        _save_cache(cache_path, merged)
+        for path in (state_dir / _BACKUP_NAME, cache_path):
+            try:
+                _save_cache(path, merged)
+            except OSError as exc:
+                logger.error("morningstar.persistence_failed path=%s reason=%s", path.name, exc)
+    audit = {
+        "schema_version": "1.0",
+        "checked_at": checked_at.isoformat(),
+        "securities": {
+            ticker: {
+                "candidate": _audit_value(live.get(ticker)),
+                "previous": _audit_value(previous.get(ticker)),
+                "selected": _audit_value(accepted.get(ticker)),
+                "reason": final_failures.get(ticker),
+            }
+            for ticker in SECURITIES
+        },
+    }
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        audit_path = state_dir / "morningstar_diagnostic.json"
+        temporary = audit_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, audit_path)
+    except OSError as exc:
+        logger.error("morningstar.audit_save_failed reason=%s", exc)
+    for ticker in SECURITIES:
+        value = accepted.get(ticker)
+        logger.info(
+            "morningstar.selection ticker=%s value=%s report_at=%s verified_at=%s carried=%s historical_only=%s reason=%s",
+            ticker,
+            value.fair_value if value else None,
+            (value.report_published_at or value.fair_value_updated_at) if value else None,
+            value.retrieved_at if value and not value.historical_only else None,
+            value.stale_cache if value else None,
+            value.historical_only if value else None,
+            final_failures.get(ticker, "accepted"),
+        )
     logger.info(
         "morningstar.prepared live=%d fallback=%d unavailable=%d checked_at=%s",
-        sum(not value.fallback_used for value in accepted.values()),
-        sum(value.fallback_used for value in accepted.values()),
-        len(SECURITIES) - len(accepted),
+        sum(not value.fallback_used and not value.historical_only for value in accepted.values()),
+        sum(value.fallback_used and not value.historical_only for value in accepted.values()),
+        len(SECURITIES) - sum(not value.historical_only for value in accepted.values()),
         checked_at.isoformat(),
     )
     return accepted, final_failures

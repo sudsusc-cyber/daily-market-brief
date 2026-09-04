@@ -71,7 +71,11 @@ from src.utils.secrets import mask_emails
 from src.valuation.models import FreshnessResult, ValuationDisplay
 from src.valuation.morningstar import MorningstarPublicProvider
 from src.valuation.qqqm import cached_qqqm_display, prepare_qqqm_display
-from src.valuation.service import commit_published_values, prepare_valuation_displays
+from src.valuation.service import (
+    cached_morningstar_displays,
+    commit_published_values,
+    prepare_valuation_displays,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -245,17 +249,52 @@ def main() -> int:
     qqqm_display: ValuationDisplay | None = None
 
     def valuation_timeout():
-        old = dict(valuation_displays or {})
+        old = (
+            cached_morningstar_displays(
+                state_dir=_STATE_DIR,
+                config_dir=_PROJECT_ROOT / "config",
+                checked_at=now_beijing(),
+                prices={signal.holding.ticker: signal.last_close for signal in signals},
+            )
+            if morningstar_provider is not None
+            else {}
+        )
+        # A failed final check must not overwrite a good persisted value with a
+        # pending result from the first pass.
+        old.update(
+            {
+                ticker: value
+                for ticker, value in (valuation_displays or {}).items()
+                if not value.is_pending
+            }
+        )
         if qqqm_display is not None:
             old["QQQM"] = qqqm_display
         for holding in COMPANY_HOLDINGS:
-            old.setdefault(holding.ticker, ValuationDisplay(
-                ticker=holding.ticker, status="source_unavailable", value_label="公允价值"))
-        return timed_out("估值复核", ({
-            ticker: replace(value, data_note=f"{ticker} 复核未完成，沿用较早核验" if not value.is_pending else None,
-                            status="not_due" if not value.is_pending else "source_unavailable")
-            for ticker, value in old.items()
-        }, valuation_freshness or {}))
+            old.setdefault(
+                holding.ticker,
+                ValuationDisplay(
+                    ticker=holding.ticker, status="source_unavailable", value_label="公允价值"
+                ),
+            )
+        return timed_out(
+            "估值复核",
+            (
+                {
+                    ticker: replace(
+                        value,
+                        data_note=(
+                            (value.data_note or f"{ticker} 复核未完成，沿用较早核验")
+                            if not value.is_pending
+                            else None
+                        ),
+                        status="not_due" if not value.is_pending else "source_unavailable",
+                    )
+                    for ticker, value in old.items()
+                },
+                valuation_freshness or {},
+            ),
+        )
 
     if settings.valuation_enabled:
         qqqm_signal = next(

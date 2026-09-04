@@ -20,6 +20,7 @@ from src.valuation.models import FreshnessResult, OfficialDocument, ValuationDis
 from src.valuation.morningstar import (
     MorningstarFairValue,
     MorningstarProvider,
+    load_verified_values,
     refresh_fair_values,
 )
 from src.valuation.policy import POLICIES
@@ -133,8 +134,10 @@ def apply_morningstar_fair_values(
     updated = dict(displays)
     for ticker, display in displays.items():
         fair_value = fair_values.get(ticker)
-        if fair_value is None:
+        if fair_value is None or fair_value.historical_only:
             reason = failures.get(ticker, "公开 Morningstar 来源本次不可用")
+            if fair_value is not None:
+                reason = "旧版参考数缺少原始绝对数值证据，不能作为晨星公允价值"
             updated[ticker] = replace(
                 display,
                 status="source_unavailable",
@@ -143,21 +146,36 @@ def apply_morningstar_fair_values(
                 hurdle_rate=0.10,
                 return_label="IRR",
                 value_label="公允价值",
+                verified_at=None,
+                financial_as_of=None,
+                source_document_id=None,
+                source_url=None,
+                historical_reference=False,
+                data_note=(f"{ticker} 旧版参考数未通过原文核验，已停用" if fair_value else None),
                 warnings=(*display.warnings, reason),
             )
             continue
         current_price = prices.get(ticker)
         implied_return = (
             fair_value.fair_value / current_price - 1
-            if current_price is not None and current_price > 0
+            if current_price is not None and math.isfinite(current_price) and current_price > 0
             else None
         )
         warning = (fair_value.warning,) if fair_value.warning else ()
+        if fair_value.stale_cache:
+            note = f"{ticker} 沿用 {fair_value.retrieved_at[:10]} 核验值"
+            if "尚未核实" in (fair_value.warning or ""):
+                note += "（新报告未核实）"
+        elif any(word in (fair_value.warning or "") for word in ("冲突", "分歧")):
+            note = f"{ticker} 来源分歧，按证据顺序取值"
+        else:
+            note = None
         updated[ticker] = replace(
             display,
             status="not_due" if fair_value.stale_cache else "current",
-            verified_at=fair_value.retrieved_at,
-            data_note=(f"{ticker} 沿用 {fair_value.retrieved_at[:10]} 核验值" if fair_value.stale_cache else None),
+            verified_at=None if fair_value.historical_only else fair_value.retrieved_at,
+            data_note=note,
+            historical_reference=fair_value.historical_only,
             intrinsic_value=fair_value.fair_value,
             implied_return=implied_return,
             hurdle_rate=0.10,
@@ -169,12 +187,40 @@ def apply_morningstar_fair_values(
                 f"{fair_value.fair_value_updated_at}:{fair_value.fair_value:g}"
             ),
             formula_id="morningstar_fair_value_1y_irr",
-            model_version="morningstar-public-v2",
+            model_version="morningstar-public-v3",
             return_label="IRR",
             value_label="公允价值",
             warnings=(*display.warnings, *warning),
         )
     return updated
+
+
+def cached_morningstar_displays(
+    *,
+    state_dir: Path,
+    config_dir: Path,
+    prices: Mapping[str, float | None],
+    checked_at: datetime,
+) -> dict[str, ValuationDisplay]:
+    """No network/LLM: usable even when the outer collection watchdog expires."""
+    values = load_verified_values(
+        state_dir=state_dir,
+        checked_at=checked_at,
+        prices=prices,
+        baseline_path=config_dir / "morningstar_verified_snapshot.json",
+    )
+    return apply_morningstar_fair_values(
+        {
+            ticker: ValuationDisplay(ticker=ticker, status="not_due", value_label="公允价值")
+            for ticker in POLICIES
+        },
+        fair_values={
+            ticker: replace(value, stale_cache=True, fallback_used=True)
+            for ticker, value in values.items()
+        },
+        failures={},
+        prices=prices,
+    )
 
 
 def prepare_valuation_displays(
@@ -213,6 +259,7 @@ def prepare_valuation_displays(
             state_dir=state_dir,
             prices=prices,
             checked_at=checked_at,
+            baseline_path=config_dir / "morningstar_verified_snapshot.json",
         )
         displays = apply_morningstar_fair_values(
             displays,

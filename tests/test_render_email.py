@@ -270,7 +270,41 @@ def test_holdings_table_pending_never_backfills_approximate_value() -> None:
         valuations={"MSFT": valuation},
     )
     assert 'class="holding-valuation-pending"' in html
+    soup = BeautifulSoup(html, "html.parser")
+    assert not soup.select_one(".holding-valuation").get_text(strip=True)
+    assert "公允价值未核验：MSFT" in soup.get_text()
     assert "安全边际" not in html
+
+
+def test_fair_value_amount_has_no_explanatory_suffix_and_keeps_irr():
+    from scripts.preview_email import _build_mock_signals
+
+    signal = _build_mock_signals()[0]
+    valuation = ValuationDisplay(ticker=signal.holding.ticker, status="not_due",
+        intrinsic_value=600, implied_return=0.125, hurdle_rate=0.1,
+        value_label="公允价值", historical_reference=True,
+        data_note="MSFT 沿用上次核验值")
+    html = render_email(signals=[signal], generated_at=datetime(2026, 9, 4, tzinfo=UTC),
+                        valuations={signal.holding.ticker: valuation})
+    soup = BeautifulSoup(html, "html.parser")
+    cell = soup.select_one(".holding-valuation")
+    assert cell.select_one(".holding-valuation-main").get_text(strip=True) == "600.00"
+    assert cell.select_one(".holding-implied-return").get_text(strip=True) == "IRR\xa012.5%"
+    assert "历史" not in cell.get_text() and "核验" not in cell.get_text()
+    assert "MSFT 沿用上次核验值" in soup.get_text()
+
+
+def test_missing_etf_fair_value_has_no_placeholder_in_numeric_column():
+    from scripts.preview_email import _build_mock_signals, _build_mock_valuations
+
+    signals = _build_mock_signals()
+    valuations = _build_mock_valuations()
+    valuations.pop("QQQM")
+    html = render_email(signals=signals, generated_at=datetime(2026, 9, 4, tzinfo=UTC),
+                        valuations=valuations)
+    soup = BeautifulSoup(html, "html.parser")
+    assert not soup.select_one('[data-holding="QQQM"] .holding-valuation').get_text(strip=True)
+    assert "公允价值未核验：QQQM" in soup.get_text()
 
 
 def test_render_email_uses_one_editorial_number_system_everywhere() -> None:

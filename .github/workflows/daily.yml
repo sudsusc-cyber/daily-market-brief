@@ -90,6 +90,21 @@ jobs:
           restore-keys: |
             daily-state-
 
+      - name: Preserve daily Morningstar history before independent recovery
+        run: uv run python -m scripts.morningstar_cache preserve
+
+      - name: Restore independent Morningstar history
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/morningstar_fair_values.json
+          key: morningstar-verified-read-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            morningstar-verified-
+
+      - name: Merge verified Morningstar history
+        run: uv run python -m scripts.morningstar_cache normalize
+
       - name: Preserve daily QQQM snapshot before independent recovery
         run: uv run python -m scripts.qqqm_cache preserve
 
@@ -101,6 +116,9 @@ jobs:
           key: qqqm-verified-read-${{ github.run_id }}
           restore-keys: |
             qqqm-verified-
+
+      - name: Clear previous QQQM run diagnostic
+        run: rm -f state/qqqm_calculation_audit.json
 
       - name: Send daily market brief
         run: uv run python src/main.py
@@ -153,7 +171,23 @@ jobs:
             state
           key: daily-state-${{ github.run_id }}
 
-      # 单独保存已核验估值；定向试发可以只读使用，不接触新闻/主题去重状态。
+      - name: Upload QQQM calculation audit
+        if: ${{ always() && hashFiles('state/qqqm_calculation_audit.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qqqm-calculation-audit
+          path: state/qqqm_calculation_audit.json
+          retention-days: 30
+
+      - name: Upload Morningstar source decisions
+        if: ${{ always() && hashFiles('state/morningstar_diagnostic.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: morningstar-source-decisions
+          path: state/morningstar_diagnostic.json
+          retention-days: 30
+
+      # 独立保留估值状态，不触及新闻/主题去重；文件保留原核验时间与历史标志。
       - name: Save verified Morningstar snapshot
         if: ${{ always() && github.ref == 'refs/heads/main' && hashFiles('.delivery-receipt.json') != '' && hashFiles('state/morningstar_fair_values.json') != '' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4

@@ -2,7 +2,7 @@ name: send-formal-test
 
 # 手动定向试发完整正式版：运行真实采集、LLM、主题与正式模板，但不恢复或保存
 # daily-state，因此不会污染定时邮件的新闻去重、主题缓存或判断账本。
-# 仅只读恢复独立的 Morningstar 已核验快照；仍先实时取数，回退受 48 小时限制。
+# 仅恢复/保存独立估值状态；实时取数失败保留有日期的历史值，不触及新闻去重。
 on:
   workflow_dispatch:
     inputs:
@@ -75,6 +75,10 @@ jobs:
           restore-keys: |
             morningstar-verified-
 
+      - name: Merge Morningstar startup and runtime history
+        if: ${{ !inputs.qqqm_check_only }}
+        run: uv run python -m scripts.morningstar_cache normalize
+
       - name: Restore verified QQQM snapshot only
         continue-on-error: true
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -114,6 +118,29 @@ jobs:
           name: qqqm-diagnostic
           path: state/qqqm_diagnostic.json
           retention-days: 3
+
+      - name: Upload QQQM calculation audit
+        if: ${{ always() && hashFiles('state/qqqm_calculation_audit.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qqqm-calculation-audit
+          path: state/qqqm_calculation_audit.json
+          retention-days: 30
+
+      - name: Upload Morningstar source decisions
+        if: ${{ always() && !inputs.qqqm_check_only && hashFiles('state/morningstar_diagnostic.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: morningstar-source-decisions
+          path: state/morningstar_diagnostic.json
+          retention-days: 30
+
+      - name: Save verified Morningstar history
+        if: ${{ always() && !inputs.qqqm_check_only && github.ref == 'refs/heads/main' && hashFiles('.delivery-receipt.json') != '' && hashFiles('state/morningstar_fair_values.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state/morningstar_fair_values.json
+          key: morningstar-verified-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Confirm SMTP acceptance
         if: ${{ always() && !inputs.qqqm_check_only && hashFiles('.delivery-receipt.json') != '' }}
