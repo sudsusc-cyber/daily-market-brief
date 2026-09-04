@@ -350,6 +350,7 @@ def summarize(
     bundles: list[CompanyNewsBundle],
     *,
     client: LLMClient,
+    history=None,
 ) -> CompanyNewsSummary | None:
     if not bundles:
         return None
@@ -359,6 +360,8 @@ def summarize(
     last_error: str | None = None
     for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
         task_instruction = _TASK_INSTRUCTION
+        if history is not None:
+            task_instruction += history.context("company")
         if attempt > 1:
             task_instruction += """
 
@@ -387,6 +390,8 @@ def summarize(
 
         summary = _rebuild_safe_summary(raw_text, flat_items)
         if summary is not None:
+            if history is not None:
+                summary = history.filter_company(summary)
             logger.info(
                 "news_summarizer.ok footnotes=%d attempt=%d (sanitized)",
                 len(summary.footnotes), attempt,
