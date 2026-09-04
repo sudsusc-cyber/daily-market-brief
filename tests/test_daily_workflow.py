@@ -21,7 +21,7 @@ def test_formal_send_only_persists_isolated_valuation_state() -> None:
     assert "morningstar-verified-" in block
     assert "daily-state-" not in block
     save = workflow.split("- name: Save verified QQQM snapshot", 1)[1]
-    assert workflow.count("actions/cache/save@") == 2
+    assert workflow.count("actions/cache/save@") == 3
     morningstar_save = workflow.split("- name: Save verified Morningstar history", 1)[1].split("- name:", 1)[0]
     assert "github.ref == 'refs/heads/main'" in morningstar_save
     assert "hashFiles('.delivery-receipt.json') != ''" in morningstar_save
@@ -65,3 +65,16 @@ def test_daily_and_formal_jobs_share_extended_timeout_and_early_send_reserve():
         assert "timeout-minutes: 20" in workflow
         assert "BRIEF_LLM_CUTOFF_EPOCH=$(( $(date +%s) + 17 * 60 ))" in workflow
         assert workflow.index("Set LLM cutoff before setup") < workflow.index("actions/checkout@")
+
+
+def test_pop_mart_recovery_never_overwrites_daily_history_and_saves_only_on_main():
+    for name in ("daily.yml", "formal-test-send.yml"):
+        workflow = _WORKFLOW.with_name(name).read_text(encoding="utf-8")
+        restore = workflow.split("- name: Restore isolated Pop Mart analyst target", 1)[1].split("- name:", 1)[0]
+        assert "path: state/pop_mart_analyst_recovery.json" in restore
+        assert "pop_mart_analyst_target.json" not in restore
+        assert "run: uv run python -m scripts.pop_mart_cache" in workflow
+        save = workflow.split("- name: Save isolated Pop Mart analyst target", 1)[1].split("- name:", 1)[0]
+        assert "github.ref == 'refs/heads/main'" in save
+        assert "hashFiles('.delivery-receipt.json') != ''" in save
+        assert "path: state/pop_mart_analyst_recovery.json" in save

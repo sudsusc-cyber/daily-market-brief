@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "description": "User-approved Pop Mart exception: Morgan Stanley HKD target price, not Morningstar fair value. Two public full articles each read twice on 2026-09-04. Publication date is retained; retrieval date is not a report revision date.",
+  "observations": [
+    {
+      "target_price": 203.0,
+      "published_at": "2026-08-21T11:54:12+08:00",
+      "verified_at": "2026-09-04T13:23:26.078182+00:00",
+      "source_url": "https://secure.aastocks.com/tc/mobile/News.aspx?NewsID=NOW.1539842&NewsSource=HK6",
+      "evidence_sha256": "e7acd0b695413e6c8485f3c8e9d7068ad3a4f4a0fd13a440ba45f2c4a9d65d75",
+      "ticker": "9992.HK",
+      "currency": "HKD",
+      "institution": "Morgan Stanley",
+      "value_type": "analyst_target_price"
+    },
+    {
+      "target_price": 203.0,
+      "published_at": "2026-08-21T09:47:19+08:00",
+      "verified_at": "2026-09-04T13:23:26.078182+00:00",
+      "source_url": "https://finance.sina.com.cn/stock/usstock/c/2026-08-21/doc-ininztwt6444665.shtml",
+      "evidence_sha256": "6a05b734bda06308f3cd9b04efeef96aff209befbd4acaf8c05a862d87b3e55c",
+      "ticker": "9992.HK",
+      "currency": "HKD",
+      "institution": "Morgan Stanley",
+      "value_type": "analyst_target_price"
+    }
+  ]
+}

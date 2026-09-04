@@ -57,7 +57,8 @@ def test_expired_outer_budget_can_restore_all_holdings_without_network(tmp_path)
     assert set(displays) == set(SECURITIES)
     assert all(not value.is_pending and value.data_note
                for ticker, value in displays.items() if ticker != "9992.HK")
-    assert displays["9992.HK"].intrinsic_value is None
+    assert displays["9992.HK"].intrinsic_value == 203.0
+    assert displays["9992.HK"].formula_id == "analyst_target_price_gap"
 
 
 def test_same_day_timestamp_newest_wins_not_retrieval_time():

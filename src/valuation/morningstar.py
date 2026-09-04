@@ -1267,6 +1267,7 @@ def refresh_fair_values(
     checked_at: datetime,
     max_cache_age: timedelta | None = None,
     baseline_path: Path | None = None,
+    excluded_tickers: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
     """Refresh all securities; outages retain dated, labelled last verified values.
 
@@ -1278,16 +1279,17 @@ def refresh_fair_values(
     previous = load_verified_values(
         state_dir=state_dir, checked_at=checked_at, prices=prices, baseline_path=baseline_path
     )
+    securities = {ticker: security for ticker, security in SECURITIES.items() if ticker not in excluded_tickers}
     try:
-        live, failures = provider.fetch_all(SECURITIES, checked_at=checked_at)
+        live, failures = provider.fetch_all(securities, checked_at=checked_at)
     except Exception as exc:  # noqa: BLE001
         live = {}
         reason = f"{type(exc).__name__}: {str(exc)[:180]}"
-        failures = {ticker: reason for ticker in SECURITIES}
+        failures = {ticker: reason for ticker in securities}
 
     accepted: dict[str, MorningstarFairValue] = {}
     final_failures = dict(failures)
-    for ticker in SECURITIES:
+    for ticker in securities:
         candidate = live.get(ticker)
         old = previous.get(ticker)
         if candidate is not None:
@@ -1352,7 +1354,7 @@ def refresh_fair_values(
                 "selected": _audit_value(accepted.get(ticker)),
                 "reason": final_failures.get(ticker),
             }
-            for ticker in SECURITIES
+            for ticker in securities
         },
     }
     try:
