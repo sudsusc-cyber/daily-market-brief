@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -156,25 +157,34 @@ def test_all_four_channels_offline_retains_dated_seed(monkeypatch, tmp_path):
 
 
 def test_one_slow_discovery_cannot_use_all_time_before_peers_read(monkeypatch, tmp_path):
-    provider = configured_provider(monkeypatch, budget=.1)
+    provider = configured_provider(monkeypatch, budget=1)
     original = provider._discover
+    release, finished = threading.Event(), threading.Event()
 
     def discover(url, **kwargs):
         if _channel(url) == "aastocks":
-            time.sleep(.2)
+            release.wait(5)
+            finished.set()
+            raise TimeoutError("blocked discovery")
         return original(url, **kwargs)
 
     monkeypatch.setattr(provider, "_discover", discover)
-    started = time.monotonic()
-    result = refresh_target(state_dir=tmp_path, config_dir=CONFIG, checked_at=NOW, price=140, provider=provider)
-    assert time.monotonic() - started < .19
-    assert result.intrinsic_value == 250
-    assert provider.diagnostic["timed_out_channels"] == 1
+    try:
+        result = refresh_target(state_dir=tmp_path, config_dir=CONFIG, checked_at=NOW, price=140, provider=provider)
+        # Prove peers finished while discovery remains blocked, without a
+        # sub-200ms wall-clock assertion that measures CI scheduling/disk speed.
+        assert not finished.is_set()
+        assert result.intrinsic_value == 250
+        assert provider.diagnostic["timed_out_channels"] == 1
+    finally:
+        release.set()
+        assert finished.wait(5)
 
 
 def test_inflight_newer_report_is_not_silently_declared_fully_checked(monkeypatch, tmp_path):
-    provider = configured_provider(monkeypatch, budget=.1)
+    provider = configured_provider(monkeypatch, budget=1)
     original_discover, original_get = provider._discover, provider._get
+    release, finished = threading.Event(), threading.Event()
 
     def discover(url, **kwargs):
         if _channel(url) == "aastocks":
@@ -183,15 +193,22 @@ def test_inflight_newer_report_is_not_silently_declared_fully_checked(monkeypatc
 
     def get(url, **kwargs):
         if url == URLS["aastocks"]:
-            time.sleep(.2)
+            release.wait(5)
+            finished.set()
+            raise TimeoutError("blocked newer article")
         return original_get(url, **kwargs)
 
     monkeypatch.setattr(provider, "_discover", discover)
     monkeypatch.setattr(provider, "_get", get)
-    result = refresh_target(state_dir=tmp_path, config_dir=CONFIG, checked_at=NOW, price=140, provider=provider)
-    assert result.intrinsic_value == 250
-    assert result.status == "not_due"
-    assert provider.diagnostic["unresolved_reports"]
+    try:
+        result = refresh_target(state_dir=tmp_path, config_dir=CONFIG, checked_at=NOW, price=140, provider=provider)
+        assert not finished.is_set()
+        assert result.intrinsic_value == 250
+        assert result.status == "not_due"
+        assert provider.diagnostic["unresolved_reports"]
+    finally:
+        release.set()
+        assert finished.wait(5)
 
 
 def test_two_same_day_broker_values_still_do_not_average(monkeypatch, tmp_path):
