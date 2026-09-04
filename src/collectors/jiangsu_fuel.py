@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import math
 import re
@@ -277,40 +278,58 @@ def _detail_from_text(text: str, direction: str) -> str:
         return "预计不作调整"
 
     details: list[str] = []
-    # 支持“92号汽油每升下调0.18元”和“92号汽油下调0.18元/升”两种顺序。
-    grade_pattern = re.compile(
-        r"(?<!\d)(?<!\d[,，.])(89|92|95|98|0)\s*[号#]?(?:汽油|柴油)?.{0,12}?"
-        r"(?:每升)?(?:预计|或)?\s*(上调|下调|上涨|下跌|提高|降低|涨|跌)"
-        rf"\s*({_AMOUNT_RE})\s*元(?:/升)?"
+    # 必须有明确的单位：不能将“92号汽油上调200元/吨”读成200元/升。
+    pattern = re.compile(
+        r"(上调|下调|上涨|下跌|提高|降低|涨|跌)"
+        r"(?P<prefix>[^\d，,。；;]{0,12}?)"
+        rf"(?P<amount>{_AMOUNT_RE})"
+        rf"(?:\s*[-—~～至到]\s*(?P<upper>{_AMOUNT_RE}))?"
+        r"\s*(?P<unit>元\s*[/／每]\s*[升吨]|元|分)"
     )
-    for grade, word, amount in grade_pattern.findall(text):
-        item_direction = "下调" if word in _LOWER_WORDS else "上调"
-        # 标题可能先回顾上一轮“刚涨”，再预告本轮“预计下调”。只展示和本轮
-        # 总方向一致的分油号幅度，避免把旧轮次的数字拼到新轮次上。
-        if item_direction != direction:
+    text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+    # 不把同方向的上一轮涨价金额挪到本轮。逗号分句但保留千位分隔符。
+    clauses = re.split(r"[。；;\n]|[,，](?!\d{3}(?:\D|$))", text)
+    for clause in clauses:
+        current = re.search(r"本轮|本次|下轮|下次|新一轮", clause)
+        if current:
+            clause = clause[current.start():]
+        elif re.search(r"上轮|上一轮|上次|此前|刚涨|刚跌", clause):
             continue
-        label = f"{grade} 号" if grade != "0" else "0 号柴油"
-        detail = f"{label}约 {_signed_amount(item_direction, amount, '升')}"
-        if detail not in details:
-            details.append(detail)
-
-    ton_pattern = re.compile(
-        r"(?:预计|或)?\s*(上调|下调|上涨|下跌|提高|降低|涨|跌)"
-        rf".{{0,8}}?({_AMOUNT_RE})\s*元(?:/|每)吨",
-    )
-    if not details:
-        for ton_match in ton_pattern.finditer(text):
-            word, amount = ton_match.groups()
-            item_direction = "下调" if word in _LOWER_WORDS else "上调"
-            # 新闻常同时回顾上一轮价格并预告本轮价格；只换算与本轮总方向
-            # 一致的吨价，避免旧轮次金额覆盖当前预测。
+        for match in pattern.finditer(clause):
+            item_direction = "下调" if match.group(1) in _LOWER_WORDS else "上调"
             if item_direction != direction:
                 continue
-            details.append(_ton_amount_as_per_liter(item_direction, amount))
-            break
+            before = clause[:match.start()]
+            unit = re.sub(r"\s", "", match.group("unit"))
+            per_ton = "吨" in unit or "每吨" in before[-6:] + match.group("prefix")
+            per_liter = "升" in unit or "每升" in before[-6:] + match.group("prefix")
+            if not per_ton and not per_liter:
+                continue
+            amounts = [_amount_value(match.group("amount"))]
+            if match.group("upper"):
+                amounts.append(_amount_value(match.group("upper")))
+            if not all(math.isfinite(value) and value >= 0 for value in amounts):
+                continue
+            grade = re.search(r"(?<!\d)(89|92|95|98|0)\s*[号#](?:汽油|柴油)?[^\d]{0,8}$", before)
+
+            def render_values(multiplier: float, values: list[float] = amounts) -> str:
+                return " ～ ".join(
+                    _signed_amount(direction, value * multiplier, "升") for value in values
+                )
+
+            if per_ton:
+                # 明确分开的汽油、柴油吨价各自换算，不复制同一个幅度。
+                fuel = re.search(r"(汽油|柴油)[^\d]{0,8}$", before)
+                labels = [fuel.group(1)] if fuel and "汽柴油" not in before else ["汽油", "柴油"]
+                for label in labels:
+                    density = _GASOLINE_KG_PER_LITER if label == "汽油" else _DIESEL_KG_PER_LITER
+                    details.append(f"{label}约 {render_values(density / 1000)}")
+            else:
+                label = (f"{grade.group(1)} 号" if grade.group(1) != "0" else "0 号柴油") if grade else "汽柴油"
+                details.append(f"{label}约 {render_values(0.01 if unit == '分' else 1)}")
 
     if details:
-        return "；".join(details[:3])
+        return "；".join(dict.fromkeys(details))
     return f"预计{direction}，具体幅度待更新"
 
 
@@ -343,13 +362,20 @@ def _candidate_from_entry(entry: object, target: date) -> ForecastCandidate | No
     )
 
 
-def _candidate_score(candidate: ForecastCandidate, target: date) -> tuple[int, float]:
+def _candidate_score(candidate: ForecastCandidate, target: date) -> tuple[int, int, bool, int, float]:
     source_score = _TRUSTED_SOURCES.get(candidate.source, 0)
     date_score = 12 if candidate.mentions_target_date else 0
     # 调价日前后新闻很多。只取调价前发布的预测，避免误用当天正式结果或旧轮次。
     before_target = candidate.published_at.date() <= target
     timing_score = 3 if before_target else -20
-    return source_score + date_score + timing_score, candidate.published_at.timestamp()
+    # 相同窗口、同日预测优先包含金额的完整信息；不能为凑金额倒退到旧日预测。
+    return (
+        date_score + timing_score,
+        candidate.published_at.date().toordinal(),
+        "元/升" in candidate.detail or candidate.direction == "搁浅",
+        source_score,
+        candidate.published_at.timestamp(),
+    )
 
 
 @retry(max_attempts=2, base_delay=1.0)
@@ -573,7 +599,7 @@ def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
         candidates = [
             candidate for entry in entries
             if (candidate := _candidate_from_entry(entry, target)) is not None
-            and (target - timedelta(days=7)) <= candidate.published_at.date() <= target
+            and (target - timedelta(days=7)) <= candidate.published_at.date() <= today
         ]
         best = max(candidates, key=lambda item: _candidate_score(item, target), default=None)
     except Exception as exc:  # noqa: BLE001
