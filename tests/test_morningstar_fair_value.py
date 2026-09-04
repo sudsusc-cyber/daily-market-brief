@@ -559,7 +559,7 @@ def test_report_listing_does_not_borrow_date_from_next_report() -> None:
     assert [c.url for c in _parse_company_report_candidates(text)] == [_TENCENT_URL]
 
 
-def test_final_check_retries_only_failed_tickers(monkeypatch) -> None:
+def test_final_check_refreshes_successes_and_failures(monkeypatch) -> None:
     provider = MorningstarPublicProvider(session=_Session([]))
     calls = []
     fail_tencent = True
@@ -582,6 +582,8 @@ def test_final_check_retries_only_failed_tickers(monkeypatch) -> None:
     fail_tencent = False
     values, failures = provider.fetch_all(securities, checked_at=now + timedelta(minutes=6))
     assert set(values) == set(securities) and failures == {}
-    assert calls == ["AAPL", "0700.HK", "0700.HK"]
+    assert calls == ["AAPL", "0700.HK", "AAPL", "0700.HK"]
     provider.fetch_all(securities, checked_at=now + timedelta(minutes=7))
-    assert len(calls) == 3
+    assert len(calls) == 6
+    provider.fetch_all(securities, checked_at=now + timedelta(minutes=7))
+    assert len(calls) == 6  # Only the identical observation request is memoized.

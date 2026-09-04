@@ -17,7 +17,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from src.collectors.company_news import CompanyNewsBundle, NewsItem
+from src.collectors.company_news import CompanyNewsBundle, NewsItem, _is_relevant
 from src.processors.html_safe import (
     FOOTNOTE_ANCHOR_STYLE,
     FOOTNOTE_RE,
@@ -182,6 +182,12 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
     """
     flat_items: list[NewsItem] = []
     lines: list[str] = []
+    source_companies: dict[str, set[str]] = {}
+    for bundle in bundles:
+        if not bundle.error:
+            for item in bundle.items:
+                if item.url:
+                    source_companies.setdefault(item.url, set()).add(bundle.holding.ticker)
     for b in bundles:
         if b.error or not b.items:
             continue
@@ -189,6 +195,8 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
         head = f"【{cn_name}({b.holding.ticker})】"
         lines.append(head)
         for it in b.items[:5]:
+            it.holding_ticker = b.holding.ticker
+            it.related_holding_tickers = tuple(sorted(source_companies.get(it.url, {b.holding.ticker})))
             flat_items.append(it)
             n = len(flat_items)
             src = f" — {it.source}" if it.source else ""
@@ -304,6 +312,28 @@ def _rebuild_safe_summary(
         else:
             raw_rows.append(("", strip_all_tags(line)))
 
+    verified_rows = []
+    for cn, summary in raw_rows:
+        company = strip_all_tags(cn).strip()
+        company = {"美国运通": "运通", "伯克希尔哈撒韦": "伯克希尔", "苹果公司": "苹果",
+                   "英伟达公司": "英伟达", "微软公司": "微软"}.get(company, company)
+        ticker = next((t for t, name in _CN_NAME_HINT.items() if name == company), None)
+        cited = [flat_items[index - 1] for match in FOOTNOTE_RE.finditer(summary)
+                 if 1 <= (index := footnote_idx(match)) <= len(flat_items)]
+        scoped = any(item.holding_ticker is not None for item in flat_items)
+        if scoped:
+            # Only source-company pairs supplied by the collector may be attributed.
+            valid = ticker is not None and cited and all(
+                item.holding_ticker == ticker or ticker in item.related_holding_tickers for item in cited)
+        else:
+            # Compatibility for direct callers; obvious company/source mismatches
+            # are still rejected. Production always supplies explicit identities.
+            valid = ticker is None or not cited or any(_is_relevant(item, ticker) for item in cited)
+        if not valid:
+            logger.warning("news_summarizer.company_source_mismatch company=%r", company)
+            continue
+        verified_rows.append((cn, summary))
+    raw_rows = verified_rows
     combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)
     rewrite, footnotes = _resolve_footnote_mapping(combined_for_scan, flat_items)
 

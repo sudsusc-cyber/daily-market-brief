@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pandas as pd
@@ -10,6 +11,26 @@ import pytest
 from src.collectors import stocks
 from src.collectors.stocks import _judge_signal
 from src.config import BUY_STRATEGIES, HOLDINGS, buy_strategy
+
+
+@pytest.fixture(autouse=True)
+def offline_stock_clock(monkeypatch):
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 4, 0, tzinfo=UTC).astimezone(tz or UTC)
+    monkeypatch.setattr(stocks, "datetime", Clock)
+    monkeypatch.setattr(stocks.requests, "get", lambda *a, **k: pytest.fail("unexpected live market request"))
+
+
+def _history(values):
+    return pd.DataFrame({"Close": list(values)},
+                        index=pd.date_range(end="2026-08-31", periods=len(values), freq="W-MON"))
+
+
+def _ticker(price):
+    return SimpleNamespace(fast_info=SimpleNamespace(last_price=price),
+                           history_metadata={"regularMarketTime": datetime(2026, 9, 3, 20, tzinfo=UTC).timestamp()})
 
 
 class TestJudgeSignal:
@@ -36,8 +57,8 @@ class TestJudgeSignal:
 
 def test_nonfinite_live_price_falls_back_to_weekly_close(monkeypatch) -> None:
     closes = pd.Series([100.0 + i / 10 for i in range(220)])
-    history = pd.DataFrame({"Close": closes})
-    fake_ticker = SimpleNamespace(fast_info=SimpleNamespace(last_price=float("nan")))
+    history = _history(closes)
+    fake_ticker = _ticker(float("nan"))
     monkeypatch.setattr(stocks.yf, "Ticker", lambda _symbol: fake_ticker)
     monkeypatch.setattr(stocks, "_yf_history", lambda _ticker: history)
 
@@ -133,13 +154,13 @@ def test_daily_history_request_is_daily_and_unadjusted():
         return pd.DataFrame({"Close": [150.0] * 300})
 
     stocks._yf_daily_history(SimpleNamespace(ticker="NVDA", history=history))
-    assert calls == [{"period": "2y", "interval": "1d", "auto_adjust": False}]
+    assert calls == [{"period": "2y", "interval": "1d", "auto_adjust": False, "timeout": 20}]
 
 
 def test_growth_daily_primary_failure_uses_daily_backup(monkeypatch):
-    ticker = SimpleNamespace(fast_info=SimpleNamespace(last_price=130))
+    ticker = _ticker(130)
     monkeypatch.setattr(stocks.yf, "Ticker", lambda _: ticker)
-    monkeypatch.setattr(stocks, "_yf_history", lambda _: pd.DataFrame({"Close": [100.0] * 220}))
+    monkeypatch.setattr(stocks, "_yf_history", lambda _: _history([100.0] * 220))
     monkeypatch.setattr(stocks, "_yf_daily_history", lambda _: (_ for _ in ()).throw(RuntimeError("daily failed")))
     monkeypatch.setattr(stocks, "_yahoo_chart_daily", lambda _: ([150.0] * 300, 130))
     signal = stocks.fetch_one(next(h for h in HOLDINGS if h.ticker == "NVDA"))
@@ -161,9 +182,9 @@ def test_growth_daily_both_fail_returns_error_not_weekly_signal(monkeypatch):
 
 
 def test_single_line_group_does_not_fetch_daily(monkeypatch):
-    ticker = SimpleNamespace(fast_info=SimpleNamespace(last_price=130))
+    ticker = _ticker(130)
     monkeypatch.setattr(stocks.yf, "Ticker", lambda _: ticker)
-    monkeypatch.setattr(stocks, "_yf_history", lambda _: pd.DataFrame({"Close": [100.0] * 220}))
+    monkeypatch.setattr(stocks, "_yf_history", lambda _: _history([100.0] * 220))
     monkeypatch.setattr(stocks, "_yf_daily_history", lambda _: pytest.fail("unexpected daily fetch"))
     signal = stocks.fetch_one(next(h for h in HOLDINGS if h.ticker == "COST"))
     assert signal.error is None

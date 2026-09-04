@@ -310,6 +310,7 @@
                   参考线依次为 DCA / 大额；* 组仅 200 周触发大额。每日持续显示。<br />
                   行情：Yahoo Finance；250 日指交易日；小字为距参考线幅度。
                   {% if show_valuations %}<br />{% if valuation_label == '公允价值' %}公允价值：个股 Morningstar；QQQM 乐观情景。IRR＝公允价值 ÷ 现价 − 1（差额收益率，非年化、不含息）。仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% else %}内在价值 / IRR：逐股固定模型，仅供参考。核验&nbsp;{{ valuation_checked_at | bj_time if valuation_checked_at else '待更新' }}。{% endif %}{% endif %}
+                  {% if show_valuations %}{% set notes = valuations.values() | selectattr('data_note') | map(attribute='data_note') | list %}{% if notes %}<br />{{ notes | join('；') }}。{% endif %}{% endif %}
                 </td>
               </tr>
             </table>

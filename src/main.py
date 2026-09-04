@@ -26,6 +26,8 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from src.collectors import (
@@ -63,11 +65,12 @@ from src.utils.dates import now_beijing
 from src.utils.delivery import clear_delivery_receipt, write_delivery_receipt
 from src.utils.holidays import should_send_today
 from src.utils.idempotency import already_sent_today
-from src.utils.runtime_budget import llm_wall_timeout_seconds
+from src.utils.publication import candidate_sources, published_pending, summary_urls
+from src.utils.runtime_budget import RuntimeBudget, llm_wall_timeout_seconds
 from src.utils.secrets import mask_emails
 from src.valuation.models import FreshnessResult, ValuationDisplay
 from src.valuation.morningstar import MorningstarPublicProvider
-from src.valuation.qqqm import prepare_qqqm_display
+from src.valuation.qqqm import cached_qqqm_display, prepare_qqqm_display
 from src.valuation.service import commit_published_values, prepare_valuation_displays
 
 logger = logging.getLogger(__name__)
@@ -194,6 +197,11 @@ def main() -> int:
     _clear_quality_alert()
     settings = load_settings()
     now_bj = now_beijing()
+    budget = RuntimeBudget()
+
+    def timed_out(label, value):
+        _record_quality_alert(f"{label}取数超时：已停止等待并降级，保留发送时间。")
+        return value
 
     # 生产邮件只使用经人工验收的固定版本。估值新财报复核与后续所有文本处理
     # 共用同一客户端和总 token/时间预算；最终估值始终由 Python 复算。
@@ -225,7 +233,8 @@ def main() -> int:
 
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
-    signals = stocks.fetch_all(HOLDINGS)
+    signals = budget.call(stocks.fetch_all, HOLDINGS, seconds=150,
+        fallback=lambda: timed_out("行情", [stocks._failed(h, "行情取数超时") for h in HOLDINGS]))
     morningstar_provider = (
         MorningstarPublicProvider() if settings.morningstar_fair_value_enabled else None
     )
@@ -234,6 +243,20 @@ def main() -> int:
     valuation_displays: dict[str, ValuationDisplay] | None = None
     valuation_freshness: dict[str, FreshnessResult] | None = None
     qqqm_display: ValuationDisplay | None = None
+
+    def valuation_timeout():
+        old = dict(valuation_displays or {})
+        if qqqm_display is not None:
+            old["QQQM"] = qqqm_display
+        for holding in COMPANY_HOLDINGS:
+            old.setdefault(holding.ticker, ValuationDisplay(
+                ticker=holding.ticker, status="source_unavailable", value_label="公允价值"))
+        return timed_out("估值复核", ({
+            ticker: replace(value, data_note=f"{ticker} 复核未完成，沿用较早核验" if not value.is_pending else None,
+                            status="not_due" if not value.is_pending else "source_unavailable")
+            for ticker, value in old.items()
+        }, valuation_freshness or {}))
+
     if settings.valuation_enabled:
         qqqm_signal = next(
             (signal for signal in signals if signal.holding.ticker == "QQQM" and signal.last_close),
@@ -241,7 +264,10 @@ def main() -> int:
         )
         if qqqm_signal is not None:
             logger.info("valuation.qqqm_prepare price=%.4f", qqqm_signal.last_close)
-            qqqm_display = prepare_qqqm_display(
+            qqqm_display = budget.call(prepare_qqqm_display,
+                seconds=75,
+                fallback=lambda: timed_out("QQQM", cached_qqqm_display(
+                    price=qqqm_signal.last_close, state_dir=_STATE_DIR, checked_at=now_beijing())),
                 price=qqqm_signal.last_close,
                 client=llm,
                 state_dir=_STATE_DIR,
@@ -250,7 +276,8 @@ def main() -> int:
         else:
             logger.warning("valuation.qqqm_pending reason=market_price_unavailable")
         logger.info("valuation.freshness_precheck")
-        valuation_displays, valuation_freshness = prepare_valuation_displays(
+        valuation_displays, valuation_freshness = budget.call(prepare_valuation_displays,
+            seconds=360, fallback=valuation_timeout,
             signals=signals,
             state_dir=_STATE_DIR,
             config_dir=_PROJECT_ROOT / "config",
@@ -263,38 +290,54 @@ def main() -> int:
 
     logger.info("collect.company_news")
     company_news_state_path = _STATE_DIR / "pushed_company_news.json"
-    cn_bundles, company_news_pending_pushed = company_news.fetch_all(
+    cn_bundles, company_news_pending_pushed = budget.call(company_news.fetch_all,
         COMPANY_HOLDINGS,
         settings.finnhub_api_key,
+        seconds=90,
+        fallback=lambda: timed_out("个股新闻", ([company_news.CompanyNewsBundle(h, error="取数超时")
+                                                  for h in COMPANY_HOLDINGS],
+                                                 company_news._load_pushed_news(company_news_state_path))),
         state_path=company_news_state_path,
     )
 
     logger.info("collect.macro_news")
     macro_news_state_path = _STATE_DIR / "pushed_macro_news.json"
-    macro_bundles, macro_news_pending_pushed = macro_news.fetch_all(
+    macro_bundles, macro_news_pending_pushed = budget.call(macro_news.fetch_all,
+        seconds=60,
+        fallback=lambda: timed_out("宏观新闻", ([macro_news.MacroFeedBundle("数据源", error="取数超时")],
+                                                 macro_news._load_pushed_macro(macro_news_state_path))),
         state_path=macro_news_state_path
     )
 
     logger.info("collect.figures")
     figures_state_path = _STATE_DIR / "pushed_figures.json"
-    fig_bundles, figures_pending_pushed = figures.fetch_all(
+    fig_bundles, figures_pending_pushed = budget.call(figures.fetch_all,
+        seconds=90,
+        fallback=lambda: timed_out("关键发言", ([figures.FigureBundle("数据源", "", error="取数超时")],
+                                                 figures._load_pushed(figures_state_path))),
         state_path=figures_state_path,
         finnhub_api_key=settings.finnhub_api_key,
     )
 
     logger.info("collect.frontier_labs")
     frontier_labs_state_path = _STATE_DIR / "pushed_frontier_labs.json"
-    frontier_labs_bundles, frontier_labs_pending_pushed = frontier_labs.fetch_all(
+    frontier_labs_bundles, frontier_labs_pending_pushed = budget.call(frontier_labs.fetch_all,
+        seconds=60,
+        fallback=lambda: timed_out("前沿动态", ([frontier_labs.FrontierBundle("数据源", [], errors=["取数超时"])],
+                                                 frontier_labs._load_pushed(frontier_labs_state_path))),
         state_path=frontier_labs_state_path,
         finnhub_api_key=settings.finnhub_api_key,
     )
 
     logger.info("collect.buffett_13f")
     buffett_13f_state_path = _STATE_DIR / "last_13f.json"
-    buffett_bundle, buffett_13f_pending_save = buffett_13f.fetch(state_path=buffett_13f_state_path)
+    buffett_bundle, buffett_13f_pending_save = budget.call(buffett_13f.fetch,
+        state_path=buffett_13f_state_path, seconds=30,
+        fallback=lambda: timed_out("13F", (buffett_13f.BuffettBundle(error="取数超时"), None)))
 
     logger.info("collect.jiangsu_fuel")
-    jiangsu_fuel_alert = jiangsu_fuel.fetch(
+    jiangsu_fuel_alert = budget.call(jiangsu_fuel.fetch,
+        seconds=45, fallback=lambda: timed_out("油价", None),
         today=now_bj.date(),
         fred_api_key=settings.fred_api_key,
     )
@@ -304,13 +347,21 @@ def main() -> int:
         )
 
     logger.info("collect.sentiment")
-    sentiment_bundle = sentiment.fetch_all(
+    sentiment_bundle = budget.call(sentiment.fetch_all,
         settings.fred_api_key,
+        seconds=60,
+        fallback=lambda: timed_out("情绪指标", sentiment.SentimentBundle([], now_beijing())),
         state_dir=_STATE_DIR,
         today=now_bj.date(),
     )
 
     # ---------- LLM 处理(M4) ----------
+    publication_candidates = {
+        "company": candidate_sources(cn_bundles, lambda b: b.holding.ticker, company_news._content_hash),
+        "macro": candidate_sources(macro_bundles, lambda b: b.source, macro_news._content_hash),
+        "figures": candidate_sources(fig_bundles, lambda b: b.person, figures._content_hash),
+        "frontier": candidate_sources(frontier_labs_bundles, lambda b: b.lab, frontier_labs._content_hash),
+    }
 
     logger.info("translate.titles")
     _translate_all_bundles(
@@ -505,19 +556,21 @@ def main() -> int:
 
     # ---------- 刊头图(M5) ----------
     logger.info("collect.header_image")
-    header = header_image.pick_header_image(now_bj.date())
+    header = budget.call(header_image.pick_header_image, now_bj.date(), seconds=25,
+                         fallback=header_image._tier3_local)
 
     # ---------- 渲染 ----------
     logger.info("render")
     # 发送前第二遍检查，封住“第一遍检查后、邮件渲染前发布新财报”的竞态窗口；
-    # 这里只复核文件编号，不重复刷新财务 provider。
+    # Morningstar 在真实晚时点重读；旧的自算模型仍只复核财报编号。
     if settings.valuation_enabled:
         logger.info("valuation.freshness_final_check")
-        valuation_displays, valuation_freshness = prepare_valuation_displays(
+        valuation_displays, valuation_freshness = budget.call(prepare_valuation_displays,
+            seconds=360, fallback=valuation_timeout,
             signals=signals,
             state_dir=_STATE_DIR,
             config_dir=_PROJECT_ROOT / "config",
-            checked_at=now_bj,
+            checked_at=now_beijing(),
             download_original=False,
             prior_freshness=valuation_freshness,
             reviewer=llm,
@@ -533,6 +586,9 @@ def main() -> int:
                 f"{'公允价值' if settings.morningstar_fair_value_enabled else '内在价值'}"
                 f"数据未完全就绪：{publishable}/{expected_valuations} 只通过来源与复算闸门。"
             )
+        for value in (valuation_displays or {}).values():
+            if value.data_note:
+                _record_quality_alert(value.data_note)
     logo_cids, inline_images = _load_logo_assets(HOLDINGS)
     # 刊头图统一走 inline CID(Android QQ 邮箱不会自动加载远程图,iOS/桌面正常)。
     # header_image.pick_header_image 三层都会下载到本地并返回 local_path。
@@ -551,9 +607,9 @@ def main() -> int:
         holdings_intro=holdings_intro_text,
         valuations=valuation_displays,
         valuation_checked_at=(
-            max((item.checked_at for item in valuation_freshness.values()), default=None)
-            if valuation_freshness
-            else (now_bj if qqqm_display is not None else None)
+            min((datetime.fromisoformat(item.verified_at) for item in (valuation_displays or {}).values()
+                 if item.verified_at), default=None)
+            or min((item.checked_at for item in (valuation_freshness or {}).values()), default=None)
         ),
         # 加工产物；失败区块使用受控占位语，不展示未经筛选的原始列表。
         sentiment=sentiment_bundle,
@@ -626,9 +682,13 @@ def main() -> int:
         subject=subject,
         html_body=html,
         inline_images=inline_images,
+        on_progress=lambda result: write_delivery_receipt(
+            sent_at=now_beijing(), accepted_count=len(result.accepted),
+            refused_count=len(result.refused), run_id=os.environ.get("GH_RUN_ID"),
+        ),
     )
     write_delivery_receipt(
-        sent_at=now_bj,
+        sent_at=now_beijing(),
         accepted_count=len(delivery.accepted),
         refused_count=len(delivery.refused),
         run_id=os.environ.get("GH_RUN_ID"),
@@ -651,22 +711,34 @@ def main() -> int:
     # 邮件发送成功后才提交 figures 7 天去重 state — 失败时下次 run
     # 仍能重新评估同批候选,避免"LLM 失败 + state 已写"导致永久遗漏。
     try:
-        figures.commit_pushed(figures_state_path, figures_pending_pushed)
+        figures.commit_pushed(figures_state_path, published_pending(
+            figures_pending_pushed, publication_candidates["figures"],
+            {item.source_url for summary in figure_summaries for item in summary.items},
+        ))
     except Exception as exc:  # noqa: BLE001
         logger.warning("figures.commit_pushed_failed exc=%r", exc)
 
     try:
-        frontier_labs.commit_pushed(frontier_labs_state_path, frontier_labs_pending_pushed)
+        frontier_labs.commit_pushed(frontier_labs_state_path, published_pending(
+            frontier_labs_pending_pushed, publication_candidates["frontier"],
+            {item.source_url for item in frontier_labs_items[:2]},
+        ))
     except Exception as exc:  # noqa: BLE001
         logger.warning("frontier_labs.commit_pushed_failed exc=%r", exc)
 
     try:
-        company_news.commit_pushed(company_news_state_path, company_news_pending_pushed)
+        company_news.commit_pushed(company_news_state_path, published_pending(
+            company_news_pending_pushed, publication_candidates["company"],
+            summary_urls(company_news_summary),
+        ))
     except Exception as exc:  # noqa: BLE001
         logger.warning("company_news.commit_pushed_failed exc=%r", exc)
 
     try:
-        macro_news.commit_pushed(macro_news_state_path, macro_news_pending_pushed)
+        macro_news.commit_pushed(macro_news_state_path, published_pending(
+            macro_news_pending_pushed, publication_candidates["macro"],
+            summary_urls(macro_news_summary),
+        ))
     except Exception as exc:  # noqa: BLE001
         logger.warning("macro_news.commit_pushed_failed exc=%r", exc)
 

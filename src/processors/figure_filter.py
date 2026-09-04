@@ -324,7 +324,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
       3. LLM 层:质量门槛 + 跨媒体合并 + 提炼观点
       4. Python 端再做相似度兜底
     """
-    if bundle.error or not bundle.items:
+    if not bundle.items:
         return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error)
     feed_items = bundle.items[:max_items]
     qualified = [it for it in feed_items if _has_quote_marker(it)]

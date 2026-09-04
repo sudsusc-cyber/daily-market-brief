@@ -6,12 +6,11 @@ from pathlib import Path
 _WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "daily.yml"
 
 
-def test_manual_recipient_override_does_not_change_scheduled_recipients() -> None:
+def test_manual_recipient_override_cannot_consume_production_delivery() -> None:
     workflow = _WORKFLOW.read_text(encoding="utf-8")
 
-    assert "recipient_override:" in workflow
-    assert "github.event.inputs.recipient_override || secrets.EMAIL_RECIPIENT" in workflow
-    assert "EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}" not in workflow
+    assert "recipient_override" not in workflow
+    assert "EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}" in workflow
 
 
 def test_formal_send_keeps_morningstar_and_daily_state_read_only() -> None:

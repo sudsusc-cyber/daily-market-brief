@@ -21,7 +21,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
+from markupsafe import Markup
 
 from src.collectors.stocks import StockSignal
 from src.config import BUY_STRATEGIES
@@ -273,7 +274,8 @@ def _filter_safe_url(url: str | None) -> str:
 def _build_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(_TEMPLATE_DIR),
-        autoescape=select_autoescape(["html"]),
+        # The template ends in .j2, so extension-based .html detection is unsafe.
+        autoescape=True,
         trim_blocks=False,
         lstrip_blocks=False,
     )
@@ -401,10 +403,11 @@ def render_email(
         frontier_labs_items=frontier_labs_items or [],
         frontier_labs_fallback_note=frontier_labs_fallback_note,
         judgment_section=judgment_section,
-        serif_display=EMAIL_EDITORIAL_SERIF,
-        serif_body=EMAIL_EDITORIAL_SERIF,
-        serif_quote=EMAIL_EDITORIAL_SERIF,
-        numeric_features=EMAIL_NUMERIC_FEATURES,
+        # Code-owned CSS constants only; never mark model/source text as safe.
+        serif_display=Markup(EMAIL_EDITORIAL_SERIF),
+        serif_body=Markup(EMAIL_EDITORIAL_SERIF),
+        serif_quote=Markup(EMAIL_EDITORIAL_SERIF),
+        numeric_features=Markup(EMAIL_NUMERIC_FEATURES),
     )
     # 邮件客户端按解码后的 HTML 体积裁剪。inline style 是模板中
     # 最大的重复项;只压缩属性内 CSS 分隔符与标签间排版空白,不碰正文。

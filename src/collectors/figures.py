@@ -426,6 +426,9 @@ def fetch_all(
                     added += 1
 
             b.items.sort(key=lambda x: x.published_at, reverse=True)
+            if b.items and b.error:
+                logger.warning("figures.official_recovered person=%s", b.person)
+                b.error = None
             logger.info(
                 "figures.official_merge person=%s added=%d replaced=%d total=%d",
                 b.person, added, replaced, len(b.items),

@@ -64,10 +64,12 @@ def read_delivery_receipt(path: str | Path) -> dict:
         raise ValueError("delivery receipt status is invalid")
     accepted = data.get("accepted_count")
     refused = data.get("refused_count")
-    if not isinstance(accepted, int) or accepted < 1:
+    if type(accepted) is not int or accepted < 1:
         raise ValueError("delivery receipt has no accepted recipients")
-    if not isinstance(refused, int) or refused < 0:
+    if type(refused) is not int or refused < 0:
         raise ValueError("delivery receipt refused_count is invalid")
+    if (data["status"] == "full") != (refused == 0):
+        raise ValueError("delivery receipt status/count mismatch")
     return data
 
 
