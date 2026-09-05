@@ -18,6 +18,12 @@ _SECRET_QUERY_RE = re.compile(
     r"((?:api[_-]?key|access[_-]?token|token|auth|key)=)[^&\s\"'>]+",
     re.IGNORECASE,
 )
+_AUTH_HEADER_RE = re.compile(r"(\b(?:Bearer|Basic)\s+)[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
+_SECRET_FIELD_RE = re.compile(
+    r'''(["']?(?:api[_-]?key|access[_-]?token|auth_code|password)["']?\s*:\s*["'])[^"']+''',
+    re.IGNORECASE,
+)
+_URL_PASSWORD_RE = re.compile(r"(https?://)[^/@\s]+:[^/@\s]+@", re.IGNORECASE)
 
 
 def redact_secrets(text: str) -> str:
@@ -28,7 +34,10 @@ def redact_secrets(text: str) -> str:
     """
     if not text:
         return text or ""
-    return _SECRET_QUERY_RE.sub(r"\1***", text)
+    text = _SECRET_QUERY_RE.sub(r"\1***", text)
+    text = _AUTH_HEADER_RE.sub(r"\1***", text)
+    text = _SECRET_FIELD_RE.sub(r"\1***", text)
+    return _URL_PASSWORD_RE.sub(r"\1***@", text)
 
 
 def mask_email(addr: str) -> str:

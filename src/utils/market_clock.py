@@ -35,6 +35,27 @@ def validate_history(index, *, symbol: str, interval: str, now: datetime) -> dat
         raise ValueError(f"行情日期过期或超前: {observed}; 最近交易日 {expected}")
     if interval == "1d" and not cal.is_session(observed.isoformat()):
         raise ValueError("日线日期不是该交易所交易日")
+    # A fresh final row alone cannot prove a 250-session/200-week window is
+    # complete. Missing middle rows otherwise silently pull older prices in.
+    days = [stamp.date() for stamp in local_index]
+    if interval == "1d":
+        expected_days = [stamp.date() for stamp in cal.sessions_in_range(
+            days[0].isoformat(), days[-1].isoformat())]
+        if days != expected_days:
+            raise ValueError("日线交易日缺失、重复或混入非交易日")
+    elif interval == "1wk":
+        weeks = [day - timedelta(days=day.weekday()) for day in days]
+        sessions = cal.sessions_in_range(weeks[0].isoformat(), days[-1].isoformat())
+        expected_weeks = sorted({stamp.date() - timedelta(days=stamp.weekday()) for stamp in sessions})
+        # The most recent bar may be labelled Monday, a holiday, before that
+        # week's first session. Include its bucket when the week has opened.
+        current_week = expected - timedelta(days=expected.weekday())
+        if current_week == weeks[-1] and current_week not in expected_weeks:
+            expected_weeks.append(current_week)
+        if weeks != expected_weeks:
+            raise ValueError("周线交易周缺失或重复")
+    else:
+        raise ValueError(f"不支持的行情周期: {interval}")
     return observed
 
 

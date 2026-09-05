@@ -106,7 +106,7 @@ def commit_published_values(
         return
     previous = _load_published_state(state_dir)
     for ticker, display in displays.items():
-        if display.intrinsic_value is None:
+        if display.is_pending:
             continue
         previous[ticker] = {
             "intrinsic_value": display.intrinsic_value,

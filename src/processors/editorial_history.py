@@ -26,6 +26,10 @@ def similar(a: str, b: str) -> bool:
     numbers_b = re.findall(r"\d+(?:\.\d+)?", re.sub(r"\[\d+\]", "", b))
     if numbers_a != numbers_b:
         return False
+    # Same nouns and numbers can describe opposite facts (已获批准/未获批准).
+    negative_fact = r"(?:尚未|并未|没有|不再|未|不)(?:能|会|曾|予|获|被)?(?:批准|通过|完成|增长|盈利|收购|合作|达成|推出|支付|偿还)"
+    if set(re.findall(negative_fact, a)) != set(re.findall(negative_fact, b)):
+        return False
     a, b = _plain(a), _plain(b)
     if not a or not b:
         return False

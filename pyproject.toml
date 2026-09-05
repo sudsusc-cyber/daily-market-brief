@@ -30,7 +30,7 @@ dependencies = [
     # 无登录发现 Morningstar 公开研究页的 Google News 原始链接
     "googlenewsdecoder==0.1.7",
     # Yahoo 分发的 Morningstar 报告首页裁切；数值由系统 tesseract 双重 OCR。
-    "pillow>=12.2.0",
+    "pillow>=12.3.0",
 ]
 
 [tool.pytest.ini_options]

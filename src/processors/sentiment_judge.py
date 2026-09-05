@@ -63,9 +63,11 @@ def _piecewise_linear(x: float, points: list[tuple[float, float]]) -> float:
 
 
 def _finite_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
     try:
         number = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return number if math.isfinite(number) else None
 
@@ -76,7 +78,9 @@ def _score_metric(name: str, value: float) -> float | None:
     if value is None:
         return None
     if name == "CNN Fear & Greed":
-        return max(0.0, min(100.0, value))
+        return value if 0 <= value <= 100 else None
+    if value <= 0:
+        return None
     if name == "VIX":
         # 越低越贪婪。区间映射:8→100,12→90,15→75,20→50,25→30,30→10,40→0
         return _piecewise_linear(value, [(8, 100), (12, 90), (15, 75), (20, 50), (25, 30), (30, 10), (40, 0)])
@@ -123,6 +127,7 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
     valid_count = 0
     valid_primary_count = 0
     stale_count = 0
+    seen_names: set[str] = set()
     for m in bundle.metrics:
         if m.error:
             continue
@@ -135,6 +140,10 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
         s = _score_metric(m.name, current)
         if s is None:
             continue
+        if m.name in seen_names:
+            logger.warning("sentiment.duplicate_metric name=%s", m.name)
+            continue
+        seen_names.add(m.name)
         effective_weight = w * (_STALE_WEIGHT_FACTOR if m.stale_from else 1.0)
         weighted_sum += s * effective_weight
         weight_total += effective_weight

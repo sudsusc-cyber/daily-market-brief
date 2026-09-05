@@ -274,10 +274,19 @@ class LLMClient:
         finally:
             self.api_elapsed_seconds += max(0.0, time.monotonic() - started)
 
-        text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
         usage = _extract_usage(resp)
+        try:
+            text = (resp.choices[0].message.content or "").strip() if resp.choices else ""
+            finish = getattr(resp.choices[0], "finish_reason", None) if resp.choices else None
+        except (AttributeError, IndexError, TypeError, ValueError):
+            self._accumulate(usage)
+            return LLMResponse(text=None, usage=usage, error="MalformedOutput: invalid chat response")
         error = None
-        if not text and usage.reasoning_tokens > max_tokens * 0.7:
+        if isinstance(finish, str) and finish != "stop":
+            text = ""
+            error = f"IncompleteOutput: finish_reason={finish}"
+            logger.warning("llm.incomplete_output model=%s finish_reason=%s", self._model, finish)
+        elif not text and usage.reasoning_tokens > max_tokens * 0.7:
             error = (
                 "ReasoningStarved: output text empty "
                 f"(reasoning={usage.reasoning_tokens}, max_tokens={max_tokens})"
@@ -392,6 +401,10 @@ class LLMClient:
         usage = _extract_responses_usage(response)
         self._accumulate(usage)
         error = None if text else "EmptyOutput: web search returned no visible text"
+        status = getattr(response, "status", None)
+        if isinstance(status, str) and status != "completed":
+            text = ""
+            error = f"IncompleteOutput: web search status={status}"
         if market_data and "web_search_call" not in output_types:
             text = ""
             error = "WebSearchNotExecuted: market data requires live search"
@@ -432,19 +445,28 @@ class LLMClient:
         )
 
 
+def _token_count(value: Any) -> int:
+    """Malformed provider accounting must not abort an otherwise usable edition."""
+    try:
+        return 0 if isinstance(value, bool) else max(0, int(value or 0))
+    except (TypeError, ValueError, OverflowError):
+        logger.warning("llm.invalid_usage_count type=%s", type(value).__name__)
+        return 0
+
+
 def _extract_usage(resp: Any) -> LLMUsage:
     """从 OpenAI 响应抽取 token 统计(DeepSeek 同结构)"""
     u = getattr(resp, "usage", None)
     if u is None:
         return LLMUsage()
-    in_tokens = int(getattr(u, "prompt_tokens", 0) or 0)
-    out_tokens = int(getattr(u, "completion_tokens", 0) or 0)
+    in_tokens = _token_count(getattr(u, "prompt_tokens", 0))
+    out_tokens = _token_count(getattr(u, "completion_tokens", 0))
     reasoning = 0
     cache_hit = 0
     details = getattr(u, "completion_tokens_details", None)
     if details is not None:
-        reasoning = int(getattr(details, "reasoning_tokens", 0) or 0)
-    cache_hit = int(getattr(u, "prompt_cache_hit_tokens", 0) or 0)
+        reasoning = _token_count(getattr(details, "reasoning_tokens", 0))
+    cache_hit = min(in_tokens, _token_count(getattr(u, "prompt_cache_hit_tokens", 0)))
     return LLMUsage(
         input_tokens=in_tokens,
         output_tokens=out_tokens,
@@ -458,12 +480,12 @@ def _extract_responses_usage(resp: Any) -> LLMUsage:
     usage = getattr(resp, "usage", None)
     if usage is None:
         return LLMUsage()
-    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+    input_tokens = _token_count(getattr(usage, "input_tokens", 0))
+    output_tokens = _token_count(getattr(usage, "output_tokens", 0))
     input_details = getattr(usage, "input_tokens_details", None)
     output_details = getattr(usage, "output_tokens_details", None)
-    cache_hits = int(getattr(input_details, "cached_tokens", 0) or 0)
-    reasoning = int(getattr(output_details, "reasoning_tokens", 0) or 0)
+    cache_hits = min(input_tokens, _token_count(getattr(input_details, "cached_tokens", 0)))
+    reasoning = _token_count(getattr(output_details, "reasoning_tokens", 0))
     return LLMUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,

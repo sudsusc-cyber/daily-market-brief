@@ -514,10 +514,17 @@ def refresh_target(*, state_dir: Path, config_dir: Path, checked_at: datetime,
     provider = provider or PopMartTargetProvider()
     try:
         values, discovery_ok = provider.fetch(known=known, checked_at=checked_at)
-        values = [validate_target(row, checked_at=checked_at) for row in values]
     except Exception as exc:  # noqa: BLE001
         logger.warning("pop_mart.refresh_failed reason=%s", exc)
         values, discovery_ok = [], False
+    valid_values = []
+    for row in values:
+        try:
+            valid_values.append(validate_target(row, checked_at=checked_at))
+        except (ValueError, TypeError, AttributeError, OverflowError) as exc:
+            logger.warning("pop_mart.invalid_observation type=%s", type(exc).__name__)
+            discovery_ok = False
+    values = valid_values
     selected = known
     retained = True
     if values:

@@ -27,7 +27,7 @@ import logging
 import os
 import sys
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.collectors import (
@@ -99,6 +99,26 @@ _ACTIVE_THESIS_STATUS_RANK = {
     "dormant": 4,
 }
 _ACTIVE_THESIS_THEME_LIMIT = 120
+
+
+def _verified_timestamp(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        timestamp = datetime.fromisoformat(raw)
+        if timestamp.tzinfo is None:
+            return None
+        return timestamp.astimezone(UTC)
+    except (ValueError, TypeError):
+        return None
+
+
+def _valuation_recency(value: ValuationDisplay) -> tuple[str, datetime]:
+    try:
+        source_date = datetime.fromisoformat(value.financial_as_of or "").date().isoformat()
+    except (ValueError, TypeError):
+        source_date = ""
+    return source_date, _verified_timestamp(value.verified_at) or datetime.min.replace(tzinfo=UTC)
 
 
 def _quality_alert_path() -> Path:
@@ -237,8 +257,19 @@ def main() -> int:
 
     # ---------- 数据采集(M2 / M3) ----------
     logger.info("collect.stocks count=%d", len(HOLDINGS))
+    collected_signals: dict[str, stocks.StockSignal] = {}
+
+    def stock_progress(result: stocks.StockSignal) -> None:
+        collected_signals[result.holding.ticker] = result
+
+    def stock_timeout() -> list[stocks.StockSignal]:
+        return timed_out("行情", [
+            collected_signals[h.ticker] if h.ticker in collected_signals
+            else stocks._failed(h, "行情取数超时") for h in HOLDINGS
+        ])
+
     signals = budget.call(stocks.fetch_all, HOLDINGS, seconds=150,
-        fallback=lambda: timed_out("行情", [stocks._failed(h, "行情取数超时") for h in HOLDINGS]))
+        fallback=stock_timeout, on_result=stock_progress)
     morningstar_provider = (
         MorningstarPublicProvider() if settings.morningstar_fair_value_enabled else None
     )
@@ -261,13 +292,12 @@ def main() -> int:
         )
         # A failed final check must not overwrite a good persisted value with a
         # pending result from the first pass.
-        old.update(
-            {
-                ticker: value
-                for ticker, value in (valuation_displays or {}).items()
-                if not value.is_pending
-            }
-        )
+        for ticker, value in (valuation_displays or {}).items():
+            if not value.is_pending and (
+                ticker not in old or old[ticker].is_pending
+                or _valuation_recency(value) >= _valuation_recency(old[ticker])
+            ):
+                old[ticker] = value
         if qqqm_display is not None:
             old["QQQM"] = qqqm_display
         for holding in COMPANY_HOLDINGS:
@@ -515,6 +545,8 @@ def main() -> int:
         )
 
     logger.info("processors.thesis")
+    thesis_publication_state = None
+    thesis_publication_themes: set[str] = set()
     try:
         migration = thesis_consolidation.migrate_history_if_needed(
             _STATE_DIR,
@@ -577,6 +609,13 @@ def main() -> int:
             evidence_today=evidence_today,
             today=now_bj.date(),
         )
+        if judgment_section:
+            event_themes = {event.theme for event in thesis_events}
+            thesis_publication_themes = {
+                str(item["theme"]) for item in judgment_section.items
+                if item.get("theme") in event_themes
+            }
+            thesis_publication_state = state_dict
     except Exception as exc:  # noqa: BLE001 — 任何 thesis 步骤失败都降级到无 judgment_section
         # 与项目其他异常处理对齐:不用 exc_info=True / logger.exception,因 OpenAI SDK 异常
         # traceback 可能带请求 url 或 header 痕迹;只记 type + 截断后的 str。
@@ -646,8 +685,8 @@ def main() -> int:
         holdings_intro=holdings_intro_text,
         valuations=valuation_displays,
         valuation_checked_at=(
-            min((datetime.fromisoformat(item.verified_at) for item in (valuation_displays or {}).values()
-                 if item.verified_at), default=None)
+            min((timestamp for item in (valuation_displays or {}).values()
+                 if (timestamp := _verified_timestamp(item.verified_at)) is not None), default=None)
             or min((item.checked_at for item in (valuation_freshness or {}).values()), default=None)
         ),
         # 加工产物；失败区块使用受控占位语，不展示未经筛选的原始列表。
@@ -732,6 +771,14 @@ def main() -> int:
         refused_count=len(delivery.refused),
         run_id=os.environ.get("GH_RUN_ID"),
     )
+    if thesis_publication_state is not None and thesis_publication_themes:
+        try:
+            for theme in thesis_publication_themes:
+                if theme in thesis_publication_state:
+                    thesis_publication_state[theme].last_displayed_date = now_bj.date().isoformat()
+            thesis_state.save_state(thesis_publication_state, _STATE_DIR)
+        except Exception as exc:  # noqa: BLE001
+            _record_quality_alert(f"长期判断刊发记录保存失败：{type(exc).__name__}")
     try:
         commit_published_values(
             valuation_displays,

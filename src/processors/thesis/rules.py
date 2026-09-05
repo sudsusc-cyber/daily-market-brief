@@ -351,7 +351,8 @@ def run_state_transitions(
             and cooldown_passed(st.last_displayed_date, today)
         ):
             events.append(make_substantiate_event(st, evs_30d))
-            st.last_displayed_date = today_str
+            # Candidate generation is not publication: rendering can drop this
+            # event and SMTP can fail. The caller commits the actual shown set.
             logger.info(
                 "rules.substantiate theme=%s tickers=%s",
                 theme, st.related_tickers,

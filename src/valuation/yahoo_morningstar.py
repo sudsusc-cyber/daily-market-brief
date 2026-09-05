@@ -31,6 +31,8 @@ _REPORT_URL = "https://finance.yahoo.com/research/reports/{report_id}/"
 _SNAPSHOT_RE = re.compile(r'snapshotUrl\\?"\s*:\s*\\?"([^"\\]+)', re.I)
 _VALUE_RE = re.compile(r"\b(\d{1,4}(?:[.,]\d{2})?)\s*(USD|HKD)(?![A-Z])", re.I)
 _USER_AGENT = "daily-market-brief/1.0 (+Morningstar-report-validation)"
+_MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
+_MAX_SNAPSHOT_PIXELS = 20_000_000
 
 # 2026-08-29 逐只核验的 Yahoo/Morningstar 报告基线。搜索接口只负责发现比
 # 基线更晚的报告；搜索临时限流时仍可读取这份已核验报告，而不是让备源失效。
@@ -282,6 +284,33 @@ class YahooMorningstarProvider:
             raise ValueError("Yahoo Morningstar 公允价值无效")
         return value, currency
 
+    def _snapshot_image(self, url: str) -> Image.Image:
+        """Bound external image decoding before OCR; never follow off-site redirects."""
+        if not url.startswith("https://s.yimg.com/"):
+            raise ValueError("Yahoo Morningstar 报告快照域名不合规")
+        response = self.session.get(url, timeout=self.timeout, stream=True, allow_redirects=False)
+        deadline = time.monotonic() + self.timeout
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            response.raise_for_status()
+            if 300 <= response.status_code < 400:
+                raise ValueError("Yahoo report image redirect rejected")
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Yahoo report image download exceeded deadline")
+                total += len(chunk)
+                if total > _MAX_SNAPSHOT_BYTES:
+                    raise ValueError("Yahoo report image exceeds byte limit")
+                chunks.append(chunk)
+        finally:
+            response.close()
+        with Image.open(BytesIO(b"".join(chunks)), formats=("JPEG", "PNG", "WEBP")) as image:
+            if image.width * image.height > _MAX_SNAPSHOT_PIXELS:
+                raise ValueError("Yahoo report image exceeds pixel limit")
+            image.load()
+            return image.copy()
+
     def _read(
         self,
         security: MorningstarSecurity,
@@ -292,13 +321,9 @@ class YahooMorningstarProvider:
 
         report_id, published, report_url, curated_snapshot_url = self._latest_report(security)
         snapshot_url = curated_snapshot_url or self._snapshot_url(report_url)
-        if not snapshot_url.startswith("https://s.yimg.com/"):
-            raise ValueError("Yahoo Morningstar 报告快照域名不合规")
-        response = self.session.get(snapshot_url, timeout=self.timeout)
-        response.raise_for_status()
-        image = Image.open(BytesIO(response.content))
-        first = self._ocr_once(image, psm=6)
-        second = self._ocr_once(image, psm=11)
+        with self._snapshot_image(snapshot_url) as image:
+            first = self._ocr_once(image, psm=6)
+            second = self._ocr_once(image, psm=11)
         if first != second:
             raise ValueError("Yahoo Morningstar 报告双重 OCR 结果不一致")
         value, currency = first

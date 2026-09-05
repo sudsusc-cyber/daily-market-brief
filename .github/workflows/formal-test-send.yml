@@ -30,6 +30,7 @@ concurrency:
 
 jobs:
   send:
+    if: github.ref == 'refs/heads/main'
     name: collect + render + send formal test
     environment: production
     runs-on: ubuntu-latest
@@ -38,6 +39,7 @@ jobs:
       FORCE_SEND: "true"
       PYTHONPATH: .
       DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
       # 试发必须与正式定时任务使用同一套内在价值开关，避免预览路径漏掉新列。
       VALUATION_ENABLED: ${{ vars.VALUATION_ENABLED || 'false' }}
       MORNINGSTAR_FAIR_VALUE_ENABLED: ${{ vars.MORNINGSTAR_FAIR_VALUE_ENABLED || 'false' }}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
@@ -14,6 +15,15 @@ FreshnessStatus = Literal[
     "conflict",
     "manual_review",
 ]
+
+
+def _finite_number(value: object) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -78,12 +88,17 @@ class ValuationDisplay:
     @property
     def is_attractive(self) -> bool:
         return (
-            self.implied_return is not None
+            not self.is_pending
+            and self.status in {"current", "not_due"}
+            and _finite_number(self.implied_return)
             and not self.historical_reference
-            and self.hurdle_rate is not None
+            and _finite_number(self.hurdle_rate)
             and self.implied_return >= self.hurdle_rate
         )
 
     @property
     def is_pending(self) -> bool:
-        return self.intrinsic_value is None
+        return (
+            not _finite_number(self.intrinsic_value)
+            or self.intrinsic_value <= 0
+        )

@@ -196,7 +196,7 @@ def send_alert(reason: str) -> None:
     </div>
     """
 
-    send_html_email(
+    result = send_html_email(
         sender=settings.qq_email_address,
         sender_display_name="朝闻录监控",
         auth_code=settings.qq_email_auth_code,
@@ -204,6 +204,10 @@ def send_alert(reason: str) -> None:
         subject=subject,
         html_body=body,
     )
+    if result.refused:
+        raise RuntimeError(
+            f"Monitor alert incomplete: accepted={len(result.accepted)} refused={len(result.refused)}"
+        )
 
 
 def _alert_already_sent_today() -> bool:

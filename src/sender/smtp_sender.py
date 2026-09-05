@@ -107,23 +107,36 @@ class _PlainTextExtractor(HTMLParser):
     """把本项目生成的 HTML 转成可读的纯文本 alternative。"""
 
     _BLOCK_TAGS = {"br", "p", "div", "tr", "h1", "h2", "h3", "li"}
+    _HIDDEN_TAGS = {"head", "style", "script", "title"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
+        self.hidden_tags: list[str] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
+        if tag in self._HIDDEN_TAGS:
+            self.hidden_tags.append(tag)
+        if self.hidden_tags:
+            return
         if tag == "li":
             self.parts.append("\n- ")
         elif tag in self._BLOCK_TAGS:
             self.parts.append("\n")
+        elif tag in {"td", "th"}:
+            self.parts.append(" ")
 
     def handle_endtag(self, tag: str) -> None:
+        if self.hidden_tags:
+            if tag == self.hidden_tags[-1]:
+                self.hidden_tags.pop()
+            return
         if tag in self._BLOCK_TAGS:
             self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
-        self.parts.append(data)
+        if not self.hidden_tags:
+            self.parts.append(data)
 
 
 def _html_to_plain(html_body: str) -> str:

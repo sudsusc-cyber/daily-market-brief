@@ -13,9 +13,9 @@ import logging
 import os
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
-from .models import ThesisEvidence, ThesisState
+from .models import Direction, Horizon, ThesisEvidence, ThesisState
 
 logger = logging.getLogger("thesis.state")
 
@@ -43,6 +43,9 @@ def load_state(state_dir: Path) -> dict[str, ThesisState]:
         logger.warning("state.corrupted path=%s exc=%r", path, exc)
         return {}
     result: dict[str, ThesisState] = {}
+    if not isinstance(raw, dict):
+        logger.warning("state.invalid_root path=%s", path)
+        return result
     for theme, obj in raw.items():
         try:
             result[theme] = _dict_to_state(obj)
@@ -54,6 +57,7 @@ def load_state(state_dir: Path) -> dict[str, ThesisState]:
 def save_state(state: dict[str, ThesisState], state_dir: Path) -> None:
     """原子写入 thesis_state.json。"""
     path = _state_path(state_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     obj = {theme: _state_to_dict(st) for theme, st in state.items()}
     tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -96,19 +100,22 @@ def append_evidence(
                     continue
                 try:
                     obj = json.loads(line)
-                except json.JSONDecodeError:
+                    _dict_to_evidence(obj)
+                except (ValueError, TypeError, KeyError):
                     logger.warning("evidence.bad_json_line path=%s preview=%s",
                                    path, line[:80])
                     continue
                 eid = obj.get("evidence_id", "")
-                if eid:
+                if isinstance(eid, str) and eid:
                     existing_ids.add(eid)
                     existing_lines.append(line)
                 else:
                     # 缺 evidence_id 的旧行：保留但不计入 dedup（防御性）
                     existing_lines.append(line)
         except OSError:
-            pass
+            # Do not replace an unreadable existing ledger with only new rows.
+            logger.warning("evidence.read_failed_append_aborted path=%s", path)
+            raise
 
     # 2) 过滤 items：跳过已存在 + 同批次去重
     seen_in_batch: set[str] = set()
@@ -129,6 +136,7 @@ def append_evidence(
 
     # 3) 写 tmp：已有有效行 + 新行
     tmp = path.with_suffix(".tmp")
+    tmp.parent.mkdir(parents=True, exist_ok=True)
     with tmp.open("w", encoding="utf-8") as f:
         for line in existing_lines:
             f.write(line + "\n")
@@ -155,9 +163,7 @@ def load_recent_evidence(
     result: list[ThesisEvidence] = []
     seen_ids: set[str] = set()
 
-    years_to_check = {today.year}
-    if cutoff.year < today.year:
-        years_to_check.add(today.year - 1)
+    years_to_check = range(cutoff.year, today.year + 1)
 
     for year in sorted(years_to_check):
         path = _evidence_path(state_dir, year)
@@ -170,20 +176,22 @@ def load_recent_evidence(
                     continue
                 try:
                     obj = json.loads(line)
-                except json.JSONDecodeError:
+                    if not isinstance(obj, dict):
+                        raise ValueError("evidence must be an object")
+                    ev_date = date.fromisoformat(obj.get("date", ""))
+                except (ValueError, TypeError):
                     logger.warning("evidence.bad_json_line path=%s preview=%s",
                                    path, line[:80])
                     continue
-                ev_date = obj.get("date", "")
-                if ev_date < cutoff.isoformat():
+                if not cutoff <= ev_date <= today:
                     continue
                 eid = obj.get("evidence_id", "")
-                if eid and eid in seen_ids:
+                if isinstance(eid, str) and eid in seen_ids:
                     continue
-                if eid:
-                    seen_ids.add(eid)
                 try:
                     result.append(_dict_to_evidence(obj))
+                    if isinstance(eid, str) and eid:
+                        seen_ids.add(eid)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("evidence.bad_line exc=%r", exc)
         except OSError as exc:
@@ -310,6 +318,24 @@ def _evidence_to_dict(e: ThesisEvidence) -> dict[str, Any]:
 
 
 def _dict_to_evidence(obj: dict[str, Any]) -> ThesisEvidence:
+    if not isinstance(obj, dict):
+        raise ValueError("evidence must be an object")
+    date.fromisoformat(obj["date"])
+    for key in ("evidence_id", "theme", "text", "source_section", "source_name", "why_it_matters"):
+        if not isinstance(obj.get(key, ""), str):
+            raise ValueError(f"evidence {key} must be text")
+    tickers = obj.get("related_tickers", [])
+    if not isinstance(tickers, list) or not all(isinstance(item, str) for item in tickers):
+        raise ValueError("evidence related_tickers must be a list of strings")
+    if obj.get("direction", "neutral") not in get_args(Direction):
+        raise ValueError("evidence direction is invalid")
+    strength = obj.get("strength", 3)
+    if isinstance(strength, (bool, float)) or not 1 <= int(strength) <= 5:
+        raise ValueError("evidence strength is invalid")
+    if obj.get("horizon", "quarterly") not in get_args(Horizon):
+        raise ValueError("evidence horizon is invalid")
+    if obj.get("url") is not None and not isinstance(obj["url"], str):
+        raise ValueError("evidence URL must be text")
     return ThesisEvidence(
         evidence_id=obj.get("evidence_id", ""),
         date=obj["date"],
@@ -346,6 +372,16 @@ def _state_to_dict(st: ThesisState) -> dict[str, Any]:
 
 
 def _dict_to_state(obj: dict[str, Any]) -> ThesisState:
+    if not isinstance(obj, dict) or not isinstance(obj.get("theme"), str):
+        raise ValueError("state must contain a text theme")
+    for key in ("first_seen", "last_evidence_date", "last_strong_evidence_date", "last_displayed_date", "last_state_change_date"):
+        if obj.get(key):
+            date.fromisoformat(obj[key])
+    for key in ("related_tickers", "rolling_evidence"):
+        if not isinstance(obj.get(key, []), list):
+            raise ValueError(f"state {key} must be a list")
+    if not isinstance(obj.get("one_line_thesis", ""), str):
+        raise ValueError("state thesis must be text")
     return ThesisState(
         theme=obj["theme"],
         status=obj.get("status", "candidate"),

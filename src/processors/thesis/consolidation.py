@@ -38,6 +38,8 @@ def _migration_already_applied(state_dir: Path) -> bool:
         return False
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return False
         return int(payload.get("version", 0)) >= MIGRATION_VERSION
     except (json.JSONDecodeError, OSError, TypeError, ValueError):
         return False

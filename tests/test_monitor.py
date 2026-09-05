@@ -184,7 +184,13 @@ def test_send_alert_needs_only_email_settings(monkeypatch) -> None:
     monkeypatch.setenv("EMAIL_RECIPIENT", "recipient@qq.com")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     sent: list[dict] = []
-    monkeypatch.setattr(monitor, "send_html_email", lambda **kwargs: sent.append(kwargs))
+    from src.sender.smtp_sender import DeliveryResult
+
+    def fake_send(**kwargs):
+        sent.append(kwargs)
+        return DeliveryResult(tuple(kwargs["recipient"]), {})
+
+    monkeypatch.setattr(monitor, "send_html_email", fake_send)
 
     monitor.send_alert("测试告警")
 

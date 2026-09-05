@@ -31,6 +31,7 @@ permissions:
 jobs:
   send:
     name: collect + render + send
+    if: github.ref == 'refs/heads/main'
     environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -79,14 +80,14 @@ jobs:
       #   - state/subject_generation.log  (主题生成审计日志)
       #   - state/header_cache/           (刊头图本地缓存,避免 Pexels 重复请求)
       # 用 actions/cache 把 state/ 跨 run 持久化。
-      # cache key 用 run_id 唯一(每次 save 都成功),restore-keys 用前缀回退到最近一次。
+      # key 用 run_id + run_attempt，避免重跑撞上不可变旧缓存；前缀恢复最近状态。
       - name: Restore state from previous run
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: state-restore
         with:
           path: |
             state
-          key: daily-state-${{ github.run_id }}
+          key: daily-state-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             daily-state-
 
@@ -184,7 +185,7 @@ jobs:
         with:
           path: |
             state
-          key: daily-state-${{ github.run_id }}
+          key: daily-state-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload QQQM calculation audit
         if: ${{ always() && hashFiles('state/qqqm_calculation_audit.json') != '' }}

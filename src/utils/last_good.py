@@ -142,4 +142,5 @@ class LastGoodCache:
             d = date.fromisoformat(saved_at)
         except (ValueError, TypeError):
             return True
-        return (today - d).days > max_age_days
+        age = (today - d).days
+        return age < 0 or age > max_age_days

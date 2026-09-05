@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -154,7 +155,7 @@ def _yahoo_chart_history(
     now = datetime.now(UTC)
     stamps = result.get("timestamp") or []
     index = pd.to_datetime(stamps, unit="s", utc=True)
-    observed = validate_history(index, symbol=symbol, interval=interval, now=now)
+    observed = _validate_history_window(index, symbol=symbol, interval=interval, now=now)
     quotes = ((result.get("indicators") or {}).get("quote") or [{}])[0]
     closes = [float(value) if value is not None else float("nan")
               for value in quotes.get("close") or []]
@@ -199,10 +200,17 @@ class PriceHistory(list):
         self.bar_date = bar_date or observed_at
 
 
+def _validate_history_window(index, *, symbol: str, interval: str, now: datetime):
+    # Missing rows outside this strategy's active window cannot affect its
+    # averages. In particular, growth holdings need 120 weeks, not 200 weeks.
+    periods = 250 if interval == "1d" else (120 if buy_strategy(symbol).dca_line == "250d" else 200)
+    return validate_history(index[-periods:], symbol=symbol, interval=interval, now=now)
+
+
 def _history_closes(hist, *, symbol: str, interval: str = "1wk") -> list[float]:
     if hist is None or hist.empty or "Close" not in hist:
         raise ValueError("yfinance 返回空行情")
-    observed = validate_history(hist.index, symbol=symbol, interval=interval, now=datetime.now(UTC))
+    observed = _validate_history_window(hist.index, symbol=symbol, interval=interval, now=datetime.now(UTC))
     return PriceHistory([float(value) if value is not None else float("nan")
                          for value in hist["Close"].tolist()], observed_at=observed.isoformat())
 
@@ -345,6 +353,7 @@ def fetch_one(holding: Holding) -> StockSignal:
 
 def _failed(holding: Holding, reason: str) -> StockSignal:
     """构造一个失败的 StockSignal"""
+    reason = redact_secrets(reason)
     logger.warning("stocks.failed ticker=%s reason=%s", holding.ticker, reason)
     return StockSignal(
         holding=holding,
@@ -358,6 +367,14 @@ def _failed(holding: Holding, reason: str) -> StockSignal:
     )
 
 
-def fetch_all(holdings: list[Holding]) -> list[StockSignal]:
-    """串行拉取所有持仓。14 只规模下 yfinance 串行 ~12-18s,不需要并行。"""
-    return [fetch_one(h) for h in holdings]
+def fetch_all(
+    holdings: list[Holding], *, on_result: Callable[[StockSignal], None] | None = None,
+) -> list[StockSignal]:
+    """串行拉取持仓，并逐只报告进度供总时限降级保留已完成结果。"""
+    results = []
+    for holding in holdings:
+        result = fetch_one(holding)
+        results.append(result)
+        if on_result is not None:
+            on_result(result)
+    return results

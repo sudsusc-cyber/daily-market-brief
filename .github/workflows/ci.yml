@@ -14,6 +14,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security:
+    name: Locked dependency security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.28"
+      - name: Audit locked production dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv export --frozen --no-dev --no-emit-project | uvx pip-audit==2.10.1 -r /dev/stdin --no-deps --disable-pip --strict --progress-spinner off
+
   lint:
     name: ruff lint
     runs-on: ubuntu-latest

@@ -193,6 +193,15 @@ def test_invalid_spot_does_not_erase_target_or_invent_gap(price):
     assert result.implied_return is None
 
 
+def test_bad_backup_observation_does_not_discard_valid_new_report(tmp_path):
+    valid = observation(210, "2026-09-04")
+    for rows in ([replace(valid, currency="USD"), valid], [valid, None]):
+        result = refresh(tmp_path, rows)
+        assert result.intrinsic_value == 210
+        assert result.financial_as_of == "2026-09-04"
+        assert result.status == "not_due"  # incomplete discovery is not advertised as a full check
+
+
 def test_provider_failure_and_disk_failure_do_not_erase_target(tmp_path, monkeypatch):
     class Broken:
         def fetch(self, **kwargs):
