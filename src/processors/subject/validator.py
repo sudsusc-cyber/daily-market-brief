@@ -12,6 +12,14 @@
 
 from __future__ import annotations
 
+from src.processors.subject.solar_terms import (
+    AUTUMN_TERMS,
+    SPRING_TERMS,
+    SUMMER_TERMS,
+    WINTER_TERMS,
+    SolarTermContext,
+)
+
 # plan 列出的禁词
 BANNED_WORDS: frozenset[str] = frozenset({
     "涨", "跌", "震", "盘",
@@ -31,7 +39,7 @@ SEASON_TABOOS: dict[str, tuple[str, ...]] = {
     # 夏(立夏~大暑):夏日不该有雪、霜、冰、寒江、寒林、凋零等冬秋意象
     "summer": ("雪", "霜", "冰", "凋零", "寒江", "寒林", "寒鸦", "孤舟寒"),
     # 秋(立秋~霜降):秋日不该有烈火/焦阳的盛夏感,也不该有玄冰的深冬感
-    "autumn": ("烈火", "焦阳", "炎天", "炎云", "阳烈", "玄冰"),
+    "autumn": ("蝉", "烈火", "焦阳", "炎天", "炎云", "阳烈", "玄冰", "雪", "春潮"),
     # 冬(立冬~大寒):冬日不该有蝉、烈火、阳烈、炎云、春潮等夏春意象
     "winter": ("蝉", "烈火", "焦阳", "炎天", "炎云", "阳烈", "春潮"),
 }
@@ -50,7 +58,9 @@ def _is_cjk(ch: str) -> bool:
     return "一" <= ch <= "鿿"
 
 
-def validate(subject: str, season: str | None = None) -> tuple[bool, str]:
+def validate(
+    subject: str, season: str | None = None, *, solar_term: SolarTermContext | None = None,
+) -> tuple[bool, str]:
     """
     返回 (是否通过, 详细原因)。失败时原因供 fallback 用作 LLM 纠错反馈。
     season 参数(可选):"spring"/"summer"/"autumn"/"winter"。传入则做季节意象禁忌检查。
@@ -88,6 +98,19 @@ def validate(subject: str, season: str | None = None) -> tuple[bool, str]:
         if not ok:
             return False, reason
 
+    if solar_term:
+        # 提前预告只允许下一节气前两天；不能把旧节气或未来节气写成今天。
+        for name in sorted(SPRING_TERMS | SUMMER_TERMS | AUTUMN_TERMS | WINTER_TERMS):
+            if name not in s or name == solar_term.current:
+                continue
+            if name == solar_term.next and solar_term.days_to_next <= 2 and f"{name}将至" in s:
+                continue
+            return False, f"节气时间不符:当前为{solar_term.current},不能使用{name}"
+        if solar_term.current in ("立秋", "处暑", "白露"):
+            for word in ("秋寒", "深秋", "晚秋", "霜", "寒林", "寒江", "凋零", "肃杀"):
+                if word in s:
+                    return False, f"时令过早:{solar_term.current}不使用晚秋寒霜意象{word}"
+
     return True, "ok"
 
 
@@ -107,6 +130,8 @@ def validate_season_imagery(subject: str, season: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-def is_valid(subject: str, season: str | None = None) -> bool:
+def is_valid(
+    subject: str, season: str | None = None, *, solar_term: SolarTermContext | None = None,
+) -> bool:
     """便捷布尔接口。"""
-    return validate(subject, season=season)[0]
+    return validate(subject, season=season, solar_term=solar_term)[0]

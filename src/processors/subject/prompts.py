@@ -11,7 +11,11 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from src.processors.subject.extractor import SubjectData
+from src.processors.subject.solar_terms import season_of
+from src.processors.subject.validator import SEASON_TABOOS
 
 # ──────────────  System Prompt(逐字使用,不要修改)  ──────────────
 
@@ -69,7 +73,7 @@ SYSTEM_PROMPT = """\
 输出:冬至夜长　雪覆山前
 
 输入:节气=立秋, 情绪=中性, 信号=无, 要闻=油价新高
-输出:立秋火炽　油浪滔天
+输出:立秋初临　油浪滔天
 
 输入:节气=秋分, 情绪=中性, 信号=无, 要闻=中东战事升级
 输出:中东烽起　扁舟稳行
@@ -82,13 +86,19 @@ SYSTEM_PROMPT = """\
 
 ## 季节一致性(硬性要求,违反会被自动拒)
 
-**后 4 字意象必须与当日节气所属季节一致**,绝不能出现异季节意象:
+**全部 8 字意象必须与当日节气和时令阶段一致**。这是编辑风格规则，不是对所有地区气候的断言。
+市场情绪偏热/偏冷不是实际气温；不得据此编造蝉鸣、降雪、结霜等实景。
+立秋、处暑、白露用初秋、秋意、云水等温和意象，不用蝉、深秋、秋寒、寒霜、万木凋零。
+只使用当前节气；仅在距离下一节气不超过两天时，才可写「下一节气将至」。
+没有地点和实测天气时，优先使用节气名称、云水、舟行、静观等不依赖当地天气的表达。
+
+通用季节约束:
 
 - **春**(立春~谷雨):**禁** 蝉、雪、霜、冰、玄冰、凋零、烈火、焦阳、炎天、炎云、阳烈
   → 春天没有蝉(蝉鸣属夏)、不下雪(雪/霜属冬)、不焦阳(烈火属夏极)
 - **夏**(立夏~大暑):**禁** 雪、霜、冰、玄冰、凋零、寒江、寒林、寒鸦
   → 夏天不结冰、不万木凋零、不独钓寒江
-- **秋**(立秋~霜降):**禁** 烈火、焦阳、炎天、阳烈、玄冰
+- **秋**(立秋~霜降):**禁** 蝉、烈火、焦阳、炎天、炎云、阳烈、玄冰、雪、春潮
   → 秋天既不该有盛夏感也不该有深冬感
 - **冬**(立冬~大寒):**禁** 蝉、烈火、焦阳、炎天、炎云、阳烈、春潮
   → 冬天没有蝉、不烈火烹油、不见春潮
@@ -128,7 +138,7 @@ SYSTEM_PROMPT = """\
 **偏热(仅夏 — 立夏~大暑可用)**:炎云未散、蝉鸣未歇、长风破浪
 **偏热(仅冬 — 立冬~大寒可用)**:稳钓寒江(冬日守寒之意)
 
-**偏冷(全年通用)**:守寒待春、潜龙在渊、冷月静观、风雪藏锋、蛰伏听雷
+**偏冷(全年通用)**:潜龙在渊、静水流深、闭门修篱
 **偏冷(仅冬 — 立冬~大寒可用)**:雪覆山前、寒林独行、玄冰守渊、暮雪推门、独钓寒江、孤灯照雪
 **偏冷(春秋可用 — 不带雪/霜/冰)**:潜龙在渊、闭门修篱、霜林独立(仅秋)
 
@@ -201,7 +211,10 @@ def build_user_prompt(data: SubjectData, *, correction: str | None = None) -> st
 
     parts = [
         "今日数据:",
+        f"- 北京日期:{(data.solar_term.current_date + timedelta(days=data.solar_term.days_into - 1)).isoformat()}",
         f"- 节气:{d['solar_term']['current']}(节气短语建议:{d['solar_term']['phrase']})",
+        f"- 下一节气:{data.solar_term.next}，还有{data.solar_term.days_to_next}天",
+        f"- 当前季节禁用意象:{'、'.join(SEASON_TABOOS.get(season_of(data.solar_term.current), ()))}",
         f"- 市场情绪:{mood_desc}",
         f"- 持仓信号:{signal_desc}",
         f"- 持仓要闻:{holdings_news}",

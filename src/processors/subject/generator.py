@@ -186,7 +186,7 @@ def generate_subject(
         cache = _load_cache()
         if today_iso in cache:
             cached = cache[today_iso]
-            if validator.is_valid(cached, season=season):
+            if validator.is_valid(cached, season=season, solar_term=data.solar_term):
                 logger.info("subject.cache_hit date=%s subject=%r", today_iso, cached)
                 _log_generation(
                     today_iso=today_iso, data=data, llm_raw=None,
@@ -200,7 +200,7 @@ def generate_subject(
     if raw1 is not None:
         # 去除可能的引号 / 前后缀(尝试自救一下显而易见的 LLM 问题)
         cleaned = _light_clean(raw1)
-        ok, reason = validator.validate(cleaned, season=season)
+        ok, reason = validator.validate(cleaned, season=season, solar_term=data.solar_term)
         if ok:
             logger.info("subject.llm_pass1 raw=%r → %r", raw1, cleaned)
             _save_to_cache_and_log(
@@ -219,7 +219,7 @@ def generate_subject(
     raw2, err2 = _call_deepseek(llm, user_prompt2)
     if raw2 is not None:
         cleaned2 = _light_clean(raw2)
-        ok, reason2 = validator.validate(cleaned2, season=season)
+        ok, reason2 = validator.validate(cleaned2, season=season, solar_term=data.solar_term)
         if ok:
             logger.info("subject.llm_pass2 raw=%r → %r", raw2, cleaned2)
             _save_to_cache_and_log(

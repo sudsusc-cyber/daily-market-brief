@@ -153,4 +153,4 @@ class TestPhraseStyles:
         # 秋分 9/23 + 5 天 = 9/28
         ctx = get_solar_term_context(date(2026, 9, 28))
         assert ctx.current == "秋分"
-        assert "秋寒" in ctx.phrase
+        assert "秋意" in ctx.phrase

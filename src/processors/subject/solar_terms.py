@@ -205,7 +205,7 @@ def _generate_phrase(current_name: str, days_into: int, days_to_next: int, next_
     if current_name in SUMMER_TERMS:
         return f"{current_name}夏炽"
     if current_name in AUTUMN_TERMS:
-        return f"{current_name}秋寒"
+        return f"{current_name}秋意"
     if current_name in WINTER_TERMS:
         return f"{current_name}冬深"
     return f"{current_name}时节"

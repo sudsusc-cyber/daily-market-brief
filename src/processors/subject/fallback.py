@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 
 from src.processors.subject.extractor import SubjectData
-from src.processors.subject.solar_terms import season_of
+from src.processors.subject.solar_terms import SolarTermContext, season_of
 from src.processors.subject.validator import validate
 
 # ──────────────  后 4 字兜底库(每种情境 6-8 个变体)  ──────────────
@@ -82,17 +82,18 @@ def _pick(variants: list[str], seed_key: str) -> str:
 
 def _pick_valid(
     *, phrase: str, variants: list[str], seed_key: str, season: str | None,
+    solar_term: SolarTermContext | None = None,
 ) -> str:
     """从 hash 起点循环，确定性选择首个通过禁词和季节校验的变体。"""
     h = hashlib.sha1(seed_key.encode("utf-8"), usedforsecurity=False).digest()
     start = int.from_bytes(h[:4], "big") % len(variants)
     for offset in range(len(variants)):
         candidate = f"{phrase}　{variants[(start + offset) % len(variants)]}"
-        if validate(candidate, season=season)[0]:
+        if validate(candidate, season=season, solar_term=solar_term)[0]:
             return candidate
     # 所有词库候选都被未来规则禁用时仍保证邮件可发；该句无季节冲突和禁词。
     candidate = f"{phrase}　静水流深"
-    if validate(candidate, season=season)[0]:
+    if validate(candidate, season=season, solar_term=solar_term)[0]:
         return candidate
     raise ValueError(f"no valid static subject for phrase={phrase!r} season={season!r}")
 
@@ -120,35 +121,35 @@ def static_fallback(data: SubjectData) -> str:
     if sig.lump_sum_count > 0:
         return _pick_valid(
             phrase=phrase, variants=LUMP_SUM_VARIANTS,
-            seed_key=today_key + "LUMP", season=season,
+            seed_key=today_key + "LUMP", season=season, solar_term=data.solar_term,
         )
 
     # 2-5. 完全按市场情绪选择,跳过 DCA
     if mood == "极度贪婪":
         return _pick_valid(
             phrase=phrase, variants=EXTREME_GREED_VARIANTS,
-            seed_key=today_key + "GREED", season=season,
+            seed_key=today_key + "GREED", season=season, solar_term=data.solar_term,
         )
 
     if mood == "极度恐慌":
         return _pick_valid(
             phrase=phrase, variants=EXTREME_FEAR_VARIANTS,
-            seed_key=today_key + "FEAR", season=season,
+            seed_key=today_key + "FEAR", season=season, solar_term=data.solar_term,
         )
 
     if mood == "偏热":
         return _pick_valid(
             phrase=phrase, variants=WARM_VARIANTS,
-            seed_key=today_key + "WARM", season=season,
+            seed_key=today_key + "WARM", season=season, solar_term=data.solar_term,
         )
 
     if mood == "偏冷":
         return _pick_valid(
             phrase=phrase, variants=COLD_VARIANTS,
-            seed_key=today_key + "COLD", season=season,
+            seed_key=today_key + "COLD", season=season, solar_term=data.solar_term,
         )
 
     return _pick_valid(
         phrase=phrase, variants=NEUTRAL_VARIANTS,
-        seed_key=today_key + "NEUT", season=season,
+        seed_key=today_key + "NEUT", season=season, solar_term=data.solar_term,
     )
