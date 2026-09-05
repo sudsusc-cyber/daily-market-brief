@@ -1,4 +1,4 @@
-"""QQQM v1.8：确定性计算、双读校验、可重放输入；乐观现金流公式不变。"""
+"""QQQM v1.9：历史 NAV 逐日核对、双读校验、可重放输入；乐观公式不变。"""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from src.valuation.qqqm_sources import (
     PE_URL,
     fetch_source_packet,
     latest_closed_date,
+    validate_nav_evidence,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,11 +32,12 @@ logger = logging.getLogger(__name__)
 _CACHE_NAME = "qqqm_valuation.json"
 _DAILY_CACHE_NAME = "qqqm_valuation.daily.json"
 _BOOTSTRAP_PATH = Path(__file__).resolve().parents[2] / "config" / "qqqm_verified_snapshot.json"
+_LEGACY_NAV_PATH = Path(__file__).resolve().parents[2] / "config" / "qqqm_legacy_nav_evidence.json"
 _STALE_DAYS = 14
 _FEE = 0.0015
 _DISCOUNT = 0.10
 _PE_EXIT = 24.65
-_MODEL_VERSION = "1.8"
+_MODEL_VERSION = "1.9"
 _VALUE_FIELDS = ("nav_anchor", "pe_ttm", "pe_pair_t", "pe_pair_f", "div_ttm")
 _OBSERVATION_FIELDS = ("data_date", "fwd_date", "forward_basis")
 _AUDIT_NAME = "qqqm_calculation_audit.json"
@@ -332,11 +334,19 @@ def calculation_record(inputs: QQQMInputs) -> dict:
                 "terminal_pv": str(terminal)}
 
 
-def snapshot_payload(result: QQQMResult, *, source_response: str, checked_at: datetime) -> dict:
-    return {"schema_version": 2, "model_version": _MODEL_VERSION,
+def _evidence_hash(evidence: dict) -> str:
+    return hashlib.sha256(json.dumps(evidence, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def snapshot_payload(result: QQQMResult, *, source_response: str, checked_at: datetime,
+                     nav_history_evidence: dict) -> dict:
+    validate_nav_evidence(nav_history_evidence, data_date=result.inputs.data_date, nav_value=result.inputs.nav_anchor)
+    return {"schema_version": 3, "model_version": _MODEL_VERSION,
             "verified_at": checked_at.astimezone(UTC).isoformat(),
             "inputs": asdict(result.inputs), "source_response": source_response,
             "source_response_sha256": hashlib.sha256(source_response.encode()).hexdigest(),
+            "nav_history_evidence": nav_history_evidence,
+            "nav_history_evidence_sha256": _evidence_hash(nav_history_evidence),
             "calculation": calculation_record(result.inputs)}
 
 
@@ -391,10 +401,23 @@ def _from_cache(
         inputs = parse_qqqm_inputs(payload["source_response"], price=price, checked_at=checked_at,
                                    allow_daily_forward=allow_daily_forward)
         result = calculate_qqqm(inputs)
+        if payload.get("schema_version") == 3:
+            evidence = payload.get("nav_history_evidence")
+            validate_nav_evidence(evidence, data_date=inputs.data_date, nav_value=inputs.nav_anchor)
+            if payload.get("nav_history_evidence_sha256") != _evidence_hash(evidence):
+                raise ValueError("QQQM 历史 NAV 核验证据指纹不一致")
+        else:
+            # Only migrate exact dated NAVs independently tied out before rollout.
+            # This file neither fills live fields nor extends the 14-day expiry.
+            observations = json.loads(_LEGACY_NAV_PATH.read_text())["observations"]
+            if not isinstance(observations, dict):
+                raise ValueError("QQQM 旧快照历史 NAV 迁移证据损坏")
+            evidence = observations.get(inputs.data_date)
+            validate_nav_evidence(evidence, data_date=inputs.data_date, nav_value=inputs.nav_anchor)
         # Legacy snapshots contain source evidence only; always recompute them.
         # New snapshots must tie to the exact input key, recipe and calculation.
         if ("schema_version" in payload or "calculation" in payload) and (
-                payload.get("schema_version") != 2 or payload.get("calculation") != calculation_record(inputs)
+                payload.get("schema_version") not in (2, 3) or payload.get("calculation") != calculation_record(inputs)
                 or payload.get("source_response_sha256")
                 != hashlib.sha256(payload["source_response"].encode()).hexdigest()):
             raise ValueError("QQQM 快照校验指纹或计算结果不一致")
@@ -463,6 +486,7 @@ def _verify_packet(inputs: QQQMInputs, packet: dict | None, *, checked_at: datet
         actual = getattr(inputs, field)
         if expected is None or actual != expected:
             raise ValueError(f"QQQM {field} 两次来源回读不一致，不混用输入")
+    validate_nav_evidence(packet.get("nav_history_evidence"), data_date=inputs.data_date, nav_value=inputs.nav_anchor)
     # Independently check the second observation's dates/citations as well.
     repeated = parse_qqqm_inputs(json.dumps({"status": "ok", "data": packet,
                                             "citations": packet.get("citations")}),
@@ -494,6 +518,9 @@ def prepare_qqqm_display(
     prompt = build_qqqm_prompt(checked_at=checked_at, price=price, allow_daily_forward=allow_daily)
     try:
         source_packet = fetch_source_packet(checked_at=checked_at, allow_daily_forward=allow_daily)
+        if source_packet is not None:
+            validate_nav_evidence(source_packet.get("nav_history_evidence"),
+                                  data_date=source_packet.get("data_date"), nav_value=source_packet.get("nav_anchor"))
     except Exception as exc:  # Source adapter failures must not bypass recovery.
         logger.warning("valuation.qqqm_source_exception type=%s", type(exc).__name__)
         source_packet = None
@@ -516,7 +543,7 @@ def prepare_qqqm_display(
                            "citations": source_packet["citations"]}, ensure_ascii=False)
         logger.info("valuation.qqqm_direct_inputs data_date=%s forward_basis=%s",
                     source_packet["data_date"], source_packet.get("forward_basis"))
-    else:
+    elif source_packet is not None:
         try:
             response = client.search_web(
                 prompt, allowed_domains=_ALLOWED_DOMAINS, market_data=True,
@@ -526,6 +553,8 @@ def prepare_qqqm_display(
             text, error = response.text, response.error
         except Exception as exc:  # The last-good complete snapshot remains usable.
             error = f"搜索接口异常 {type(exc).__name__}"
+    else:
+        error = "官方来源/历史 NAV 未通过核验，不调用 DeepSeek 绕过校验"
     result: QQQMResult | None = None
     warning: str | None = None
     if text:
@@ -565,16 +594,18 @@ def prepare_qqqm_display(
             if previous is not None and (inputs.data_date, inputs.fwd_date or "") < (
                     previous.inputs.data_date, previous.inputs.fwd_date or ""):
                 raise ValueError("QQQM 来源观测日倒退，不覆盖较新完整快照")
-            result = calculate_qqqm(inputs)
-            _write_json(state_dir / _CACHE_NAME,
-                        snapshot_payload(result, source_response=text, checked_at=checked_at))
+            candidate = calculate_qqqm(inputs)
+            payload = snapshot_payload(candidate, source_response=text, checked_at=checked_at,
+                                       nav_history_evidence=audit["confirmation_source_packet"]["nav_history_evidence"])
+            result = candidate
+            _write_json(state_dir / _CACHE_NAME, payload)
         except OSError as exc:
             # A valid live result remains usable when persisting its cache fails.
             warning = f"QQQM 快照保存失败：{type(exc).__name__}"
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             warning = f"QQQM 当日输入校验失败：{str(exc)[:120]}"
     else:
-        warning = f"QQQM DeepSeek 输入失败：{error or '空响应'}"
+        warning = f"QQQM 输入获取失败：{error or '空响应'}"
     used_cache = result is None
     if result is None:
         result = previous

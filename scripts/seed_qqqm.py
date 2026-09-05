@@ -39,7 +39,8 @@ def seed_snapshot(text: str, *, packet: dict, state_dir: Path, checked_at: datet
     state_dir.mkdir(parents=True, exist_ok=True)
     target = state_dir / "qqqm_valuation.json"
     temporary = target.with_suffix(".tmp")
-    temporary.write_text(json.dumps(snapshot_payload(result, source_response=text, checked_at=checked_at),
+    temporary.write_text(json.dumps(snapshot_payload(result, source_response=text, checked_at=checked_at,
+                                                     nav_history_evidence=packet["nav_history_evidence"]),
                                     ensure_ascii=False))
     temporary.replace(target)
 

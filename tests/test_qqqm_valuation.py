@@ -14,18 +14,32 @@ from src.valuation.qqqm import (
     prepare_qqqm_display,
     verify_searched_inputs,
 )
+from src.valuation.qqqm_sources import verify_nav_history
 
 NOW = datetime(2026, 9, 3, 4, 0, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
 def no_live_sources(monkeypatch, tmp_path):
-    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: None)
+    incomplete = _packet()
+    incomplete.update(pe_pair_t=None, pe_pair_f=None, fwd_date=None)
+    monkeypatch.setattr("src.valuation.qqqm.fetch_source_packet", lambda **kwargs: incomplete)
     monkeypatch.setenv("QQQM_DAILY_FORWARD_ENABLED", "false")
     monkeypatch.setattr("src.valuation.qqqm._BOOTSTRAP_PATH", tmp_path / "missing-bootstrap.json")
     # Unit fixtures stand in for a successful independent source re-read.
     # Dedicated verification tests below exercise the real re-read function.
-    monkeypatch.setattr("src.valuation.qqqm.verify_searched_inputs", lambda *args, **kwargs: None)
+    monkeypatch.setattr("src.valuation.qqqm.verify_searched_inputs", lambda *args, **kwargs: _packet())
+    # Synthetic legacy-migration evidence; no claim that real QQQM NAV was 500.
+    legacy = tmp_path / "legacy-nav-evidence.json"
+    legacy.write_text(json.dumps({"observations": {day: _nav_evidence(day) for day in ("2026-09-01", "2026-09-02")}}))
+    monkeypatch.setattr("src.valuation.qqqm._LEGACY_NAV_PATH", legacy)
+
+
+def _nav_evidence(day="2026-09-02"):
+    anchor = datetime.fromisoformat(day).date()
+    return verify_nav_history({"cusip": "46138G649", "currency": "USD", "lineChartData": [
+        {"type": "NAV", "data": [{"date": anchor.strftime("%m/%d/%Y"), "value": 500.0}]},
+    ]}, anchor=anchor, nav_value=500.0)
 
 
 def _payload(*, data_date: str = "2026-09-02") -> str:
@@ -126,7 +140,7 @@ def test_prepare_calls_deepseek_once_and_uses_recent_cache_on_failure(tmp_path) 
     assert first.implied_return == pytest.approx(first.intrinsic_value / 300.0 - 1)
     assert first.financial_as_of == "2026-09-02"
     assert first.formula_id == "qqqm_optimistic_cashflow_v1_6"
-    assert first.model_version == "1.8"
+    assert first.model_version == "1.9"
 
     failed = _Client(LLMResponse(text=None, error="rate limit", usage=LLMUsage()))
     second = prepare_qqqm_display(price=305.0, client=failed, state_dir=tmp_path, checked_at=NOW)
@@ -167,7 +181,7 @@ def test_startup_seed_rechecks_live_values(tmp_path):
     from scripts.seed_qqqm import seed_snapshot
 
     data = json.loads(_payload())["data"]
-    packet = {**data, "fwd_date": data["data_date"]}
+    packet = {**data, "fwd_date": data["data_date"], "nav_history_evidence": _nav_evidence()}
     seed_snapshot(_payload(), packet=packet, state_dir=tmp_path, checked_at=NOW)
     assert (tmp_path / "qqqm_valuation.json").exists()
     packet["nav_anchor"] = 600.0
@@ -221,7 +235,7 @@ def test_prompt_and_display_keep_single_scenario_and_gap_return():
 
 def _packet():
     raw = json.loads(_payload())
-    return dict(raw["data"], citations=raw["citations"], fwd_date="2026-09-02")
+    return dict(raw["data"], citations=raw["citations"], fwd_date="2026-09-02", nav_history_evidence=_nav_evidence())
 
 
 def test_verified_direct_packet_does_not_depend_on_deepseek(tmp_path, monkeypatch):

@@ -6,6 +6,7 @@ from src.valuation.qqqm_sources import (
     DAILY_FORWARD_BASIS,
     DIV_BACKUP_URL,
     DIV_URL,
+    NAV_HISTORY_URL,
     NAV_URL,
     PE_READER_URL,
     PE_URL,
@@ -18,6 +19,13 @@ from src.valuation.qqqm_sources import (
 )
 
 NOW = datetime(2026, 9, 3, 4, tzinfo=UTC)
+
+
+def _history():
+    return {"cusip": "46138G649", "currency": "USD", "lineChartData": [
+        {"type": "NAV", "data": [{"date": "09/03/2026", "value": 295.446047},
+                                  {"date": "09/02/2026", "value": 292.029084}]},
+    ]}
 
 
 def _sources():
@@ -33,7 +41,7 @@ def _sources():
 
 def test_live_packet_uses_fund_nav_and_trailing_dividends():
     nav, dividends = _sources()
-    result = build_source_packet(nav, dividends, None, checked_at=NOW)
+    result = build_source_packet(nav, dividends, None, checked_at=NOW, nav_history=_history())
     assert result["data_date"] == "2026-09-02"
     assert result["div_ttm"] == pytest.approx(1.3053)
     assert result["nav_anchor"] == 292.029084
@@ -45,10 +53,10 @@ def test_pair_uses_observation_dates_not_page_refresh():
     pair = {"updated": "2026-09-02", "current": {"trailing": 28, "forward": 22},
             "trailing": [{"date": "2026-08-05", "value": 28}],
             "forward": [{"date": "2026-08-05", "value": 22}]}
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW)["fwd_date"] is None
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["fwd_date"] is None
     for key in ("trailing", "forward"):
         pair[key][0]["date"] = "2026-08-31"
-    result = build_source_packet(nav, dividends, pair, checked_at=NOW)
+    result = build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())
     assert result["fwd_date"] == "2026-08-31"
     assert result["pe_pair_t"] == 28
 
@@ -56,12 +64,12 @@ def test_pair_uses_observation_dates_not_page_refresh():
 def test_reject_wrong_fund_stale_nav_duplicate_dividends():
     nav, dividends = _sources()
     with pytest.raises(ValueError, match="identity"):
-        build_source_packet(dict(nav, cusip="QQQ"), dividends, None, checked_at=NOW)
+        build_source_packet(dict(nav, cusip="QQQ"), dividends, None, checked_at=NOW, nav_history=_history())
     with pytest.raises(ValueError, match="latest closed"):
-        build_source_packet(dict(nav, effectiveDate="2026-09-01"), dividends, None, checked_at=NOW)
+        build_source_packet(dict(nav, effectiveDate="2026-09-01"), dividends, None, checked_at=NOW, nav_history=_history())
     dividends["distributions"].append(dividends["distributions"][0])
     with pytest.raises(ValueError, match="duplicate"):
-        build_source_packet(nav, dividends, None, checked_at=NOW)
+        build_source_packet(nav, dividends, None, checked_at=NOW, nav_history=_history())
 
 
 def test_closed_date_handles_weekend_holiday_and_intraday():
@@ -113,23 +121,23 @@ def test_opt_in_daily_consensus_uses_dated_pair_and_records_basis():
         "forwardOwn": [{"date": "2026-09-02", "value": 21.21, "basis": DAILY_FORWARD_BASIS},
                        {"date": "2026-09-03", "value": 20, "basis": DAILY_FORWARD_BASIS}],
     }
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW)["pe_pair_f"] is None
-    result = build_source_packet(nav, dividends, pair, checked_at=NOW, allow_daily_forward=True)
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["pe_pair_f"] is None
+    result = build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history(), allow_daily_forward=True)
     assert result["pe_pair_t"] == 28.06
     assert result["pe_pair_f"] == 21.21
     assert result["fwd_date"] == "2026-09-02"
     assert result["forward_basis"] == DAILY_FORWARD_BASIS
     pair["forwardOwn"][0]["basis"] = "unknown-new-method"
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW, allow_daily_forward=True)["pe_pair_f"] is None
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history(), allow_daily_forward=True)["pe_pair_f"] is None
 
 
 def test_pair_ignores_bad_history_but_rejects_conflicting_current_values():
     nav, dividends = _sources()
     pair = {"trailing": [{"date": "bad", "value": None}, {"date": "2026-09-02", "value": 28}],
             "forward": [{"date": "2026-09-02", "value": 22}]}
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW)["pe_pair_t"] == 28
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["pe_pair_t"] == 28
     pair["forward"].append({"date": "2026-09-02", "value": 23})
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW)["pe_pair_t"] is None
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["pe_pair_t"] is None
 
 
 def test_terminal_pair_preferred_on_equal_date_but_newer_daily_can_win():
@@ -137,11 +145,11 @@ def test_terminal_pair_preferred_on_equal_date_but_newer_daily_can_win():
     pair = {"trailing": [{"date": "2026-09-01", "value": 28}, {"date": "2026-09-02", "value": 28}],
             "forward": [{"date": "2026-09-02", "value": 22}],
             "forwardOwn": [{"date": "2026-09-02", "value": 21.5, "basis": DAILY_FORWARD_BASIS}]}
-    result = build_source_packet(nav, dividends, pair, checked_at=NOW, allow_daily_forward=True)
+    result = build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history(), allow_daily_forward=True)
     assert result["pe_pair_f"] == 22
     assert result["forward_basis"] == "terminal-consensus"
     pair["forward"][0]["date"] = "2026-09-01"
-    result = build_source_packet(nav, dividends, pair, checked_at=NOW, allow_daily_forward=True)
+    result = build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history(), allow_daily_forward=True)
     assert result["pe_pair_f"] == 21.5
 
 
@@ -149,7 +157,7 @@ def test_weekend_pair_is_not_a_closed_trading_observation():
     nav, dividends = _sources()
     pair = {"trailing": [{"date": "2026-08-30", "value": 28}],
             "forward": [{"date": "2026-08-30", "value": 22}]}
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW)["pe_pair_f"] is None
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["pe_pair_f"] is None
 
 
 def _backup_html():
@@ -163,7 +171,7 @@ def _backup_html():
 
 def test_independent_dividend_backup_uses_exact_rows_not_rounded_summary():
     backup = parse_dividend_backup(_backup_html() + '<p>Annual dividend $1.31</p>', anchor=date(2026, 9, 2))
-    packet = build_source_packet(_sources()[0], backup, None, checked_at=NOW, dividends_url=DIV_BACKUP_URL)
+    packet = build_source_packet(_sources()[0], backup, None, checked_at=NOW, nav_history=_history(), dividends_url=DIV_BACKUP_URL)
     assert packet["div_ttm"] == pytest.approx(1.3053)
     assert packet["citations"][1]["source"] == DIV_BACKUP_URL
 
@@ -190,7 +198,7 @@ def test_source_packet_backup_recovery_and_cross_check(monkeypatch, primary_mode
     elif primary_mode == "conflict":
         primary["distributions"][0]["distributionAmountPerUnit"] = .4
     monkeypatch.setattr("src.valuation.qqqm_sources._fetch",
-                        lambda url: nav if url == NAV_URL else primary if url == DIV_URL else None)
+                        lambda url: {NAV_URL: nav, DIV_URL: primary, NAV_HISTORY_URL: _history()}.get(url))
     monkeypatch.setattr("src.valuation.qqqm_sources.fetch_gurufocus_pe", lambda **kwargs: None)
     monkeypatch.setattr("src.valuation.qqqm_sources.fetch_dividend_backup", lambda **kwargs: backup)
     packet = fetch_source_packet(checked_at=NOW)
@@ -216,4 +224,4 @@ def test_dividend_backup_rejects_missing_whole_quarter(missing):
 def test_primary_uses_total_cash_not_ordinary_income_tax_subset():
     nav, dividends = _sources()
     dividends["distributions"][0]["ordinaryIncomeDistribution"] = .2
-    assert build_source_packet(nav, dividends, None, checked_at=NOW)["div_ttm"] == pytest.approx(1.3053)
+    assert build_source_packet(nav, dividends, None, checked_at=NOW, nav_history=_history())["div_ttm"] == pytest.approx(1.3053)

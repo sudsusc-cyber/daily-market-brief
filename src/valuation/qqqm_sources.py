@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 import re
@@ -17,6 +19,7 @@ from src.utils.holidays import is_us_market_open
 logger = logging.getLogger(__name__)
 _BASE = "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649"
 NAV_URL = _BASE + "/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF"
+NAV_HISTORY_URL = _BASE + "/navs?idType=cusip&productType=ETF"
 DIV_URL = _BASE + "/distribution?idType=cusip&productType=ETF"
 PAIR_URL = "https://historyofmarket.com/api/ndx/forward-pe.json"
 PE_URL = "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio"
@@ -62,6 +65,52 @@ def _positive(value) -> float:
     if not math.isfinite(number) or number <= 0:
         raise ValueError("invalid source value")
     return number
+
+
+def verify_nav_history(history: dict, *, anchor: date, nav_value: float) -> dict:
+    """Match the exact trading-day NAV row, not page dates or carried weekend rows."""
+    if not isinstance(history, dict) or history.get("cusip") != "46138G649" or history.get("currency") != "USD":
+        raise ValueError("QQQM NAV history identity/currency mismatch")
+    if not is_us_market_open(anchor):
+        raise ValueError("QQQM NAV history anchor is not a trading day")
+    series = history.get("lineChartData")
+    if not isinstance(series, list):
+        raise ValueError("QQQM NAV history missing series")
+    nav_series = [item for item in series if isinstance(item, dict) and item.get("type") == "NAV"]
+    if len(nav_series) != 1 or not isinstance(nav_series[0].get("data"), list):
+        raise ValueError("QQQM NAV history missing or duplicate NAV series")
+    matches = []
+    for row in nav_series[0]["data"]:
+        if not isinstance(row, dict):
+            raise ValueError("QQQM NAV history malformed row")
+        try:
+            observed = datetime.strptime(row["date"], "%m/%d/%Y").date()
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("QQQM NAV history malformed date") from exc
+        if observed == anchor:
+            matches.append(_positive(row.get("value")))
+    if len(matches) != 1:
+        raise ValueError("QQQM NAV history missing or duplicate target trading day")
+    # Both official endpoints publish the same six-decimal NAV. No rounded-price
+    # tolerance: a changed last decimal is still a changed input to our formula.
+    if matches[0] != _positive(nav_value):
+        raise ValueError(f"QQQM NAV history mismatch date={anchor} current={nav_value} history={matches[0]}")
+    return {"source_url": NAV_HISTORY_URL, "cusip": "46138G649", "currency": "USD", "type": "NAV",
+            "date": anchor.isoformat(), "value": matches[0],
+            "payload_sha256": hashlib.sha256(json.dumps(history, sort_keys=True, separators=(",", ":"),
+                                                       allow_nan=False).encode()).hexdigest()}
+
+
+def validate_nav_evidence(evidence: dict | None, *, data_date: str, nav_value: float) -> None:
+    """Offline verification of the bounded row evidence saved by our source reader."""
+    if not isinstance(evidence, dict) or (
+            evidence.get("source_url") != NAV_HISTORY_URL or evidence.get("cusip") != "46138G649"
+            or evidence.get("currency") != "USD" or evidence.get("type") != "NAV"
+            or evidence.get("date") != data_date
+            or not re.fullmatch(r"[0-9a-f]{64}", str(evidence.get("payload_sha256", "")))):
+        raise ValueError("QQQM 缺少匹配日期的官方历史 NAV 核验证据")
+    if not is_us_market_open(date.fromisoformat(data_date)) or _positive(evidence.get("value")) != _positive(nav_value):
+        raise ValueError("QQQM 历史 NAV 与输入日期/数值不匹配")
 
 
 def parse_gurufocus_pe(text: str, *, anchor: date, reader: bool = False) -> float:
@@ -189,6 +238,7 @@ def fetch_dividend_backup(*, anchor: date) -> dict | None:
 
 def build_source_packet(
     nav: dict, dividends: dict, pair: dict | None, *, checked_at: datetime,
+    nav_history: dict,
     allow_daily_forward: bool = False,
     dividends_url: str = DIV_URL,
 ) -> dict:
@@ -200,14 +250,16 @@ def build_source_packet(
     if nav.get("effectiveDate") != anchor.isoformat():
         raise ValueError("QQQM official NAV is not from latest closed trading day")
     nav_value = _positive(nav.get("nav"))
+    nav_evidence = verify_nav_history(nav_history, anchor=anchor, nav_value=nav_value)
     if dividends_url not in {DIV_URL, DIV_BACKUP_URL}:
         raise ValueError("QQQM dividend source not approved")
     # Source row ordering must not introduce binary-float drift in DIV_ttm.
     div_value = math.fsum(dividend_rows(dividends, anchor=anchor).values())
     packet = {
         "data_date": anchor.isoformat(), "nav_anchor": nav_value, "div_ttm": div_value,
+        "nav_history_evidence": nav_evidence,
         "pe_pair_t": None, "pe_pair_f": None, "fwd_date": None,
-        "source_urls": [NAV_URL, dividends_url],
+        "source_urls": [NAV_URL, dividends_url, NAV_HISTORY_URL],
         "citations": [
             {"field": "nav_anchor", "source": NAV_URL, "date": anchor.isoformat(), "quote": str(nav_value)},
             {"field": "div_ttm", "source": dividends_url, "date": anchor.isoformat(), "quote": str(round(div_value, 8))},
@@ -253,13 +305,14 @@ def build_source_packet(
 
 def fetch_source_packet(*, checked_at: datetime, allow_daily_forward: bool = False) -> dict | None:
     anchor = latest_closed_date(checked_at)
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         pe_future = pool.submit(fetch_gurufocus_pe, anchor=anchor)
         backup_future = pool.submit(fetch_dividend_backup, anchor=anchor)
-        nav, dividends, pair = list(pool.map(_fetch, (NAV_URL, DIV_URL, PAIR_URL)))
+        nav, dividends, pair, history = list(pool.map(_fetch, (NAV_URL, DIV_URL, PAIR_URL, NAV_HISTORY_URL)))
         pe = pe_future.result()
         backup = backup_future.result()
-    if nav is None:
+    if nav is None or history is None:
+        logger.warning("valuation.qqqm_nav_history_unavailable")
         return None
     try:
         primary_rows = None
@@ -282,6 +335,7 @@ def fetch_source_packet(*, checked_at: datetime, allow_daily_forward: bool = Fal
             ):
                 raise ValueError("QQQM 分红主备源逐笔冲突，需核对，不静默选值")
         packet = build_source_packet(nav, dividends, pair, checked_at=checked_at,
+                                     nav_history=history,
                                      allow_daily_forward=allow_daily_forward, dividends_url=dividends_url)
         if pe is not None:
             packet.update(pe_ttm=pe["value"], pe_transport=pe["transport"])

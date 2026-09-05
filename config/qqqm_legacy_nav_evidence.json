@@ -1,0 +1,24 @@
+{
+  "checked_at": "2026-09-04T15:51:13+00:00",
+  "purpose": "One-time historical NAV tie-out for pre-v1.9 snapshots; never a live NAV source or a renewed observation date.",
+  "observations": {
+    "2026-09-02": {
+      "source_url": "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/navs?idType=cusip&productType=ETF",
+      "cusip": "46138G649",
+      "currency": "USD",
+      "type": "NAV",
+      "date": "2026-09-02",
+      "value": 292.029084,
+      "payload_sha256": "298df0ebb913d7ab2b417c38572f06cc757840c102235feaa85a29584c8179a4"
+    },
+    "2026-09-03": {
+      "source_url": "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649/navs?idType=cusip&productType=ETF",
+      "cusip": "46138G649",
+      "currency": "USD",
+      "type": "NAV",
+      "date": "2026-09-03",
+      "value": 295.446047,
+      "payload_sha256": "298df0ebb913d7ab2b417c38572f06cc757840c102235feaa85a29584c8179a4"
+    }
+  }
+}

@@ -12,6 +12,8 @@ import pytest
 
 from scripts.qqqm_cache import normalize_cache
 from src.valuation import qqqm
+from src.valuation.qqqm_sources import verify_nav_history
+from tests.test_qqqm_sources import _history
 
 NOW = datetime(2026, 9, 4, 6, tzinfo=UTC)
 BASELINE = Path(__file__).parents[1] / "config/qqqm_verified_snapshot.json"
@@ -22,6 +24,11 @@ def packet():
     raw = json.loads(json.loads(BASELINE.read_text())["source_response"])
     # A dated fixture, NOT a claimed current live observation.
     raw["data"]["data_date"] = "2026-09-03"
+    # Synthetic same-input fixture: explicitly update historical evidence too.
+    history = _history()
+    history["lineChartData"][0]["data"][0]["value"] = raw["data"]["nav_anchor"]
+    raw["data"]["nav_history_evidence"] = verify_nav_history(
+        history, anchor=NOW.date() - timedelta(days=1), nav_value=raw["data"]["nav_anchor"])
     for citation in raw["citations"]:
         if citation["field"] in ("nav_anchor", "pe_ttm", "div_ttm"):
             citation["date"] = "2026-09-03"
@@ -46,6 +53,8 @@ def inputs(packet, price=295.51):
 def change(packet, field, value):
     packet = copy.deepcopy(packet)
     packet[field] = value
+    if field == "nav_anchor":
+        packet["nav_history_evidence"]["value"] = value
     for item in packet["citations"]:
         if item["field"] == field:
             item["quote"] = str(value)
@@ -54,7 +63,8 @@ def change(packet, field, value):
 
 def save(path, packet, verified_at=NOW):
     result = qqqm.calculate_qqqm(inputs(packet))
-    payload = qqqm.snapshot_payload(result, source_response=text(packet), checked_at=verified_at)
+    payload = qqqm.snapshot_payload(result, source_response=text(packet), checked_at=verified_at,
+                                    nav_history_evidence=packet["nav_history_evidence"])
     path.write_text(json.dumps(payload))
     return payload
 
@@ -203,9 +213,9 @@ def test_dividend_row_order_cannot_change_packet():
     from tests.test_qqqm_sources import _sources
 
     nav, dividends = _sources()
-    first = build_source_packet(nav, dividends, None, checked_at=SOURCE_NOW)
+    first = build_source_packet(nav, dividends, None, checked_at=SOURCE_NOW, nav_history=_history())
     dividends["distributions"].reverse()
-    assert first == build_source_packet(nav, dividends, None, checked_at=SOURCE_NOW)
+    assert first == build_source_packet(nav, dividends, None, checked_at=SOURCE_NOW, nav_history=_history())
 
 
 def test_both_production_workflows_keep_calculation_evidence():
