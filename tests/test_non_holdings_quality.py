@@ -195,9 +195,11 @@ def test_question_headline_uses_complete_operating_fact_without_mutating_source(
 def test_routine_sovereign_ratings_are_not_moodys_company_news():
     from src.processors.news_selection import company_candidate
     for title in ('Moody’s Ratings affirms Iceland’s A1 ratings, maintains stable outlook',
-                  'Moody’s cuts Botswana credit rating to Baa2', 'Moody’s lifts Montenegro’s credit rating to Ba2'):
+                  'Moody’s cuts Botswana credit rating to Baa2', 'Moody’s lifts Montenegro’s credit rating to Ba2',
+                  'Moody’s affirms Fiji at B1 with stable outlook as savings cushion debt'):
         assert not company_candidate(SimpleNamespace(title=title, summary=''), 'MCO')
     assert company_candidate(SimpleNamespace(title='Moody’s reports record quarterly revenue', summary=''), 'MCO')
+    assert company_candidate(SimpleNamespace(title='Moody’s affirms its earnings outlook', summary=''), 'MCO')
 
 
 def test_price_commentary_and_generic_praise_do_not_fill_sections():

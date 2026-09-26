@@ -30,7 +30,7 @@ _BUSINESS_FACT = re.compile(
     r'|settlement|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
 _RATING_SERVICE = re.compile(
-    r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级)", re.I)
+    r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级|outlook|展望)", re.I)
 
 
 def factual_excerpt(item) -> str:
@@ -56,7 +56,8 @@ def factual_excerpt(item) -> str:
 
 def company_candidate(item, ticker: str) -> bool:
     title = plain_source(getattr(item, 'title', ''))
-    if ticker == 'MCO' and _RATING_SERVICE.search(title):
+    if (ticker == 'MCO' and _RATING_SERVICE.search(title)
+            and not re.search(r'earnings|revenue|profit|营收|盈利|利润|业绩', title, re.I)):
         return False
     return not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title
 
