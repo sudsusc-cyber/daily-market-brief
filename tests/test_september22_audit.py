@@ -27,7 +27,7 @@ from tests.test_qqqm_consistency import packet  # noqa: F401 - reusable complete
 NOW = datetime(2026, 9, 22, 0, tzinfo=UTC)
 
 
-def test_five_consecutive_quarters_are_valid_and_conflicting_backup_still_rejected(monkeypatch):
+def test_five_consecutive_quarters_select_newer_source_without_bypassing_nav_validation(monkeypatch):
     dates = ["2025-06-23", "2025-09-22", "2025-12-22", "2026-03-23", "2026-06-22", "2026-09-21"]
     payload = {
         "cusip": "46138G649",
@@ -49,7 +49,8 @@ def test_five_consecutive_quarters_are_valid_and_conflicting_backup_still_reject
         assert qqqm_sources.fetch_source_packet(checked_at=NOW) is None
     finally:
         qqqm_sources.SOURCE_DIAGNOSTICS.reset(token)
-    assert any("冲突" in row.get("reason", "") for row in diagnostics)
+    assert any(row.get("selected_source") == qqqm_sources.DIV_URL
+               and row.get("primary_date") == "2026-09-21" for row in diagnostics)
 
 
 @pytest.mark.parametrize(
@@ -111,8 +112,11 @@ def test_expired_cache_uses_source_date_not_restore_time(tmp_path, monkeypatch, 
     payload["verified_at"] = NOW.isoformat()
     path = tmp_path / "qqqm_valuation.json"
     path.write_text(json.dumps(payload))
-    assert qqqm._from_cache(path, price=300, checked_at=NOW, allow_daily_forward=True) is None
-    assert "data_date=2026-09-02" in caplog.text
+    result = qqqm._from_cache(path, price=300, checked_at=NOW, allow_daily_forward=True)
+    assert result.inputs.data_date == "2026-09-02"
+    assert result.inputs.stale_days == 20
+    display = qqqm.cached_qqqm_display(price=300, state_dir=tmp_path, checked_at=NOW)
+    assert display.status == "not_due" and "20 天" in display.data_note
 
 
 @pytest.mark.parametrize(

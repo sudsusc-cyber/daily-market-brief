@@ -154,13 +154,15 @@ def test_newer_report_with_unchanged_target_refreshes_source_date(tmp_path):
     assert result.financial_as_of == "2026-09-04"
 
 
-def test_newer_same_day_conflict_retains_old_target_not_blank(tmp_path):
-    result = refresh(tmp_path, [observation(190, "2026-09-04"), observation(220, "2026-09-04")])
-    assert result.intrinsic_value == 203
-    assert result.status == "not_due"
-    # A later media syndication hour does not prove an intraday broker revision.
+def test_newer_same_day_source_timestamp_wins_without_averaging(tmp_path):
+    early = observation(190, "2026-09-04")
+    later = replace(observation(220, "2026-09-04"), published_at="2026-09-04T20:00:00+08:00")
+    result = refresh(tmp_path, [early, later])
+    assert result.intrinsic_value == 220
+    assert result.status == "current"
+    # An older article retrieved later must not replace that value.
     result = refresh(tmp_path, [replace(observation(210), published_at="2026-08-21T20:00:00+08:00")])
-    assert result.intrinsic_value == 203
+    assert result.intrinsic_value == 220
 
 
 def test_older_live_article_cannot_override_newer_cached_report(tmp_path):

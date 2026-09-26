@@ -345,7 +345,12 @@ def main() -> int:
                 checked_at=now_bj,
             )
         else:
-            logger.warning("valuation.qqqm_pending reason=market_price_unavailable")
+            logger.warning("valuation.qqqm_retained reason=market_price_unavailable")
+            # Value calculation is independent of the current market price.
+            # Retain it even when the quote is missing; do not fabricate a gap.
+            qqqm_display = replace(cached_qqqm_display(
+                price=1.0, state_dir=_STATE_DIR, checked_at=now_bj,
+                reason="行情暂不可用"), implied_return=None)
         logger.info("valuation.freshness_precheck")
         valuation_displays, valuation_freshness = budget.call(prepare_valuation_displays,
             seconds=360, fallback=valuation_timeout,

@@ -252,10 +252,16 @@
                   </td>
 
                   {% if has_error %}
-                  {# 整行错误态:跨剩余列展示原因 #}
-                  <td colspan="{{ 4 if show_valuations else 3 }}" align="right" valign="middle" style="padding:18px 0; border-bottom:1px solid {{ row_rule }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic; line-height:1.5;">
+                  {# 行情错误不抹掉独立可用的估值。 #}
+                  <td colspan="{{ 2 if show_valuations else 3 }}" align="right" valign="middle" style="padding:18px 0; border-bottom:1px solid {{ row_rule }}; font-size:11.5px; color:{{ color_muted }}; font-style:italic; line-height:1.5;">
                     数据获取失败 · {{ s.error }}
                   </td>
+                  {% if show_valuations %}
+                  <td class="holding-valuation" align="right" valign="middle" style="padding:18px 0 18px 10px; border-bottom:1px solid {{ row_rule }}; white-space:nowrap; font-size:13.5px;">
+                    {% if valuation and not valuation.is_pending %}<div class="holding-valuation-main">{{ valuation.intrinsic_value | price }}</div>{% endif %}
+                  </td>
+                  <td class="holding-signal" style="border-bottom:1px solid {{ row_rule }};">&nbsp;</td>
+                  {% endif %}
                   {% else %}
                   {# 现价 — tabular-nums 让小数点跨行对齐 #}
                   <td class="holding-price" valign="top" align="right" style="padding:18px 0 18px 0; border-bottom:1px solid {{ row_rule }}; font-size:17px; font-weight:500; color:{{ color_ink }}; letter-spacing:0; line-height:1.1; white-space:nowrap; overflow:hidden;">

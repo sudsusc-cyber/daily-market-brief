@@ -131,9 +131,11 @@ def test_jump_guard_blocks_unattributed_move(tmp_path) -> None:
         state_dir=tmp_path,
         sent_at=datetime(2026, 8, 27, tzinfo=UTC),
     )
-    guarded = enforce_jump_guard({"AAPL": _display(104.0)}, state_dir=tmp_path)
+    guarded = enforce_jump_guard({"AAPL": _display(104.0)}, state_dir=tmp_path, prices={"AAPL": 80})
     assert guarded["AAPL"].status == "manual_review"
-    assert guarded["AAPL"].intrinsic_value is None
+    assert guarded["AAPL"].intrinsic_value == 100
+    assert guarded["AAPL"].implied_return == .25
+    assert not guarded["AAPL"].is_attractive
     assert "跳变 4.0%" in guarded["AAPL"].warnings[0]
 
 
