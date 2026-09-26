@@ -1,179 +1,326 @@
-"""仅按当日邮件中有可核对证据的事件触发长期判断。"""
+"""Publish bounded, source-bound long-term watchpoints, never free-form theses.
+
+The old research ledger is deliberately not a publication source. Every displayed
+fact must still exist in a visible news block, with its verified original mapping.
+Interpretation is limited to code-owned monitoring questions, not model assertions.
+"""
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
-from .models import ThesisEvent, ThesisEvidence, ThesisState
+from src.processors.html_safe import is_safe_url
+from src.utils.news_facts import canonical_fact
 
-# thesis 字段为兜底准备：匹配旧 headline 格式 "「thesis」tail"（可带 ticker 前缀）
-_HEADLINE_FALLBACK_RE = re.compile(r"^(?:[^：]+：)?「([^」]+)」(.+)$")
-_MATERIAL_STRENGTH = 4
-_MARKER_PRIORITY = {
-    "新核心": 0,
-    "新变量": 1,
-    "新证据": 2,
+from .extractor import (
+    _grounding_material,
+    _normalize_grounding_text,
+    _normalize_grounding_url,
+    _value,
+)
+
+logger = logging.getLogger(__name__)
+_VERSION = 1
+_HISTORY_DAYS = 90
+_SECTION_NAMES = {
+    "company_news": "昨日动态",
+    "macro": "宏观视野",
+    "voices": "关键发言",
+    "frontier_labs": "前沿动态",
 }
+# Whole company names / explicit tickers only: no inference from a country,
+# customer, technology or old theme to an unnamed holding's demand.
+_ENTITY = re.compile(
+    r"\b(?:Microsoft|Apple|Nvidia|Alphabet|Google|TSMC|Berkshire(?: Hathaway)?|Costco|Mastercard|"
+    r"Moody['’]s|Coca-Cola|Linde|American Express|Tencent|Pop Mart|OpenAI|Anthropic|"
+    r"MSFT|AAPL|NVDA|GOOG|TSM|BRK\.B|COST|MCO|MA|KO|LIN|AXP)\b|"
+    r"微软|苹果|英伟达|谷歌|台[积積]电|伯克希尔|好市多|万事达|穆迪|可口可乐|林德|美国运通|腾讯|泡泡玛特",
+    re.I,
+)
+
+
+@dataclass(frozen=True)
+class WatchRule:
+    key: str
+    subject: str
+    action: str
+    title: str
+    watch: str
+
+    def matches(self, text: str) -> bool:
+        return bool(re.search(self.subject, text, re.I) and re.search(self.action, text, re.I))
+
+
+# Matching only chooses a question to monitor. It cannot promote a plan to an
+# order, a launch to commercial success, or an application to regulatory approval.
+_RULES = (
+    WatchRule(
+        "infrastructure-investment",
+        r"cloud|data cent(?:er|re)s?|infrastructure|fab\b|云|数据中心|基础设施|晶圆厂|产能",
+        r"invest|capex|capital expend|build|expand|spend|投资|投入|资本开支|建设|扩建|扩产",
+        "基础设施投入的长期价值取决于资本回报",
+        "实际投入、投产进度、利用率与现金流能否匹配。",
+    ),
+    WatchRule(
+        "license-economics",
+        r"licen[cs]|patent|专利|许可|授权",
+        r"renew|agree|sign|expir|terminat|续签|协议|签署|到期|终止",
+        "专利授权的长期收益取决于合同持续性与收费安排",
+        "合同期限、授权范围、收费安排与续约情况。",
+    ),
+    WatchRule(
+        "payment-commercialization",
+        r"settlement|payment|结算|支付",
+        r"launch|enable|switch(?:ed)? on|roll.?out|introduc|adopt|开通|推出|启用|采用|上线",
+        "支付新业务的长期价值仍需真实交易规模验证",
+        "实际交易量、客户采用、费用收入与合规成本。",
+    ),
+    WatchRule(
+        "product-commercialization",
+        r"model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
+        r"launch|releas|introduc|roll.?out|推出|发布|上市|上线",
+        "新产品的长期价值仍需持续采用和盈利兑现",
+        "用户采用、收入贡献、利润率与持续投入。",
+    ),
+    WatchRule(
+        "operating-performance",
+        r"revenue|margin|cash flow|backlog|营收|收入|利润率|现金流|在手订单",
+        r"\d|增长|下降|上调|下调|增加|减少",
+        "经营增长的持续性需要利润与现金流共同验证",
+        "后续财报中的增长持续性、利润率与现金流。",
+    ),
+    WatchRule(
+        "capital-allocation",
+        r"buyback|repurchas|dividend|acqui[rs]|回购|股息|分红|收购",
+        r"announc|approv|agree|complet|plan|cancel|宣布|批准|协议|完成|计划|取消",
+        "资本配置的长期成效应由每股现金回报检验",
+        "实际执行金额、资金来源与后续现金回报。",
+    ),
+    WatchRule(
+        "regulatory-access",
+        r"regulat|antitrust|licen[cs]|监管|反垄断|牌照",
+        r"approv|reject|ban\b|fine[ds]?\b|批准|驳回|禁令|禁止|罚款",
+        "监管决定的长期影响取决于适用范围与执行条件",
+        "决定的适用范围、生效条件、后续程序与披露的经营影响。",
+    ),
+)
 
 
 @dataclass
 class JudgmentSection:
     items: list[dict[str, Any]]
+    audit: dict[str, Any] | None = None
 
 
-def _resolve_thesis_tail(event: ThesisEvent) -> tuple[str, str]:
-    """返回 (thesis, tail)。优先使用新字段，失败时从 headline 正则切分兜底。"""
-    if event.thesis and event.tail:
-        return event.thesis, event.tail
-    m = _HEADLINE_FALLBACK_RE.match(event.headline)
-    if m:
-        return m.group(1), m.group(2)
-    return "", event.headline
+def publication_sources(
+    *, company_news=None, macro_news=None, figure_summaries=None, frontier_labs_events=None
+):
+    return {
+        "company_news": [company_news] if company_news else [],
+        "macro": [macro_news] if macro_news else [],
+        "voices": [item for group in figure_summaries or [] for item in _value(group, "items", [])],
+        "frontier_labs": list(frontier_labs_events or [])[:2],
+    }
 
 
-def _set_marker(markers: dict[str, str], theme: str, marker: str) -> bool:
-    existing = markers.get(theme)
-    if existing is None or _MARKER_PRIORITY[marker] < _MARKER_PRIORITY[existing]:
-        markers[theme] = marker
-        return True
-    return False
-
-
-def _build_markers(
-    events: list[ThesisEvent],
-    state: dict[str, ThesisState],
-    evidence_today: list[ThesisEvidence],
-    today: date,
-) -> tuple[dict[str, str], dict[str, str | None]]:
-    markers: dict[str, str] = {}
-    urls: dict[str, str | None] = {}
-    today_str = today.isoformat()
-
-    # 风险证据继续留在状态机中参与降级与审计，但不再进入邮件展示。
-    # 重大 new_variable 不受 support cooldown 限制。
-    for evidence in evidence_today:
-        if evidence.date != today_str or evidence.strength < _MATERIAL_STRENGTH:
+def _verified_rows(sources: dict):
+    for section, objects in sources.items():
+        if section not in _SECTION_NAMES:
             continue
-        if (
-            evidence.direction == "new_variable"
-            and _set_marker(markers, evidence.theme, "新变量")
-        ):
-            urls[evidence.theme] = evidence.url
+        for obj in objects:
+            kwargs = dict(
+                company_news=None, macro_news=None, figure_summaries=None, frontier_labs_events=None
+            )
+            if section in ("company_news", "macro"):
+                kwargs["company_news" if section == "company_news" else "macro_news"] = obj
+                urls = {
+                    _normalize_grounding_url(_value(f, "url")) for f in _value(obj, "footnotes", [])
+                }
+            elif section == "voices":
+                kwargs["figure_summaries"] = [{"items": [obj]}]
+                urls = {_normalize_grounding_url(_value(obj, "source_url"))}
+            else:
+                kwargs["frontier_labs_events"] = [obj]
+                urls = {_normalize_grounding_url(_value(obj, "source_url"))}
+            material = _grounding_material(**kwargs).get(section, {}).get("by_url", {})
+            for row in _value(obj, "evidence", []) or []:
+                if not isinstance(row, dict):
+                    continue
+                url = _normalize_grounding_url(row.get("url"))
+                if url in urls and _normalize_grounding_text(
+                    row.get("output_text")
+                ) in material.get(url, []):
+                    yield section, row
 
-    material_today_by_theme: dict[str, ThesisEvidence] = {}
-    for evidence in evidence_today:
-        if (
-            evidence.date == today_str
-            and evidence.strength >= _MATERIAL_STRENGTH
-            and evidence.direction != "risk"
-            and evidence.url
-        ):
-            material_today_by_theme.setdefault(evidence.theme, evidence)
 
-    for theme, thesis_state in state.items():
-        if (
-            thesis_state.status == "core"
-            and thesis_state.last_state_change_date == today_str
-            and theme in material_today_by_theme
-            and _set_marker(markers, theme, "新核心")
-        ):
-            urls[theme] = material_today_by_theme[theme].url
+def _fact_key(row: dict) -> str:
+    # Independent of URL, translation wording, edition and the old theme label.
+    return hashlib.sha256(canonical_fact(row["excerpt"]).encode()).hexdigest()
 
-    # substantiate 事件已由 rules.py 执行 21 天 cooldown。
-    for event in events:
-        if _set_marker(markers, event.theme, "新证据"):
-            urls[event.theme] = event.source_url
-    return markers, urls
+
+def _rule_for(row: dict) -> WatchRule | None:
+    original, text = row["excerpt"], row["output_text"]
+    if not _ENTITY.search(original) or not _ENTITY.search(text) or not re.search(r"[一-鿿]", text):
+        return None
+    return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)), None)
+
+
+def _publication_item(section: str, row: dict, today: date):
+    try:
+        observed = datetime.fromisoformat(
+            str(row.get("published_at", "")).replace("Z", "+00:00")
+        ).date()
+    except ValueError:
+        return None, "missing_source_date"
+    if not 0 <= (today - observed).days <= 7:
+        return None, "source_outside_news_window"
+    rule = _rule_for(row)
+    if not rule:
+        return None, "no_bounded_long_term_watchpoint"
+    key = _fact_key(row)
+    item = {
+        "theme": rule.key,
+        "thesis": rule.title,
+        "marker": (
+            "新变量"
+            if rule.key
+            in {"payment-commercialization", "product-commercialization", "regulatory-access"}
+            else "新证据"
+        ),
+        "updated": True,
+        "fact": row["output_text"],
+        "watch": rule.watch,
+        "url": row["url"],
+        "section": _SECTION_NAMES[section],
+        "source_section": section,
+        "source_date": row["published_at"],
+        "fact_key": key,
+        "rule_version": _VERSION,
+        "evidence": {
+            key: row[key]
+            for key in (
+                "original_title",
+                "original_summary",
+                "excerpt",
+                "output_text",
+                "validated_text",
+                "mode",
+                "url",
+                "published_at",
+                "source_name",
+                "source_sha256",
+                "presentation_version",
+            )
+            if key in row
+        },
+    }
+    return item, None
 
 
 def build_judgment_section(
-    events: list[ThesisEvent],
+    events=(),
     *,
-    state: dict[str, ThesisState] | None = None,
-    evidence_today: list[ThesisEvidence] | None = None,
-    today: date | None = None,
+    state=None,
+    evidence_today=None,
+    today=None,
+    sources=None,
+    history=None,
+    selection_audit=None,
 ) -> JudgmentSection | None:
-    """只展示由当日可见证据触发变化的判断。"""
-    if today is None:
-        today = date.today()
-    if evidence_today is None:
-        evidence_today = []
+    """Legacy events/state can never supply missing publication evidence.
 
-    event_by_theme = {event.theme: event for event in events}
-    items: list[dict[str, Any]] = []
-
-    if state:
-        markers, marker_urls = _build_markers(
-            events,
-            state,
-            evidence_today,
-            today,
-        )
-        material_risk_themes = {
-            evidence.theme
-            for evidence in evidence_today
-            if evidence.date == today.isoformat()
-            and evidence.strength >= _MATERIAL_STRENGTH
-            and evidence.direction == "risk"
-        }
-        status_rank = {"core": 0, "emerging": 1, "stable": 2}
-        active = [
-            st for st in state.values()
-            if st.status in status_rank and st.one_line_thesis.strip()
-            and st.theme in markers
-            # 纯风险不展示；若同主题同时有新变量/新证据，则按非风险类别展示。
-            and not (st.theme in material_risk_themes and st.theme not in markers)
-        ]
-        active.sort(key=lambda st: st.theme)
-        active.sort(key=lambda st: st.last_evidence_date, reverse=True)
-        active.sort(key=lambda st: st.evidence_count_recent_90d, reverse=True)
-        active.sort(key=lambda st: status_rank[st.status])
-        active.sort(key=lambda st: _MARKER_PRIORITY.get(markers.get(st.theme, ""), 99))
-
-        for st in active[:3]:
-            event = event_by_theme.get(st.theme)
-            marker = markers.get(st.theme, "")
-            current_evidence = [
-                evidence
-                for evidence in evidence_today
-                if evidence.date == today.isoformat()
-                and evidence.theme == st.theme
-                and evidence.strength >= _MATERIAL_STRENGTH
-                and evidence.direction != "risk"
-                and evidence.url
-            ]
-            current_evidence.sort(key=lambda evidence: evidence.strength, reverse=True)
-            # 展示断言必须解释今天邮件里的证据，不能回放账本中可能已经漂移的旧句子。
-            display_thesis = (
-                current_evidence[0].why_it_matters.strip()
-                if current_evidence and current_evidence[0].why_it_matters.strip()
-                else st.one_line_thesis.strip()
-            )
-            items.append({
-                "theme": st.theme,
-                "thesis": display_thesis,
-                "updated": bool(marker),
-                "marker": marker,
-                "url": marker_urls.get(st.theme) or (event.source_url if event else None),
-            })
-
-    # Compatibility/fallback: an event should never disappear even if an older
-    # caller does not pass state or its state entry is unavailable.
-    included = {str(item.get("theme", "")) for item in items}
-    for event in events:
-        if len(items) >= 3 or event.theme in included:
+    Every distinct, eligible fact may appear immediately. No theme-age, LLM-score,
+    or 21-day theme cooldown gate; a repeated fact remains suppressed for 90 days.
+    """
+    today = today or date.today()
+    history = history or {}
+    items, decisions, seen = [], [], set()
+    for section, row in _verified_rows(sources or {}):
+        key = _fact_key(row)
+        item, reason = _publication_item(section, row, today)
+        if not reason and key in history:
+            try:
+                if 0 <= (today - date.fromisoformat(history[key])).days <= _HISTORY_DAYS:
+                    reason = "already_published_fact"
+            except (ValueError, TypeError):
+                pass
+        if not reason and key in seen:
+            reason = "duplicate_fact"
+        if not reason:
+            seen.add(key)
+        if not reason and len(items) >= 3:
+            reason = "edition_limit"
+        decisions.append({"fact_key": key, "url": row["url"], "reason": reason or "selected"})
+        if reason:
             continue
-        thesis, _ = _resolve_thesis_tail(event)
-        items.append({
-            "theme": event.theme,
-            "thesis": thesis or event.headline,
-            "updated": True,
-            "marker": "新证据",
-            "url": event.source_url,
-        })
-        included.add(event.theme)
+        items.append(item)
+    audit = {"version": _VERSION, "published": len(items), "decisions": decisions}
+    if selection_audit is not None:
+        selection_audit.update(audit)
+    logger.info("thesis.publication candidates=%d selected=%d", len(decisions), len(items))
+    return JudgmentSection(items, audit) if items else None
 
-    return JudgmentSection(items=items) if items else None
+
+def validate_publication(section, *, sources, today):
+    """Final rendering gate: rederive every visible word and link from actual body sources."""
+    if not section:
+        return None
+    allowed = []
+    for source_section, row in _verified_rows(sources):
+        item, _ = _publication_item(source_section, row, today)
+        if item:
+            allowed.append(item)
+    original = _value(section, "items", [])
+    items, seen = [], set()
+    for item in original:
+        if (
+            isinstance(item, dict)
+            and item in allowed
+            and is_safe_url(item.get("url", ""))
+            and item["fact_key"] not in seen
+            and len(items) < 3
+        ):
+            items.append(item)
+            seen.add(item["fact_key"])
+    if len(items) != len(original):
+        logger.warning("thesis.publication_rejected count=%d", len(original) - len(items))
+    return JudgmentSection(items[:3], _value(section, "audit")) if items else None
+
+
+def load_publications(state_dir: Path) -> dict[str, str]:
+    path = state_dir / "thesis_publications.json"
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in data.items()
+    ):
+        raise ValueError("invalid thesis publication history")
+    return data
+
+
+def commit_publications(section, state_dir: Path, *, today: date) -> None:
+    """Only called after SMTP accepts this edition, never for a preview or failed send."""
+    if not section:
+        return
+    history = load_publications(state_dir)
+    kept = {}
+    for key, value in history.items():
+        try:
+            if 0 <= (today - date.fromisoformat(value)).days <= _HISTORY_DAYS:
+                kept[key] = value
+        except ValueError:
+            continue
+    kept.update({item["fact_key"]: today.isoformat() for item in section.items})
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path = state_dir / "thesis_publications.json"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(kept, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)

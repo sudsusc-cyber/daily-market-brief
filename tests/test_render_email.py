@@ -17,7 +17,7 @@ from src.collectors.figures import FigureBundle
 from src.collectors.jiangsu_fuel import JiangsuFuelAlert
 from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
-from src.processors.thesis.renderer import JudgmentSection
+from src.processors.thesis.renderer import build_judgment_section
 from src.renderer.render import (
     _EMAIL_HTML_WARNING_BYTES,
     _build_sentiment_gauge,
@@ -700,20 +700,20 @@ def test_sentiment_gauge_label_is_derived_from_score() -> None:
 
 # ─── 13F 区块重定位测试 ──────────────────────────────────────────────
 
-_MOCK_JUDGMENT = JudgmentSection(
-    items=[
-        {
-            "thesis": "AI基础设施资本开支将持续十年以上",
-            "updated": True,
-            "marker": "新证据",
-        },
-        {
-            "thesis": "保险定价权在经济周期中持续增强",
-            "updated": False,
-            "marker": "",
-        },
-    ],
-)
+def _mock_judgment_source(on=None):
+    from types import SimpleNamespace
+    on = on or datetime.now(UTC).date()
+    text = "微软计划投资100亿美元建设云基础设施。"
+    url = "https://example.com/verified-thesis"
+    row = dict(original_title=text, original_summary="", excerpt=text, output_text=text,
+               validated_text=text, mode="source_extract", url=url,
+               published_at=on.isoformat(), source_name="Reuters")
+    return SimpleNamespace(summary_html=text, evidence=[row],
+                           footnotes=[SimpleNamespace(index=1, url=url, source="Reuters")])
+
+
+def _mock_judgment():
+    return build_judgment_section(sources={"company_news": [_mock_judgment_source()]})
 
 
 def _mock_13f_new() -> BuffettBundle:
@@ -745,12 +745,13 @@ def test_template_renders_judgment_only() -> None:
     html = render_email(
         signals=[_one_signal()],
         generated_at=datetime.now(UTC),
-        judgment_section=_MOCK_JUDGMENT,
+        judgment_section=_mock_judgment(),
+        company_news_summary=_mock_judgment_source(),
     )
     assert "❀" in html
     assert "长 期 判 断" not in html
     assert "LONG-TERM VIEW" not in html
-    assert "AI基础设施资本开支将持续十年以上" in html
+    assert "基础设施投入的长期价值取决于资本回报" in html
     assert 'data-judgment-marker="true"' in html
     assert "&nbsp;&nbsp;新证据" in html
     assert "· 新证据" not in html
@@ -763,11 +764,12 @@ def test_template_renders_judgment_with_13f() -> None:
     html = render_email(
         signals=[_one_signal()],
         generated_at=datetime.now(UTC),
-        judgment_section=_MOCK_JUDGMENT,
+        judgment_section=_mock_judgment(),
+        company_news_summary=_mock_judgment_source(),
         buffett_13f=_mock_13f_new(),
     )
     assert "❀" in html
-    assert "AI基础设施资本开支将持续十年以上" in html
+    assert "基础设施投入的长期价值取决于资本回报" in html
     assert "伯克希尔最新 13F 已于 5 月 1 日披露" in html
     assert "前往 SEC EDGAR 查阅持仓" in html
     assert "0001067983" in html
@@ -851,12 +853,13 @@ def test_template_renders_judgment_13f_and_fuel_together() -> None:
     html = render_email(
         signals=[_one_signal()],
         generated_at=datetime.now(UTC),
-        judgment_section=_MOCK_JUDGMENT,
+        judgment_section=_mock_judgment(),
+        company_news_summary=_mock_judgment_source(),
         buffett_13f=_mock_13f_new(),
         jiangsu_fuel_alert=_mock_jiangsu_fuel(),
     )
 
-    assert "AI基础设施资本开支将持续十年以上" in html
+    assert "基础设施投入的长期价值取决于资本回报" in html
     assert "伯克希尔最新 13F" in html
     assert "油价预告" in html
     assert html.count("margin-top:36px") >= 2
@@ -996,23 +999,22 @@ def test_full_editorial_email_preserves_sources_above_size_warning(
         )
         for index, lab in enumerate(("OpenAI", "Anthropic"), start=1)
     ]
-    judgment = JudgmentSection(items=[
-        {
-            "thesis": "AI 基础设施投资周期仍由企业现金流、能源与先进制程供给共同约束",
-            "updated": True,
-            "marker": "新证据",
-        },
-        {
-            "thesis": "平台企业的长期定价权取决于用户黏性与持续再投资回报",
-            "updated": True,
-            "marker": "新变量",
-        },
-        {
-            "thesis": "保险浮存金的稳定性仍是伯克希尔跨周期资本配置的核心基础",
-            "updated": False,
-            "marker": "",
-        },
-    ])
+    # Three fully bound, long facts exercise the entire new watchpoint block.
+    company_evidence = []
+    for index in range(1, 4):
+        text = (f"微软计划投资{100 + index}亿美元建设云基础设施，并将持续披露建设进度、"
+                "资本投入、客户采用、区域覆盖、项目执行安排以及后续运营数据。")
+        company_rows[index - 1] = company_rows[index - 1].replace(
+            "公司更新了一项与长期竞争力和资本配置相关的关键进展，尚需跟踪后续执行与财务影响。", text)
+        company_evidence.append(dict(original_title=text, original_summary="", excerpt=text,
+            output_text=text, validated_text=text, mode="source_extract", url=long_url("company", index),
+            published_at="2026-08-06", source_name="Reuters"))
+    company_summary = SimpleNamespace(summary_html="".join(company_rows),
+                                     footnotes=company_footnotes, evidence=company_evidence)
+    judgment = build_judgment_section(sources={"company_news": [company_summary]},
+                                     today=datetime(2026, 8, 6).date())
+    assert judgment and len(judgment.items) == 3
+
 
     from scripts.preview_email import _build_mock_valuations
 
@@ -1029,10 +1031,7 @@ def test_full_editorial_email_preserves_sources_above_size_warning(
             "score": 68.0,
         },
         company_news=[SimpleNamespace()],
-        company_news_summary=SimpleNamespace(
-            summary_html="".join(company_rows),
-            footnotes=company_footnotes,
-        ),
+        company_news_summary=company_summary,
         frontier_labs_items=frontier_items,
         figures=[SimpleNamespace()],
         figure_summaries=figure_summaries,
@@ -1047,6 +1046,8 @@ def test_full_editorial_email_preserves_sources_above_size_warning(
         jiangsu_fuel_alert=_mock_jiangsu_fuel(),
     )
 
+    assert html.count('data-judgment-marker="true"') == 3
+    assert "本期依据" not in html
     assert all(section in html for section in (
         "持仓信号", "情绪温度计", "昨日动态", "关键发言", "宏观视野", "油价预告",
     ))

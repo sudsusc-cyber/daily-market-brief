@@ -99,23 +99,15 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     monkeypatch.setattr(main.figure_filter, "generate_silence_note", lambda *a: None)
     monkeypatch.setattr(main.sentiment_judge, "judge", lambda *a, **k: None)
     monkeypatch.setattr(main.frontier_labs_filter, "filter_all_with_status", lambda *a, **k: ([], []))
-    monkeypatch.setattr(main.thesis_consolidation, "migrate_history_if_needed", MagicMock(side_effect=RuntimeError("offline")))
-    publication_scenario = scenario in {"failed_delivery", "partial_delivery", "thesis_publication"}
+    publication_scenario = scenario in {"failed_delivery", "partial_delivery", "thesis_publication", "preview"}
     if publication_scenario:
-        from src.processors.thesis.models import ThesisEvent, ThesisState
-        states = {f"theme-{i}": ThesisState(
-            theme=f"theme-{i}", status="core", related_tickers=["MSFT"],
-            cadence="quarterly", stale_after_days=180, first_seen="2026-01-01",
-            last_evidence_date="2026-09-04", one_line_thesis=f"Audit thesis {i}",
-        ) for i in range(4)}
-        events = [ThesisEvent("substantiate", key, ["MSFT"], f"{key} evidence",
-                  thesis=key, tail="获得新证据支持。", source_url=f"https://example.com/{key}")
-                  for key in states]
-        main.thesis_state.save_state(states, tmp_path)
-        monkeypatch.setattr(main.thesis_consolidation, "migrate_history_if_needed",
-                            lambda *a, **k: SimpleNamespace(applied=False))
-        monkeypatch.setattr(main.thesis_extractor, "extract_with_status", lambda **_: ([], None))
-        monkeypatch.setattr(main.thesis_rules, "run_state_transitions", lambda **_: (states, events))
+        fact = "微软计划投资100亿美元建设云基础设施。"
+        row = dict(original_title=fact, original_summary="", excerpt=fact, output_text=fact,
+                   validated_text=fact, mode="source_extract", url="https://example.com/verified",
+                   published_at="2026-09-04", source_name="Reuters")
+        summary = SimpleNamespace(summary_html=fact, evidence=[row],
+                                  footnotes=[SimpleNamespace(index=1, url=row["url"], source="Reuters")])
+        monkeypatch.setattr(main.news_summarizer, "summarize", lambda *a, **k: summary)
     monkeypatch.setattr(main.holdings_intro, "write_intro", lambda *a, **k: None)
     monkeypatch.setattr(main.header_image, "pick_header_image", lambda *a: main.header_image._tier3_local())
     monkeypatch.setattr(main, "_load_logo_assets", lambda *a: ({}, []))
@@ -124,7 +116,7 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     def send(**kwargs):
         sent.append(kwargs)
         if publication_scenario:
-            assert all(st.last_displayed_date is None for st in main.thesis_state.load_state(tmp_path).values())
+            assert not main.thesis_renderer.load_publications(tmp_path)
         if scenario == "failed_delivery":
             raise RuntimeError("controlled SMTP failure")
         result = DeliveryResult(tuple(kwargs["recipient"]), {})
@@ -137,13 +129,14 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     if scenario == "failed_delivery":
         with pytest.raises(RuntimeError, match="controlled SMTP failure"):
             main.main()
-        assert all(st.last_displayed_date is None for st in main.thesis_state.load_state(tmp_path).values())
+        assert not main.thesis_renderer.load_publications(tmp_path)
         assert not (tmp_path / "pushed_company_news.json").exists()
         return
     assert main.main() == 0
     if scenario == "preview":
         import json
         assert not sent
+        assert not main.thesis_renderer.load_publications(tmp_path)
         assert not (tmp_path / "receipt.json").exists()
         assert not (tmp_path / "pushed_company_news.json").exists()
         manifests = list((tmp_path / "audit").glob("*/manifest.json"))
@@ -159,9 +152,12 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     assert "Microsoft source never published" not in sent[0]["html_body"]
     assert company_news._load_pushed_news(tmp_path / "pushed_company_news.json") == (previous if exhausted else {})
     if publication_scenario:
-        saved = main.thesis_state.load_state(tmp_path)
-        assert [key for key, st in saved.items() if st.last_displayed_date == "2026-09-04"] == ["theme-0", "theme-1", "theme-2"]
-        assert saved["theme-3"].last_displayed_date is None
+        assert len(main.thesis_renderer.load_publications(tmp_path)) == 1
+        assert "基础设施投入的长期价值取决于资本回报" in sent[0]["html_body"]
+        import json
+        manifest = json.loads(next((tmp_path / "audit").glob("*/manifest.json")).read_text())
+        assert len(manifest["content"]["judgment_mapping"]) == 1
+        assert manifest["content"]["judgment_mapping"][0]["evidence"]["excerpt"] == fact
     if scenario == "valuation_timeout":
         assert '>650.00</div>' in sent[0]["html_body"]
         assert '>600.00</div>' not in sent[0]["html_body"]

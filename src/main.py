@@ -60,11 +60,7 @@ from src.processors.news_selection import (
     macro_candidate,
     meaningful_quote,
 )
-from src.processors.thesis import consolidation as thesis_consolidation
-from src.processors.thesis import extractor as thesis_extractor
 from src.processors.thesis import renderer as thesis_renderer
-from src.processors.thesis import rules as thesis_rules
-from src.processors.thesis import state as thesis_state
 from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
@@ -562,77 +558,20 @@ def main() -> int:
         )
 
     logger.info("processors.thesis")
-    thesis_publication_state = None
-    thesis_publication_themes: set[str] = set()
+    judgment_audit = {}
     try:
-        migration = thesis_consolidation.migrate_history_if_needed(
-            _STATE_DIR,
-            today=now_bj.date(),
+        judgment_sources = thesis_renderer.publication_sources(
+            company_news=None if company_news_fallback_note or company_news_silence_note else company_news_summary,
+            macro_news=None if macro_news_fallback_note or macro_news_silence_note else macro_news_summary,
+            figure_summaries=figure_summaries if fig_bundles else [], frontier_labs_events=frontier_labs_items[:2],
         )
-        if migration.applied:
-            logger.info(
-                "thesis.history_migrated evidence=%d changed=%d themes=%d",
-                migration.evidence_count,
-                migration.changed_count,
-                migration.theme_count,
-            )
-        # 第一次读 state：获取 active themes 用于注入 prompt（防 theme 漂移）
-        state_dict = thesis_state.load_state(_STATE_DIR)
-        active_themes = _select_active_thesis_themes(state_dict)
-
-        evidence_today, thesis_extraction_error = thesis_extractor.extract_with_status(
-            client=llm,
-            company_news=company_news_summary,
-            macro_news=macro_news_summary,
-            figure_summaries=figure_summaries,
-            # 13F 当前只有提交元数据、没有持仓变化正文，不能支撑长期判断。
-            berkshire_events=None,
-            # 邮件模板只展示前 2 条；长期判断也只能消费相同的可见集合。
-            frontier_labs_events=frontier_labs_items[:2],
-            active_themes=active_themes,
-            today=now_bj.date(),
-        )
-        if thesis_extraction_error:
-            _record_quality_alert("长期判断证据提取失败：本次未写入新的判断证据。")
-        # extractor 只 return；写入由 state.py 统一负责（内部按 evidence_id 去重）
-        thesis_state.append_evidence(evidence_today, _STATE_DIR, today=now_bj.date())
-
-        recent_evidence = thesis_state.load_recent_evidence(
-            _STATE_DIR,
-            days=90,
-            today=now_bj.date(),
-        )
-        holdings_tickers = [h.ticker for h in HOLDINGS]
-        state_dict, thesis_events = thesis_rules.run_state_transitions(
-            today=now_bj.date(),
-            state=state_dict,
-            recent_evidence=recent_evidence,
-            holdings_tickers=holdings_tickers,
-        )
-
-        # 更新 rolling_evidence
-        by_theme_today: dict[str, list] = {}
-        for e in evidence_today:
-            by_theme_today.setdefault(e.theme, []).append(e)
-        for theme, st in state_dict.items():
-            if theme in by_theme_today:
-                thesis_state.update_rolling_evidence(st, by_theme_today[theme])
-
-        thesis_state.save_state(state_dict, _STATE_DIR)
-
         judgment_section = thesis_renderer.build_judgment_section(
-            thesis_events,
-            state=state_dict,
-            evidence_today=evidence_today,
-            today=now_bj.date(),
+            sources=judgment_sources, today=now_bj.date(),
+            history=thesis_renderer.load_publications(_STATE_DIR), selection_audit=judgment_audit,
         )
-        if judgment_section:
-            event_themes = {event.theme for event in thesis_events}
-            thesis_publication_themes = {
-                str(item["theme"]) for item in judgment_section.items
-                if item.get("theme") in event_themes
-            }
-            thesis_publication_state = state_dict
+        judgment_section = thesis_renderer.validate_publication(
+            judgment_section, sources=judgment_sources, today=now_bj.date(),
+        )
     except Exception as exc:  # noqa: BLE001 — 任何 thesis 步骤失败都降级到无 judgment_section
         # 与项目其他异常处理对齐:不用 exc_info=True / logger.exception,因 OpenAI SDK 异常
         # traceback 可能带请求 url 或 header 痕迹;只记 type + 截断后的 str。
@@ -796,6 +735,8 @@ def main() -> int:
         "company_error": getattr(company_news_summary, "error", None),
         "macro_error": getattr(macro_news_summary, "error", None),
     }
+    report["judgment_mapping"] = judgment_section.items if judgment_section else []
+    report["judgment_selection"] = judgment_audit
     audit_directory = archive_publication(html, generated_at=now_bj, report=report, inline_images=inline_images)
     if report["status"] == "degraded" or len(html.encode()) > 98304:
         _record_quality_alert("内容存在沿用、缺失、来源冲突或原文摘录降级；详见结构化审计。")
@@ -839,14 +780,10 @@ def main() -> int:
         on_progress=delivery_progress,
     )
     delivery_progress(delivery)
-    if thesis_publication_state is not None and thesis_publication_themes:
-        try:
-            for theme in thesis_publication_themes:
-                if theme in thesis_publication_state:
-                    thesis_publication_state[theme].last_displayed_date = now_bj.date().isoformat()
-            thesis_state.save_state(thesis_publication_state, _STATE_DIR)
-        except Exception as exc:  # noqa: BLE001
-            _record_quality_alert(f"长期判断刊发记录保存失败：{type(exc).__name__}")
+    try:
+        thesis_renderer.commit_publications(judgment_section, _STATE_DIR, today=now_bj.date())
+    except Exception as exc:  # noqa: BLE001
+        _record_quality_alert(f"长期判断刊发记录保存失败：{type(exc).__name__}")
     try:
         commit_published_values(
             valuation_displays,
