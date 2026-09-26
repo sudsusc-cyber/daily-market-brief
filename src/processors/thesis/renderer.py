@@ -93,7 +93,7 @@ _RULES = (
         "operating-performance",
         r"revenue|margin|cash flow|backlog|营收|收入|利润率|现金流|在手订单",
         r"\d|增长|下降|上调|下调|增加|减少",
-        "经营增长的持续性需要利润与现金流共同验证",
+        "经营质量需要利润与现金流共同验证",
         "后续财报中的增长持续性、利润率与现金流。",
     ),
     WatchRule(
@@ -107,7 +107,7 @@ _RULES = (
         "regulatory-access",
         r"regulat|antitrust|licen[cs]|监管|反垄断|牌照",
         r"approv|reject|ban\b|fine[ds]?\b|批准|驳回|禁令|禁止|罚款",
-        "监管决定的长期影响取决于适用范围与执行条件",
+        "监管事项的长期影响取决于适用范围与执行条件",
         "决定的适用范围、生效条件、后续程序与披露的经营影响。",
     ),
 )

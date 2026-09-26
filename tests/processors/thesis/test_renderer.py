@@ -339,3 +339,13 @@ def test_invalid_older_copy_does_not_shadow_valid_source():
     result = build(stale, valid)
     assert result and len(result.items) == 1
     assert result.items[0]["source_date"] == "2026-09-26"
+
+
+@pytest.mark.parametrize("text,forbidden", [
+    ("微软收入下降10%。", "增长"),
+    ("微软尚未获监管批准。", "决定"),
+])
+def test_watchpoint_does_not_assume_positive_growth_or_final_approval(text, forbidden):
+    result = build(source(text))
+    assert result and forbidden not in result.items[0]["thesis"]
+    assert result.items[0]["fact"] == text
