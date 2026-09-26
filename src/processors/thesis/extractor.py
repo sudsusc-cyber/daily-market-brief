@@ -20,6 +20,7 @@ from urllib.parse import urldefrag
 from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url, strip_all_tags
 from src.processors.llm_client import LLMClient
+from src.processors.news_presentation import publication_text
 from src.processors.news_selection import plain_source
 from src.processors.source_grounding import source_sentences
 from src.processors.translation_guard import translation_errors
@@ -91,10 +92,13 @@ def _grounding_material(
             published = plain_source(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
             source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""))
             complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
-            output_supported = canonical_fact(output) == canonical_fact(excerpt) or (
+            validated = str(row.get("validated_text", output))
+            display_supported = output == (publication_text(validated, source_name=str(row.get("source_name", "")))
+                                          if row.get("presentation_version") == 1 else validated)
+            output_supported = display_supported and (canonical_fact(validated) == canonical_fact(excerpt) or (
                 row.get("mode") == "checked_translation"
-                and not translation_errors(excerpt, output)
-            )
+                and not translation_errors(excerpt, validated)
+            ))
             if (not excerpt or excerpt not in raw or not url or not output or not complete
                     or not output_supported or output not in published):
                 continue
