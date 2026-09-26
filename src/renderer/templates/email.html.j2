@@ -422,7 +422,7 @@
                 <tr>
                   <th align="left"  style="padding:12px 0 8px 0;  font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">指&nbsp;标</th>
                   <th align="right" style="padding:12px 0 8px 16px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">当&nbsp;前</th>
-                  <th align="right" style="padding:12px 0 8px 16px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};"><span>前&nbsp;一&nbsp;</span><span style="letter-spacing:0;">日</span></th>
+                  <th align="right" style="padding:12px 0 8px 16px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};"><span>上&nbsp;</span><span style="letter-spacing:0;">期</span></th>
                   <th align="right" style="padding:12px 0 8px 16px; font-size:9.5px; font-weight:500; letter-spacing:0.32em; text-transform:uppercase; color:{{ color_muted }}; border-top:1px solid {{ color_ink }}; border-bottom:1px solid {{ color_ink }};">变&nbsp;化</th>
                 </tr>
               </thead>
@@ -447,7 +447,7 @@
               </tbody>
             </table>
             <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-              "前一日"取最近一个交易日前的可比值;非交易日(节假日)以最近一个交易日替代。
+              “上期”取来源提供的上一条可比观测，并非统一为前一交易日；FRED 信用利差有发布滞后，Shiller PE 属慢变量。日期为实际观测日期，沿用值单独标注。
             </div>
           </td>
         </tr>
@@ -683,7 +683,7 @@
             {% endif %}
             {% if buffett_13f and buffett_13f.is_new %}
             <div style="margin-top:{% if judgment_section %}36px{% else %}0{% endif %}; text-align:center; font-family:{{ serif_body }}; font-size:13.5px; line-height:1.9; color:{{ color_muted }}; letter-spacing:0.02em;">
-              伯克希尔本季度 13F 已于 {{ buffett_13f.latest.filed_at | bj_date_cn }}披露
+              伯克希尔最新 13F 已于 {{ buffett_13f.latest.filed_at | bj_date_cn }}披露
               <br/>
               <a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=0001067983&amp;type=13F-HR&amp;dateb=&amp;owner=include&amp;count=40" target="_blank" rel="noopener" style="color:#0563C1; text-decoration:none; font-size:12px; letter-spacing:0.06em; border-bottom:0.5px solid #B5D0EC; padding-bottom:1px;">前往 SEC EDGAR 查阅持仓</a>
             </div>

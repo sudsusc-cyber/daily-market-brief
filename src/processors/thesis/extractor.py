@@ -21,6 +21,7 @@ from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url, strip_all_tags
 from src.processors.llm_client import LLMClient
 from src.processors.source_grounding import source_sentences
+from src.processors.translation_guard import translation_errors
 from src.utils.news_facts import canonical_fact
 
 from .models import ThesisEvidence
@@ -89,8 +90,13 @@ def _grounding_material(
             published = strip_all_tags(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
             source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""))
             complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
+            output_supported = canonical_fact(output) == canonical_fact(excerpt) or (
+                row.get("mode") == "checked_translation"
+                and excerpt == strip_all_tags(str(row.get("original_title", "")))
+                and not translation_errors(excerpt, output)
+            )
             if (not excerpt or excerpt not in raw or not url or not output or not complete
-                    or canonical_fact(output) != canonical_fact(excerpt) or excerpt not in published):
+                    or not output_supported or output not in published):
                 continue
             bucket = material.setdefault(section, {"text": "", "urls": set(), "by_url": {}})
             normalized = _normalize_grounding_text(output)

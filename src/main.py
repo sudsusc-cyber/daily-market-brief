@@ -172,15 +172,18 @@ def _translate_all_bundles(
     fig_bundles: list,
     macro_bundles: list,
     client: LLMClient,
+    frontier_bundles: list | None = None,
 ) -> None:
-    """为各 collector 前 5 条另存参考译文，原始标题/摘要保持不变"""
+    """按实际选稿窗口翻译，原始标题/摘要保持不变。"""
     titles_to_translate: list[object] = []
     for b in cn_bundles:
         titles_to_translate.extend(b.items[:5])
     for f in fig_bundles:
         titles_to_translate.extend(f.items[:5])
     for m in macro_bundles:
-        titles_to_translate.extend(m.items[:5])
+        titles_to_translate.extend(m.items[:8])
+    for bundle in frontier_bundles or []:
+        titles_to_translate.extend(bundle.items[:8])
     if titles_to_translate:
         translator.translate_in_place_news(titles_to_translate, client=client)
 
@@ -444,6 +447,7 @@ def main() -> int:
         cn_bundles=cn_bundles,
         fig_bundles=fig_bundles,
         macro_bundles=macro_bundles,
+        frontier_bundles=frontier_labs_bundles,
         client=llm,
     )
 
@@ -781,9 +785,18 @@ def main() -> int:
             "frontier": (sum(len(b.items) for b in frontier_labs_bundles), frontier_labs_items),
         },
     )
-    audit_directory = archive_publication(html, generated_at=now_bj, report=report)
+    report["section_details"] = {
+        "sentiment": sentiment_verdict,
+        "company_error": getattr(company_news_summary, "error", None),
+        "macro_error": getattr(macro_news_summary, "error", None),
+    }
+    audit_directory = archive_publication(html, generated_at=now_bj, report=report, inline_images=inline_images)
     if report["status"] == "degraded" or len(html.encode()) > 98304:
         _record_quality_alert("内容存在沿用、缺失、来源冲突或原文摘录降级；详见结构化审计。")
+
+    if os.environ.get("BRIEF_PREVIEW_ONLY", "").lower() == "true":
+        logger.info("preview.done audit=%s smtp_calls=0", audit_directory)
+        return 0
 
     first_acceptance_at = None
 

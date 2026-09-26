@@ -16,7 +16,7 @@ from src.collectors.frontier_labs import FrontierBundle, FrontierItem, SourceTyp
 from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
-from src.processors.source_grounding import INSTRUCTION, grounded_text
+from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ def _format_input(items: list[FrontierItem]) -> str:
         snippet = (item.snippet or "").strip()
         if len(snippet) > 220:
             snippet = snippet[:220].rstrip() + "..."
-        line = f"▦ {i}: 标题={item.title}"
+        line = f"▦ {i}: 标题={item.title} / {source_prompt(item)}"
         if snippet:
             line += f" / 摘要={snippet}"
         line += f" / 来源={item.source} / 类型={item.source_type}"
@@ -142,8 +142,6 @@ def _parse_tickers(raw: str | None) -> list[str]:
 def _clean_summary(text: str) -> str:
     text = (text or "").strip().strip("\"'“”「」 ")
     text = re.sub(r"^(?:OpenAI|Anthropic)\s*[：:｜|-]\s*", "", text, flags=re.IGNORECASE)
-    if len(text) > 58:
-        text = text[:57].rstrip(" ,，。;；") + "..."
     return text
 
 

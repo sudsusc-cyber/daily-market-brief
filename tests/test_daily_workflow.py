@@ -26,12 +26,13 @@ def test_formal_send_only_persists_isolated_valuation_state() -> None:
     assert "github.ref == 'refs/heads/main'" in morningstar_save
     assert "hashFiles('.delivery-receipt.json') != ''" in morningstar_save
     assert "path: state/morningstar_fair_values.json" in morningstar_save
-    assert "daily-state-" not in workflow
+    assert workflow.count("daily-state-") == 1
+    assert "key: formal-read-" in workflow
     assert "path: state/qqqm_valuation.json" in save
     assert "success() && github.ref == 'refs/heads/main'" in save
     assert "morningstar_fair_values.json" not in save
     assert "daily-state-" not in save
-    assert "EMAIL_RECIPIENT: ${{ inputs.recipients }}" in workflow
+    assert "|| inputs.recipients }}" in workflow
 
 
 def test_only_production_send_saves_isolated_valuation_cache() -> None:

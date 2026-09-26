@@ -82,6 +82,9 @@ def content_report(
                 ),
                 "observed_at": metric.observed_at,
                 "fetched_at": metric.fetched_at,
+                "current": metric.current,
+                "prior": metric.prior,
+                "unit": metric.unit,
                 "source": metric.source,
             }
         )
@@ -95,6 +98,10 @@ def content_report(
             "candidates": candidates,
             "published_sources": len({e["url"] for e in evidence}),
             "extractive_fallbacks": sum(e.get("mode") == "source_extract" for e in evidence),
+            "checked_translations": sum(e.get("mode") == "checked_translation" for e in evidence),
+            "non_chinese_outputs": sum(not re.search(r"[一-鿿]", str(e.get("output_text", ""))) for e in evidence),
+            "translation_validation": "numbers_units_entities_modality_event_states; not_full_semantic_proof",
+
         }
         mappings[section] = evidence
     raw_counts = Counter(row["status"] for row in rows)
@@ -102,7 +109,7 @@ def content_report(
         key: raw_counts[key] for key in ("current_verified", "carried", "missing", "conflict")
     }
     degraded = any(counts.get(key, 0) for key in ("carried", "missing", "conflict")) or any(
-        row["candidates"] and (not row["published_sources"] or row["extractive_fallbacks"])
+        row["candidates"] and (not row["published_sources"] or row["extractive_fallbacks"] or row["non_chinese_outputs"])
         for row in coverage.values()
     )
     return {
@@ -115,7 +122,7 @@ def content_report(
     }
 
 
-def archive_publication(html: str, *, generated_at, report: dict) -> Path:
+def archive_publication(html: str, *, generated_at, report: dict, inline_images=()) -> Path:
     root = Path(os.environ.get("BRIEF_AUDIT_DIR", ".brief-audit"))
     run_id = os.environ.get("GH_RUN_ID", "local")
     attempt = os.environ.get("GH_RUN_ATTEMPT", os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
@@ -127,6 +134,21 @@ def archive_publication(html: str, *, generated_at, report: dict) -> Path:
     plain = _html_to_plain(html)
     (directory / "email.html").write_text(html, encoding="utf-8")
     (directory / "email.txt").write_text(plain, encoding="utf-8")
+    preview = html
+    image_manifest = []
+    for image in inline_images:
+        data = image.path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        # Public inline images only; never serialize sender settings or envelopes.
+        suffix = image.path.suffix.lower()
+        if suffix not in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}:
+            raise ValueError("unsupported audit image type")
+        relative = f"images/{digest}{suffix}"
+        (directory / "images").mkdir(exist_ok=True)
+        (directory / relative).write_bytes(data)
+        preview = preview.replace(f"cid:{image.cid}", relative)
+        image_manifest.append({"cid": image.cid, "path": relative, "sha256": digest})
+    (directory / "preview.html").write_text(preview, encoding="utf-8")
     report = {**report, "html_bytes": len(html.encode())}
     if report["html_bytes"] > 98304:
         report["status"] = "degraded"
@@ -136,6 +158,7 @@ def archive_publication(html: str, *, generated_at, report: dict) -> Path:
         "edition": edition,
         "generated_at": generated_at.isoformat(),
         "delivery": {"status": "not_sent"},
+        "images": image_manifest,
         "content": report,
         "sha256": {
             "html": hashlib.sha256(html.encode()).hexdigest(),

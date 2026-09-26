@@ -23,7 +23,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
-from src.processors.source_grounding import INSTRUCTION, grounded_text
+from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ def _format_input(bundles: list[MacroFeedBundle]) -> tuple[str, list[MacroNewsIt
         for it in b.items[:8]:
             flat_items.append(it)
             n = len(flat_items)
-            lines.append(f"  #{n}. 原始标题={it.title}\n原始摘要={it.summary}")
+            lines.append(f"  #{n}. 原始标题={it.title} {source_prompt(it)}\n原始摘要={it.summary}")
     return "\n".join(lines), flat_items
 
 
