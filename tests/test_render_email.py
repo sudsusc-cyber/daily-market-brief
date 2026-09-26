@@ -66,7 +66,7 @@ def test_render_email_with_minimum_data_does_not_raise() -> None:
     assert len(html.encode("utf-8")) > 1000  # 至少有完整模板骨架
 
 
-def test_sentiment_prior_day_header_compensates_trailing_letter_spacing() -> None:
+def test_sentiment_prior_observation_header_compensates_trailing_letter_spacing() -> None:
     sentiment = SimpleNamespace(metrics=[
         SimpleNamespace(name="VIX", unit="", stale_from=None, error=None,
                         current=20.0, prior=21.0, delta=-1.0),
@@ -76,7 +76,7 @@ def test_sentiment_prior_day_header_compensates_trailing_letter_spacing() -> Non
         generated_at=datetime(2026, 8, 28, 7, 0, tzinfo=UTC),
         sentiment=sentiment,
     )
-    assert '前&nbsp;一&nbsp;</span><span style="letter-spacing:0">日</span>' in html
+    assert '上&nbsp;</span><span style="letter-spacing:0">期</span>' in html
 
 
 def test_holdings_table_renders_intrinsic_value_before_signal() -> None:
@@ -755,7 +755,7 @@ def test_template_renders_judgment_only() -> None:
     assert "&nbsp;&nbsp;新证据" in html
     assert "· 新证据" not in html
     assert "获得新证据支持" not in html
-    assert "伯克希尔本季度 13F" not in html
+    assert "伯克希尔最新 13F" not in html
 
 
 def test_template_renders_judgment_with_13f() -> None:
@@ -768,7 +768,7 @@ def test_template_renders_judgment_with_13f() -> None:
     )
     assert "❀" in html
     assert "AI基础设施资本开支将持续十年以上" in html
-    assert "伯克希尔本季度 13F 已于 5 月 1 日披露" in html
+    assert "伯克希尔最新 13F 已于 5 月 1 日披露" in html
     assert "前往 SEC EDGAR 查阅持仓" in html
     assert "0001067983" in html
     assert "margin-top:36px" in html  # 判断存在时 13F 上方 36px 间距
@@ -782,7 +782,7 @@ def test_template_renders_13f_only() -> None:
         buffett_13f=_mock_13f_new(),
     )
     assert "❀" in html
-    assert "伯克希尔本季度 13F 已于 5 月 1 日披露" in html
+    assert "伯克希尔最新 13F 已于 5 月 1 日披露" in html
     assert "AI基础设施" not in html
     assert "margin-top:0" in html  # 无判断时 13F 上方不额外加间距
 
@@ -795,7 +795,7 @@ def test_template_omits_section_when_both_empty() -> None:
         buffett_13f=_mock_13f_old(),
     )
     assert "❀" not in html
-    assert "伯克希尔本季度 13F" not in html
+    assert "伯克希尔最新 13F" not in html
 
 
 def test_template_13f_no_longer_in_figures_section() -> None:
@@ -857,7 +857,7 @@ def test_template_renders_judgment_13f_and_fuel_together() -> None:
     )
 
     assert "AI基础设施资本开支将持续十年以上" in html
-    assert "伯克希尔本季度 13F" in html
+    assert "伯克希尔最新 13F" in html
     assert "油价预告" in html
     assert html.count("margin-top:36px") >= 2
 

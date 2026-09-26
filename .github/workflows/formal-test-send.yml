@@ -1,15 +1,19 @@
 name: send-formal-test
 
-# 手动定向试发完整正式版：运行真实采集、LLM、主题与正式模板，但不恢复或保存
-# daily-state，因此不会污染定时邮件的新闻去重、主题缓存或判断账本。
-# 仅恢复/保存独立估值状态；实时取数失败保留有日期的历史值，不触及新闻去重。
+# 正式试发从生产状态的临时副本读取历史；绝不保存 daily-state。
+# preview_only 使用完全相同的采集/加工/渲染流程，不注入 SMTP 凭据、不发送。
 on:
   workflow_dispatch:
     inputs:
       recipients:
         description: "试发收件人（多个地址用英文逗号分隔）"
-        required: true
+        required: false
         type: string
+      preview_only:
+        description: "Render and archive the full edition without sending"
+        required: false
+        default: false
+        type: boolean
       qqqm_check_only:
         description: "Only verify QQQM live inputs; do not send email"
         required: false
@@ -37,6 +41,10 @@ jobs:
     timeout-minutes: 20
     env:
       FORCE_SEND: "true"
+      BRIEF_PREVIEW_ONLY: ${{ inputs.preview_only }}
+      GH_RUN_ID: ${{ github.run_id }}
+      GH_RUN_ATTEMPT: ${{ github.run_attempt }}
+      QUALITY_ALERT_PATH: ${{ github.workspace }}/.quality-alert.txt
       PYTHONPATH: .
       DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
       DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
@@ -66,6 +74,21 @@ jobs:
       - name: Install Morningstar report OCR
         if: ${{ !inputs.qqqm_check_only }}
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
+      - name: Restore production history into disposable test state
+        if: ${{ !inputs.qqqm_check_only }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: state
+          key: formal-read-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            daily-state-
+
+      - name: Preserve production valuation history before isolated recovery
+        if: ${{ !inputs.qqqm_check_only }}
+        run: |
+          uv run python -m scripts.morningstar_cache preserve
+          uv run python -m scripts.qqqm_cache preserve
 
       - name: Restore verified Morningstar snapshot only
         if: ${{ !inputs.qqqm_check_only }}
@@ -120,15 +143,24 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-          QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
-          QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
-          EMAIL_RECIPIENT: ${{ inputs.recipients }}
+          QQ_EMAIL_ADDRESS: ${{ inputs.preview_only && 'preview@example.invalid' || secrets.QQ_EMAIL_ADDRESS }}
+          QQ_EMAIL_AUTH_CODE: ${{ inputs.preview_only && 'preview-no-smtp' || secrets.QQ_EMAIL_AUTH_CODE }}
+          EMAIL_RECIPIENT: ${{ inputs.preview_only && 'preview@example.invalid' || inputs.recipients }}
 
       - name: Verify QQQM without sending
         if: ${{ inputs.qqqm_check_only }}
         run: uv run python scripts/check_qqqm.py
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+      - name: Archive final publication and quality
+        if: ${{ always() && hashFiles('.brief-audit/**/manifest.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: brief-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .brief-audit/
+          include-hidden-files: true
+          retention-days: 30
 
       - name: Upload QQQM diagnostic
         if: ${{ always() && inputs.qqqm_check_only }}
@@ -190,7 +222,7 @@ jobs:
         run: uv run python -m scripts.qqqm_cache normalize
 
       - name: Save verified QQQM snapshot
-        if: ${{ success() && github.ref == 'refs/heads/main' && steps.qqqm-cache.outputs.valid == 'true' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' && !inputs.preview_only && steps.qqqm-cache.outputs.valid == 'true' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: state/qqqm_valuation.json

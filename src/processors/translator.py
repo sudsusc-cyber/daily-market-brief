@@ -12,6 +12,7 @@ import re
 from collections.abc import Iterable
 
 from src.processors.llm_client import LLMClient
+from src.processors.translation_guard import translation_errors
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ _TASK_INSTRUCTION = """\
 约束:
 - 严格保留 "▦ N: <译文>" 格式,每条独占一行
 - 公司 / 人名 / 产品名(Microsoft / Buffett / iPhone)保留英文原写
-- 数字、日期、百分号保持原样
+- 数字、日期、百分号保持原样；金额单位可转为中文但金额、币种不得变化
+- 完整翻译，不概括、不补充判断；严格保留否定、可能/计划/待批等限定和事件状态
 - 输出仅这些行,不要任何前言、解释、Markdown
 """
 
@@ -91,8 +93,11 @@ def translate_titles(
                 parsed = _parse_lines(resp.text)
                 for position in pending:
                     text = parsed.get(position, "").strip()
-                    if text:
+                    errors = translation_errors(indexed_chunk[position][1], text) if text else ["empty"]
+                    if text and not errors:
                         translated[position] = text
+                    elif text:
+                        logger.warning("translate.rejected index=%d reasons=%s", position, errors)
                 pending.difference_update(translated)
 
             if not pending:

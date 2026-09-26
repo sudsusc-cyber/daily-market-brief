@@ -296,7 +296,7 @@ def test_translation_never_mutates_original():
     translator.translate_in_place_news([item], client=client)
     assert item.title == "Microsoft has not received approval"
     assert item.summary == "Original summary"
-    assert item.translated_title == "Microsoft 已获批准"
+    assert item.translated_title == item.title
 
 
 def test_same_company_and_valid_citation_cannot_launder_false_fact():

@@ -23,7 +23,7 @@ from datetime import datetime
 from src.collectors.figures import FigureBundle, FigureMention
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
-from src.processors.source_grounding import INSTRUCTION, grounded_text
+from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
 
 logger = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ def _format_input(items: list[FigureMention]) -> str:
         # 摘要太长会污染 prompt,裁到 200 字
         if len(snippet) > 200:
             snippet = snippet[:200].rstrip() + "…"
-        line = f"▦ {i}: 标题={it.title}"
+        line = f"▦ {i}: 标题={it.title} / {source_prompt(it)}"
         if snippet:
             line += f" / 摘要={snippet}"
         line += f" / 来源={it.source}"

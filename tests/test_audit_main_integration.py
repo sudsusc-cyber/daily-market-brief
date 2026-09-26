@@ -16,12 +16,13 @@ from src.valuation.models import ValuationDisplay
 
 
 @pytest.mark.parametrize("exhausted,scenario", [
-    (False, "normal"), (True, "normal"), (False, "failed_delivery"),
+    (False, "normal"), (False, "preview"), (True, "normal"), (False, "failed_delivery"),
     (False, "partial_delivery"), (False, "thesis_publication"), (False, "valuation_timeout"),
     (False, "qqqm_retry"), (False, "qqqm_retry_fail"), (False, "qqqm_retry_timeout"),
 ])
 def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(monkeypatch, tmp_path, exhausted, scenario):
     main = importlib.import_module("src.main")
+    monkeypatch.setenv("BRIEF_PREVIEW_ONLY", "true" if scenario == "preview" else "false")
     subject = importlib.import_module("src.processors.subject.generator")
     now = datetime(2026, 9, 4, 0, tzinfo=UTC)
     monkeypatch.setattr(main, "_STATE_DIR", tmp_path)
@@ -140,6 +141,16 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         assert not (tmp_path / "pushed_company_news.json").exists()
         return
     assert main.main() == 0
+    if scenario == "preview":
+        import json
+        assert not sent
+        assert not (tmp_path / "receipt.json").exists()
+        assert not (tmp_path / "pushed_company_news.json").exists()
+        manifests = list((tmp_path / "audit").glob("*/manifest.json"))
+        assert len(manifests) == 1
+        assert json.loads(manifests[0].read_text())["delivery"]["status"] == "not_sent"
+        assert (manifests[0].parent / "preview.html").exists()
+        return
     assert len(sent) == 1
     if scenario.startswith("qqqm_retry"):
         assert len(qqqm_calls) == 2

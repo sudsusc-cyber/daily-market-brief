@@ -9,7 +9,7 @@ verdict(温度档位)由**确定性加权打分**得出,同样输入永远同样
 
 argument(一句总结)仍由 LLM 撰写,prompt 强制 verdict 已固定,LLM 只能解释"为什么是这个档位"。
 
-输入:SentimentBundle(5 个指标的 当前 / 前一日 / rating / unit)
+输入:SentimentBundle(5 个指标的 当前 / 上期 / rating / unit)
 输出:dict { verdict, argument, score, breakdown } 或 None
 """
 
@@ -226,7 +226,7 @@ def one_sentence_summary(value: object) -> str:
     return text
 
 _TASK_INSTRUCTION = """\
-任务:基于下列 5 个情绪指标的"当前值 / 前一日值 / 变化",**给定固定档位**写 argument(一句中文总结)。
+任务:基于下列 5 个情绪指标的"当前值 / 上期值 / 变化",**给定固定档位**写 argument(一句中文总结)。
 
 档位由确定性加权算法已经决定,你**不得**改变它。你的工作是:
 - 只写一句完整中文总结,建议 35-60 个汉字,句末使用句号;不得拆成第二句
@@ -272,7 +272,7 @@ def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
         # 让 LLM 在 argument 中淡化此指标(避免误导用户)。
         stale = f"(数据源故障,沿用 {m.stale_from} 的值)" if m.stale_from else ""
         lines.append(
-            f"- {m.name}{rating}: 当前 {cur} | 前一日 {pri} | 变化 {delta}{stale}"
+            f"- {m.name}{rating}: 当前 {cur} | 上期 {pri} | 变化 {delta}{stale}"
             f" | 实际观测 {m.observed_at or '未知'} | 来源 {m.source or '未知'}"
         )
     return "\n".join(lines)
@@ -299,6 +299,49 @@ def _parse_json(text: str) -> dict | None:
             except json.JSONDecodeError:
                 return None
     return None
+
+
+def _deterministic_argument(bundle: SentimentBundle, verdict: str) -> str:
+    parts = []
+    for metric in bundle.metrics:
+        if metric.name not in _PRIMARY_METRICS or metric.error or _finite_float(metric.current) is None:
+            continue
+        label = "CNN 恐惧贪婪指数" if metric.name == "CNN Fear & Greed" else metric.name
+        stamp = f"（沿用 {metric.stale_from}）" if metric.stale_from else ""
+        parts.append(f"{label} {metric.current:g}{metric.unit}{stamp}")
+    return "、".join(parts) + f"，按确定性规则综合为{verdict}；留意指标分歧，按既定纪律执行。"
+
+
+def _argument_supported(text: str, bundle: SentimentBundle, verdict: str) -> bool:
+    # A small explanatory sentence has no need for unsupported historical claims
+    # or novel numbers. Check every metric clause against that metric, not a bag
+    # of numbers from unrelated rows.
+    if not text or len(text) > 110 or re.search(r"历史(?:极|新|最|高位|低位)|泡沫|今日|今天", text):
+        return False
+    if any(label in text for _, label in VERDICT_THRESHOLDS if label != verdict):
+        return False
+    aliases = {"CNN Fear & Greed": r"CNN|恐惧.*?贪婪", "VIX": r"VIX",
+               "DXY": r"DXY|美元指数", "高收益债利差": r"高收益债|信用利差", "Shiller PE": r"Shiller|席勒"}
+    mentioned = False
+    for clause in re.split(r"[，,；;。]", text):
+        numbers = re.findall(r"[+-]?\d+(?:\.\d+)?", clause)
+        metrics = [m for m in bundle.metrics if re.search(aliases.get(m.name, r"(?!)"), clause, re.I)]
+        if numbers and len(metrics) != 1:
+            return False
+        for m in metrics:
+            mentioned = True
+            if m.error or _finite_float(m.current) is None:
+                return False
+            if m.stale_from and ("参考" not in clause and "沿用" not in clause):
+                return False
+            allowed = [m.current, m.prior, m.delta]
+            if any(not any(v is not None and abs(float(n) - v) <= .011 for v in allowed) for n in numbers):
+                return False
+            if re.search(r"回落|下降|下跌|收窄", clause) and (m.delta is None or m.delta >= 0):
+                return False
+            if re.search(r"上升|上涨|走高|扩大|攀升", clause) and (m.delta is None or m.delta <= 0):
+                return False
+    return mentioned
 
 
 def judge(
@@ -333,8 +376,13 @@ def judge(
         if resp.text:
             data = _parse_json(resp.text)
             if data and "argument" in data and str(data["argument"]).strip():
-                argument = one_sentence_summary(data["argument"])
-                break
+                candidate = one_sentence_summary(data["argument"])
+                if _argument_supported(candidate, bundle, verdict_label):
+                    argument = candidate
+                    break
+                last_error = "UnsupportedArgument"
+                logger.warning("sentiment_judge.unsupported_argument attempt=%d", attempt)
+                continue
             last_error = "InvalidJSONOrEmptyArgument"
             logger.warning(
                 "sentiment_judge.parse_failed attempt=%d/%d text=%r",
@@ -349,7 +397,7 @@ def judge(
 
     argument_fallback = not argument
     if argument_fallback:
-        argument = _ARGUMENT_FALLBACK
+        argument = _deterministic_argument(bundle, verdict_label)
 
     logger.info(
         "sentiment_judge.ok verdict=%r score=%.1f argument_chars=%d",
