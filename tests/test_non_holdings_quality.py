@@ -262,3 +262,33 @@ def test_macro_filters_colour_and_keeps_factual_half_of_explainer_title():
     assert macro_candidate(SimpleNamespace(title='U.S., China Agree to Trim Tariffs'))
     title = 'The 10-year Treasury yield is at its highest in nearly two decades. How we got here'
     assert factual_excerpt(SimpleNamespace(title=title)) == title.split('. ')[0] + '.'
+
+
+@pytest.mark.parametrize("original,translated", [
+    ("A U.S. Arm-Twisting Campaign Is Cutting Iran Off From the Rest of the World", "一场美国的施压行动正将 Iran 与世界的其余部分切断"),
+    ("Anthropic to Pay Akamai Technologies $11.6 Billion Over Seven Years for Cloud Services - wsj.com", "Anthropic 将在七年内向 Akamai Technologies 支付 116 亿美元云服务费用 - wsj.com"),
+    ("Fed cuts rates by 25 basis points", "美联储降息 25 基点"),
+])
+def test_real_preview_event_phrases_and_written_duration(original, translated):
+    assert translation_errors(original, translated) == []
+
+
+@pytest.mark.parametrize("translated", [
+    "Anthropic 已在七年内向 Akamai Technologies 支付 116 亿美元云服务费用",
+    "Anthropic 将在八年内向 Akamai Technologies 支付 116 亿美元云服务费用",
+    "Anthropic 将在七个月内向 Akamai Technologies 支付 116 亿美元云服务费用",
+])
+def test_payment_completion_or_duration_change_rejected(translated):
+    original = "Anthropic to Pay Akamai Technologies $11.6 Billion Over Seven Years for Cloud Services"
+    assert translation_errors(original, translated)
+
+
+def test_cut_off_cannot_be_replaced_with_lower_rates():
+    assert translation_errors("U.S. is cutting Iran off", "美国正在降低 Iran 利率")
+
+
+def test_duration_units_keep_bond_tenor_and_decades_consistent():
+    original = 'The 10-year Treasury yield is at its highest in nearly two decades.'
+    assert not translation_errors(original, '10 年期美债收益率处于近二十年来最高水平。')
+    assert translation_errors(original, '10 年期美债收益率处于近三十年来最高水平。')
+    assert translation_errors(original, '10 个月期美债收益率处于近二十年来最高水平。')

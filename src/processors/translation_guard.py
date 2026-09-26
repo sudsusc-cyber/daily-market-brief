@@ -14,11 +14,13 @@ from decimal import Decimal
 
 # Match negative phrases before checking event states (e.g. not approved).
 _NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|未经"
-_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled)\b|将(?=于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
+_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled)\b|\bto\s+(?:pay|invest|acquire|launch|release|appoint)\b|将(?=支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
 _EVENTS = {
     "approval": r"\b(?:approv\w*|clearance|greenlight\w*)\b|批准|获批|监管放行",
     "completion": r"\b(?:completed?|finalized?|closed the deal)\b|完成|已交割|已落地",
-    "cut": r"\b(?:cuts?|cutting|trims?|trimmed|lowers?|lowered|reduces?|reduced|reduction)\b|下调|削减|降息|减少|降低|减产|裁减|裁员",
+    "cut": r"\b(?:cuts?(?!\s+(?:[A-Za-z.]+\s+){0,4}off\b)|cutting(?!\s+(?:[A-Za-z.]+\s+){0,4}off\b)|trims?|trimmed|lowers?|lowered|reduces?|reduced|reduction)\b|下调|削减|降息|减少|降低|减产|裁减|裁员",
+    "cut_off": r"\bcut(?:s|ting)?\s+(?:[A-Za-z.]+\s+){0,4}off\b|切断|隔绝|孤立",
+    "payment": r"\b(?:pay|pays|paid|paying)\b|支付|付给",
     "raise": r"\b(?:raises?|raised|lifts?|lifted|upgrades?|upgraded|hikes?|hiked|increases?|increased|boosts?|boosted|expands?|expanded|expansion|growth|grew|grow\w*)\b|上调|加息|增加|提高|扩大|扩张|增长|扩建",
     "hold": r"\b(?:holds?|unchanged|maintains?|maintained)\b|维持|不变|保持|持平",
     "fall": r"\b(?:falls?|fell|declines?|declined|drops?|dropped|slumps?|slumped)\b|下降|下跌|回落|下滑",
@@ -46,7 +48,7 @@ _ENTITIES = {
 }
 _SCALE = {"thousand": 1000, "million": 10**6, "billion": 10**9,
           "trillion": 10**12, "b": 10**9, "bn": 10**9, "m": 10**6, "mn": 10**6, "千": 1000, "万": 10**4, "亿": 10**8, "万亿": 10**12}
-_NUMBER = re.compile(r"(?P<n>[+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?P<scale>trillion|billion|million|thousand|bn\b|mn\b|b\b|m\b|万亿|亿|万|千)?\s*(?P<unit>%|percent(?:age points?)?|basis points?|bps?|基点|个百分点|美元|港元|欧元|dollars?|USD|HKD|EUR)?", re.I)
+_NUMBER = re.compile(r"(?P<n>[+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?P<scale>trillion|billion|million|thousand|bn\b|mn\b|b\b|m\b|万亿|亿|万|千)?(?:\s*-\s*|\s*)(?P<unit>%|percent(?:age points?)?|basis points?|bps?|基点|个百分点|美元|港元|欧元|dollars?|USD|HKD|EUR|years?|months?|days?|decades?|年|个月|天)?", re.I)
 
 
 def _quantities(text: str) -> Counter:
@@ -61,10 +63,32 @@ def _quantities(text: str) -> Counter:
         return " "
     text = re.sub(r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\b", english_date, text, flags=re.I)
     text = re.sub(r"(?:(\d{4})\s*年)?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]", chinese_date, text)
+    # Standalone calendar years match English "by 2030"; full dates were handled above.
+    text = re.sub(r"(?<!\d)([12]\d{3})\s*年", r"\1", text)
+    # Normalize written durations only, never arbitrary words or company names.
+    en_counts = dict(zip(["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"], range(1, 13), strict=True))
+    zh_counts = dict(zip(["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"], range(1, 13), strict=True))
+    text = re.sub(r"\b(" + "|".join(en_counts) + r")(?=\s+(?:years?|months?|days?|decades?)\b)", lambda m: str(en_counts[m[0].lower()]), text, flags=re.I)
+    def chinese_count(match):
+        raw = match[0]
+        if "十" in raw:
+            tens, ones = raw.split("十")
+            return str((zh_counts[tens] if tens else 1) * 10 + (zh_counts[ones] if ones else 0))
+        return str(zh_counts[raw])
+    text = re.sub(r"[一二三四五六七八九]?十[一二三四五六七八九]?(?=年|个月|天)|[一二三四五六七八九](?=年|个月|天)", chinese_count, text)
     for match in _NUMBER.finditer(text):
         value = Decimal(match['n'].replace(',', '')) * _SCALE.get((match['scale'] or '').lower(), 1)
         unit = (match['unit'] or '').lower()
-        if unit in ('%', 'percent'):
+        if unit in ('decade', 'decades'):
+            unit = 'years'
+            value *= 10
+        elif unit in ('year', 'years', '年'):
+            unit = 'years'
+        elif unit in ('month', 'months', '个月'):
+            unit = 'months'
+        elif unit in ('day', 'days', '天'):
+            unit = 'days'
+        elif unit in ('%', 'percent'):
             unit = 'percent'
         elif unit in ('percentage point', 'percentage points', '个百分点'):
             unit = 'percentage_points'
@@ -111,7 +135,7 @@ def _scoped_states(text: str) -> set[tuple]:
     # Bind polarity/modality to the event clause so a 'not' elsewhere cannot
     # bless a reversed approval/completion assertion.
     for clause in re.split(r"[，,；;。!?]|\bbut\b|但是|但", text, flags=re.I):
-        for event in ("approval", "completion", "acquisition", "launch"):
+        for event in ("approval", "completion", "acquisition", "launch", "payment"):
             if re.search(_EVENTS[event], clause, re.I):
                 states.add((event, bool(re.search(_NEGATION, clause, re.I)),
                             bool(re.search(_MODALITY, clause, re.I))))
