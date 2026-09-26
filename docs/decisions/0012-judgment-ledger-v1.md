@@ -1,7 +1,7 @@
 # ADR-0012: Judgment Ledger（长期判断）V1
 
 **日期**: 2026-05-04
-**状态**: 已实施
+**状态**: 历史研究账本保留；邮件刊发机制已由 [ADR-0016](0016-source-bound-long-term-watchpoints.md) 替代。旧状态机不再由生产入口更新或驱动邮件展示。
 **涉及模块**: `src/processors/thesis/`（8 个文件）
 
 ## 背景

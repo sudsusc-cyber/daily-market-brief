@@ -28,6 +28,7 @@ from src.collectors.stocks import StockSignal
 from src.config import BUY_STRATEGIES
 from src.processors.html_safe import is_safe_url
 from src.processors.sentiment_judge import VERDICT_THRESHOLDS, one_sentence_summary
+from src.renderer.news_prose import news_paragraphs, sentence_end
 from src.renderer.text_utils import add_cjk_spacing
 from src.utils.dates import to_beijing
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEATURES
@@ -289,6 +290,8 @@ def _build_env() -> Environment:
     env.filters["iso_date_md"] = _filter_iso_date_md
     env.filters["safe_url"] = _filter_safe_url
     env.filters["cjk_spaced"] = add_cjk_spacing
+    env.filters["news_paragraphs"] = news_paragraphs
+    env.filters["sentence_end"] = sentence_end
     env.filters["one_sentence"] = one_sentence_summary
     return env
 
@@ -463,6 +466,18 @@ def render_email(
         if valuations
         and any(value.value_label == "公允价值" for value in valuations.values())
         else "内在价值"
+    )
+    # The final visible sources are authoritative; a caller-supplied old ledger
+    # sentence or a changed source block cannot bypass publication validation.
+    from src.processors.thesis.renderer import publication_sources, validate_publication
+
+    judgment_section = validate_publication(
+        judgment_section, today=generated_at.date(),
+        sources=publication_sources(
+            company_news=None if company_news_fallback_note or company_news_silence_note else company_news_summary,
+            macro_news=None if macro_news_fallback_note or macro_news_silence_note else macro_news_summary,
+            figure_summaries=figure_summaries if figures else [], frontier_labs_events=frontier_labs_items,
+        ),
     )
     html = template.render(
         signals=signals,

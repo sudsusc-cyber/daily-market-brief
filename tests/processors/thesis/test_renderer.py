@@ -1,291 +1,351 @@
-"""test_renderer.py — judgment_section 构建单测"""
+"""The old unsupported thesis can never reach the publication boundary."""
 
-from datetime import date
+from copy import deepcopy
+from datetime import date, timedelta
+from types import SimpleNamespace
 
-from src.processors.thesis.models import (
-    ThesisEvent,
-    ThesisEvidence,
-    ThesisState,
+import pytest
+
+from src.processors.thesis.renderer import (
+    JudgmentSection,
+    build_judgment_section,
+    commit_publications,
+    load_publications,
+    validate_publication,
 )
-from src.processors.thesis.renderer import build_judgment_section
+from src.renderer.render import render_email
 
-_WEEKDAY = date(2026, 8, 5)
-_SATURDAY = date(2026, 8, 8)
-
-
-def make_event(theme="test-theme", headline="「测试断言」获得新证据支持。",
-               thesis="测试断言", tail="获得新证据支持。",
-               tickers=None, url=None):
-    return ThesisEvent(
-        kind="substantiate",
-        theme=theme,
-        related_tickers=tickers or ["TEST"],
-        headline=headline,
-        thesis=thesis,
-        tail=tail,
-        source_url=url,
-        source_section="company_news",
-    )
+TODAY = date(2026, 9, 26)
+FACT = "微软计划到2030年在海湾国家投资超过100亿美元用于云和AI基础设施。"
 
 
-def make_state(theme="test-theme", status="core", thesis="测试断言",
-               last="2026-08-05", count=5, changed=None):
-    return ThesisState(
-        theme=theme,
-        status=status,
-        related_tickers=["TEST"],
-        cadence="quarterly",
-        stale_after_days=180,
-        first_seen="2026-05-01",
-        last_evidence_date=last,
-        evidence_count_recent_90d=count,
-        one_line_thesis=thesis,
-        last_state_change_date=changed,
-    )
-
-
-def make_evidence(
-    theme="test-theme",
-    direction="risk",
-    strength=4,
-    url=None,
-    on=_WEEKDAY,
-):
-    return ThesisEvidence(
-        evidence_id=f"{theme}-{direction}",
-        date=on.isoformat(),
-        source_section="company_news",
-        source_name="Reuters",
+def source(text=FACT, *, url="https://example.com/microsoft", published="2026-09-26", **changes):
+    row = dict(
+        original_title=text,
+        original_summary="",
+        excerpt=text,
+        output_text=text,
+        validated_text=text,
+        mode="source_extract",
         url=url,
-        related_tickers=["TEST"],
-        theme=theme,
-        direction=direction,
-        strength=strength,
-        horizon="multi_year",
-        text="当日重大证据",
-        why_it_matters="这是一条需要跟踪的长期判断",
+        published_at=published,
+        source_name="Reuters",
     )
+    row.update(changes)
+    return SimpleNamespace(summary_html=text, footnotes=[SimpleNamespace(url=url)], evidence=[row])
 
 
-def test_empty_returns_none():
-    assert build_judgment_section([]) is None
+def sources(*objects):
+    return {"company_news": list(objects) or [source()]}
 
 
-def test_single_event():
-    e = make_event()
-    result = build_judgment_section([e])
-    assert result is not None
-    assert len(result.items) == 1
-    assert result.items[0]["thesis"] == "测试断言"
-    assert result.items[0]["updated"] is True
-    assert result.items[0]["marker"] == "新证据"
+def build(*objects, **kwargs):
+    return build_judgment_section(sources=sources(*objects), today=TODAY, **kwargs)
 
 
-def test_two_events():
-    events = [
-        make_event(theme="t1", thesis="断言1"),
-        make_event(theme="t2", thesis="断言2"),
-    ]
-    result = build_judgment_section(events)
-    assert result is not None
-    assert len(result.items) == 2
+def test_real_incident_becomes_bounded_watchpoint_not_sovereign_buyer_claim():
+    result = build()
+    item = result.items[0]
+    assert item["fact"] == FACT
+    assert item["thesis"] == "基础设施投入的长期价值取决于资本回报"
+    assert "主权资本" not in str(result)
+    assert item["url"] == source().evidence[0]["url"]
+    assert item["evidence"]["excerpt"] == FACT
+    assert item["watch"] == "实际投入、投产进度、利用率与现金流能否匹配。"
 
 
-def test_truncate_to_three():
-    events = [
-        make_event(theme=f"t{i}", thesis=f"断言{i}")
-        for i in range(1, 6)
-    ]
-    result = build_judgment_section(events)
-    assert result is not None
+@pytest.mark.parametrize(
+    "text",
+    [
+        "微软尚未获监管批准。",
+        "微软已获监管批准。",
+        "微软计划投资100亿美元建设云基础设施。",
+        "微软取消投资100亿美元建设云基础设施的计划。",
+        "苹果与高通续签专利许可协议。",
+        "微软收入增长10%。",
+        "万事达开通稳定币结算。",
+        "苹果推出新款手机。",
+        "苹果宣布回购计划。",
+    ],
+)
+def test_fact_states_and_subjects_are_preserved_verbatim(text):
+    result = build(source(text))
+    assert result and result.items[0]["fact"] == text
+    assert result.items[0]["marker"] in {"新证据", "新变量"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "主权资本正成为云与算力需求的长期买家。",
+        "英伟达处于新的全球AI规则争论的中心。",
+        "可口可乐宣布新任北美总裁。",
+        "某国将大力发展人工智能。",
+        "微软股价今天上涨10%。",
+    ],
+)
+def test_no_irrelevant_or_unbounded_watchpoint(text):
+    assert build(source(text)) is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["body", "footnote", "original", "amount", "negation", "subject", "date", "old", "future"],
+)
+def test_broken_source_binding_is_rejected(change):
+    obj = source()
+    row = obj.evidence[0]
+    if change == "body":
+        obj.summary_html = "没有对应新闻"
+    elif change == "footnote":
+        obj.footnotes = []
+    elif change == "original":
+        row["original_title"] = "无关新闻"
+    elif change == "amount":
+        row["output_text"] = FACT.replace("100", "1000")
+    elif change == "negation":
+        row["output_text"] = FACT.replace("计划", "已经")
+    elif change == "subject":
+        row["output_text"] = FACT.replace("微软", "主权基金")
+    elif change == "date":
+        row["published_at"] = ""
+    elif change == "old":
+        row["published_at"] = "2020-09-26"
+    elif change == "future":
+        row["published_at"] = "2026-09-27"
+    assert build(obj) is None
+
+
+def test_legacy_state_events_and_llm_why_never_supply_display_text():
+    legacy = SimpleNamespace(
+        thesis="主权资本正成为云与算力需求的长期买家", source_url="https://example.com"
+    )
+    assert (
+        build_judgment_section(
+            [legacy], state={"old": legacy}, evidence_today=[legacy], today=TODAY
+        )
+        is None
+    )
+    obj = source(why_it_matters=legacy.thesis)
+    result = build(obj, state={"old": legacy}, evidence_today=[legacy])
+    assert legacy.thesis not in str(result)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("thesis", "主权资本正成为长期买家"),
+        ("fact", FACT.replace("计划", "已经")),
+        ("watch", "收入必将翻倍"),
+        ("url", "https://example.com/unrelated"),
+        ("url", "javascript:alert(1)"),
+        ("marker", "新核心"),
+        ("section", "宏观视野"),
+    ],
+)
+def test_final_render_gate_rejects_changed_interpretation_or_citation(field, value):
+    result = build()
+    result.items[0][field] = value
+    assert validate_publication(result, sources=sources(), today=TODAY) is None
+
+
+def test_changed_final_body_cannot_keep_previous_judgment():
+    result = build()
+    assert validate_publication(result, sources={}, today=TODAY) is None
+
+
+def test_same_fact_new_url_or_translation_is_not_new_evidence(tmp_path):
+    result = build()
+    commit_publications(result, tmp_path, today=TODAY)
+    other = source(url="https://another.example.com/syndication")
+    assert build(other, history=load_publications(tmp_path)) is None
+    assert build(source(), history=load_publications(tmp_path)) is None
+
+
+def test_new_fact_in_same_theme_is_visible_next_day_without_21_day_cooldown(tmp_path):
+    first = build()
+    commit_publications(first, tmp_path, today=TODAY)
+    tomorrow = TODAY + timedelta(days=1)
+    second = source(FACT.replace("100", "120"), published=tomorrow.isoformat())
+    result = build_judgment_section(
+        sources=sources(second), history=load_publications(tmp_path), today=tomorrow
+    )
+    assert result and result.items[0]["fact"] == second.summary_html
+
+
+def test_seven_days_of_distinct_news_can_publish_every_day(tmp_path):
+    for i in range(7):
+        day = TODAY + timedelta(days=i)
+        obj = source(FACT.replace("100", str(100 + i)), published=day.isoformat())
+        result = build_judgment_section(
+            sources=sources(obj), history=load_publications(tmp_path), today=day
+        )
+        assert result
+        commit_publications(result, tmp_path, today=day)
+    assert len(load_publications(tmp_path)) == 7
+
+
+def test_top_three_only_commits_visible_facts_and_can_publish_remaining_later(tmp_path):
+    objects = [source(FACT.replace("100", str(100 + i))) for i in range(4)]
+    result = build(*objects)
     assert len(result.items) == 3
-    assert result.items[0]["thesis"] == "断言1"
-    assert result.items[2]["thesis"] == "断言3"
+    commit_publications(result, tmp_path, today=TODAY)
+    assert len(load_publications(tmp_path)) == 3
+    remaining = build(*objects, history=load_publications(tmp_path))
+    assert remaining and len(remaining.items) == 1
 
 
-def test_url_passthrough():
-    e = make_event(url="https://example.com/news")
-    result = build_judgment_section([e])
-    assert result.items[0]["url"] == "https://example.com/news"
+def test_no_publication_no_history_write(tmp_path):
+    result = build()
+    assert result and not load_publications(tmp_path)
+    commit_publications(None, tmp_path, today=TODAY)
+    assert not (tmp_path / "thesis_publications.json").exists()
 
 
-def test_none_url():
-    e = make_event(url=None)
-    result = build_judgment_section([e])
-    assert result.items[0]["url"] is None
+def test_corrupt_history_fails_without_overwriting(tmp_path):
+    path = tmp_path / "thesis_publications.json"
+    path.write_text("broken")
+    with pytest.raises(ValueError):
+        commit_publications(build(), tmp_path, today=TODAY)
+    assert path.read_text() == "broken"
 
 
-def test_weekday_unchanged_core_is_hidden():
-    state = {"test-theme": make_state()}
-
-    assert build_judgment_section([], state=state, today=_WEEKDAY) is None
-
-
-def test_saturday_does_not_render_unchanged_historical_core():
-    state = {"test-theme": make_state()}
-
-    result = build_judgment_section([], state=state, today=_SATURDAY)
-
-    assert result is None
-
-
-def test_event_marks_persistent_item_updated():
-    event = make_event(url="https://example.com/update")
-    state = {"test-theme": make_state()}
-
-    result = build_judgment_section([event], state=state, today=_WEEKDAY)
-
-    assert result is not None
-    assert result.items[0]["updated"] is True
-    assert result.items[0]["marker"] == "新证据"
-    assert result.items[0]["url"] == "https://example.com/update"
+def test_all_visible_sections_bind_to_their_own_source():
+    obj = source()
+    point = SimpleNamespace(text=FACT, source_url=obj.evidence[0]["url"], evidence=obj.evidence)
+    for section, value in [
+        ("company_news", obj),
+        ("macro", obj),
+        ("voices", point),
+        ("frontier_labs", point),
+    ]:
+        result = build_judgment_section(sources={section: [value]}, today=TODAY)
+        assert result and result.items[0]["source_section"] == section
 
 
-def test_material_risk_is_not_rendered_in_email():
-    state = {"test-theme": make_state()}
-    evidence = make_evidence(url="https://example.com/risk")
+def test_render_includes_fact_and_source_but_escapes_untrusted_source_text():
+    from datetime import UTC, datetime
 
-    result = build_judgment_section(
-        [], state=state, evidence_today=[evidence], today=_WEEKDAY,
+    obj = source()
+    result = build(obj)
+    html = render_email(
+        signals=[],
+        generated_at=datetime(2026, 9, 26, tzinfo=UTC),
+        company_news_summary=obj,
+        judgment_section=result,
     )
-
-    assert result is None
-
-
-def test_material_new_variable_renders_emerging_theme_immediately():
-    state = {
-        "test-theme": make_state(status="emerging"),
-    }
-    evidence = make_evidence(direction="new_variable")
-
-    result = build_judgment_section(
-        [], state=state, evidence_today=[evidence], today=_WEEKDAY,
+    assert "本期依据（昨日动态）" not in html and "后续验证" not in html
+    assert "基础设施投入的长期价值取决于资本回报" in html
+    assert html.count("https://example.com/microsoft") >= 2
+    assert "主权资本" not in html
+    malicious = deepcopy(result)
+    malicious.items[0]["thesis"] = "<script>alert(1)</script>"
+    html = render_email(
+        signals=[],
+        generated_at=datetime(2026, 9, 26, tzinfo=UTC),
+        company_news_summary=obj,
+        judgment_section=malicious,
     )
-
-    assert result is not None
-    assert result.items[0]["marker"] == "新变量"
+    assert "<script>" not in html and "后续验证" not in html
 
 
-def test_risk_is_hidden_but_new_variable_still_renders():
-    state = {"test-theme": make_state()}
-    risk = make_evidence(url="https://example.com/risk")
-    variable = make_evidence(
-        direction="new_variable",
-        url="https://example.com/variable",
+def test_unbound_legacy_payload_cannot_reenter_via_render_email():
+    from datetime import UTC, datetime
+
+    html = render_email(
+        signals=[],
+        generated_at=datetime(2026, 9, 26, tzinfo=UTC),
+        judgment_section=JudgmentSection(
+            [{"thesis": "主权资本正成为长期买家", "marker": "新证据"}]
+        ),
     )
+    assert "主权资本" not in html and "新证据" not in html
 
-    result = build_judgment_section(
-        [],
-        state=state,
-        evidence_today=[risk, variable],
-        today=_WEEKDAY,
+
+def test_real_english_source_translation_and_new_url_republication(tmp_path):
+    original = "Microsoft (NasdaqGS:MSFT) plans to invest over US$10b in cloud and AI infrastructure across Gulf countries by 2030."
+    translated = "Microsoft (NasdaqGS:MSFT) 计划到 2030 年在海湾国家投资超过 100 亿美元用于云和 AI 基础设施。"
+    from src.processors.news_presentation import publication_text
+
+    obj = source(
+        publication_text(translated),
+        original_title=original,
+        excerpt=original,
+        validated_text=translated,
+        presentation_version=1,
+        mode="checked_translation",
     )
-
-    assert result is not None
-    assert result.items[0]["marker"] == "新变量"
-    assert result.items[0]["url"] == "https://example.com/variable"
-
-
-def test_material_risk_is_hidden_during_saturday_review():
-    state = {"test-theme": make_state()}
-    evidence = make_evidence(on=_SATURDAY)
-
-    assert build_judgment_section(
-        [], state=state, evidence_today=[evidence], today=_SATURDAY,
-    ) is None
-
-
-def test_weak_risk_does_not_create_weekday_noise():
-    state = {"test-theme": make_state()}
-    evidence = make_evidence(strength=3)
-
-    assert build_judgment_section(
-        [], state=state, evidence_today=[evidence], today=_WEEKDAY,
-    ) is None
+    section = build(obj)
+    assert section and section.items[0]["fact"] == publication_text(translated)
+    assert "NasdaqGS" not in section.items[0]["fact"]
+    commit_publications(section, tmp_path, today=TODAY)
+    obj.evidence[0]["url"] = "https://example.com/syndicated"
+    obj.footnotes[0].url = obj.evidence[0]["url"]
+    assert build(obj, history=load_publications(tmp_path)) is None
+    for bad in [
+        translated.replace("100", "1000"),
+        translated.replace("计划", "已经"),
+        translated.replace("Microsoft", "主权资本"),
+    ]:
+        obj.evidence[0]["validated_text"] = bad
+        obj.evidence[0]["output_text"] = publication_text(bad)
+        obj.summary_html = publication_text(bad)
+        assert build(obj) is None
 
 
-def test_new_core_renders_on_transition_day():
-    state = {
-        "test-theme": make_state(changed=_WEEKDAY.isoformat()),
-    }
-    evidence = make_evidence(
-        direction="neutral",
-        url="https://example.com/core",
+def test_hidden_voice_block_does_not_trigger_judgment():
+    from datetime import UTC, datetime
+
+    obj = source()
+    point = SimpleNamespace(
+        text=FACT, source_url=obj.evidence[0]["url"], evidence=obj.evidence, footnote_index=1
     )
-
-    result = build_judgment_section(
-        [], state=state, evidence_today=[evidence], today=_WEEKDAY,
+    section = build_judgment_section(sources={"voices": [point]}, today=TODAY)
+    assert section
+    html = render_email(
+        signals=[],
+        generated_at=datetime(2026, 9, 26, tzinfo=UTC),
+        figures=[],
+        figure_summaries=[SimpleNamespace(person="纳德拉", items=[point])],
+        judgment_section=section,
     )
-
-    assert result is not None
-    assert result.items[0]["marker"] == "新核心"
-    assert result.items[0]["thesis"] == "这是一条需要跟踪的长期判断"
+    assert "后续验证" not in html
 
 
-def test_today_evidence_replaces_stale_persisted_thesis():
-    state = {
-        "test-theme": make_state(thesis="与今天信息不相关的历史旧断言"),
-    }
-    evidence = make_evidence(
-        direction="new_variable",
-        url="https://example.com/today",
+def test_frontier_third_unpublished_item_is_not_a_source():
+    from src.processors.thesis.renderer import publication_sources
+
+    obj = source()
+    point = SimpleNamespace(text=FACT, source_url=obj.evidence[0]["url"], evidence=obj.evidence)
+    inputs = publication_sources(frontier_labs_events=[SimpleNamespace(), SimpleNamespace(), point])
+    assert build_judgment_section(sources=inputs, today=TODAY) is None
+
+
+def test_empty_selection_has_auditable_reason():
+    audit = {}
+    assert (
+        build_judgment_section(
+            sources=sources(source("微软股价今天上涨10%。")), today=TODAY, selection_audit=audit
+        )
+        is None
     )
-
-    result = build_judgment_section(
-        [], state=state, evidence_today=[evidence], today=_WEEKDAY,
-    )
-
-    assert result is not None
-    assert result.items[0]["thesis"] == "这是一条需要跟踪的长期判断"
-    assert "历史旧断言" not in result.items[0]["thesis"]
+    assert audit["published"] == 0
+    assert audit["decisions"][0]["reason"] == "no_bounded_long_term_watchpoint"
 
 
-def test_candidate_and_dormant_are_not_persistently_rendered():
-    state = {
-        "candidate": make_state("candidate", status="candidate"),
-        "dormant": make_state("dormant", status="dormant"),
-    }
-
-    assert build_judgment_section([], state=state, today=_SATURDAY) is None
-
-
-def test_historical_items_do_not_reappear_without_today_evidence():
-    state = {
-        "emerging": make_state("emerging", status="emerging", thesis="端倪"),
-        "stable": make_state("stable", status="stable", thesis="稳定", count=20),
-        "core": make_state("core", status="core", thesis="核心", count=3),
-    }
-
-    result = build_judgment_section([], state=state, today=_SATURDAY)
-
-    assert result is None
+def test_invalid_older_copy_does_not_shadow_valid_source():
+    stale = source(published="2020-09-26")
+    valid = source()
+    result = build(stale, valid)
+    assert result and len(result.items) == 1
+    assert result.items[0]["source_date"] == "2026-09-26"
 
 
-def test_fallback_from_old_headline():
-    """旧 headline 格式不含 thesis/tail 字段时，正则切分兜底。"""
-    e = ThesisEvent(
-        kind="substantiate",
-        theme="old-theme",
-        related_tickers=["T"],
-        headline="MSFT：「旧版断言文本」获得新证据支持。",
-        source_section="company_news",
-    )
-    result = build_judgment_section([e])
-    assert result is not None
-    assert result.items[0]["thesis"] == "旧版断言文本"
-    assert result.items[0]["updated"] is True
-    assert result.items[0]["marker"] == "新证据"
-
-
-def test_fallback_no_match_uses_whole_headline():
-    """headline 无法切分时，thesis 留空，整句作为 tail。"""
-    e = ThesisEvent(
-        kind="substantiate",
-        theme="bad",
-        related_tickers=["T"],
-        headline="完全无法解析的旧格式句子",
-        source_section="company_news",
-    )
-    result = build_judgment_section([e])
-    assert result is not None
-    assert result.items[0]["thesis"] == "完全无法解析的旧格式句子"
+@pytest.mark.parametrize("text,forbidden", [
+    ("微软收入下降10%。", "增长"),
+    ("微软尚未获监管批准。", "决定"),
+])
+def test_watchpoint_does_not_assume_positive_growth_or_final_approval(text, forbidden):
+    result = build(source(text))
+    assert result and forbidden not in result.items[0]["thesis"]
+    assert result.items[0]["fact"] == text

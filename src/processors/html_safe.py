@@ -51,7 +51,7 @@ def footnote_idx(match: re.Match[str]) -> int:
 # 各自硬编码同样的 style 字符串。
 FOOTNOTE_ANCHOR_STYLE = (
     "color:#0563C1!important;text-decoration:none!important;font-size:11px;"
-    f"font-family:{EMAIL_EDITORIAL_SERIF};margin-left:1px;"
+    f"font-family:{EMAIL_EDITORIAL_SERIF};margin-left:3px;margin-right:2px;"
 )
 
 
