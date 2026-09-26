@@ -26,7 +26,9 @@ def normalize_cache(state_dir: Path, *, checked_at: datetime, allow_daily_forwar
                                       allow_daily_forward=allow_daily_forward)
     if selected is None:
         return False
-    source, _ = selected
+    source, display = selected
+    logging.info("qqqm.cache_selected file=%s data_date=%s age_unchanged=true",
+                 source.name, display.inputs.data_date)
     # Keep the original observation dates; a new cache key is NOT fresh data.
     payload = json.loads(source.read_text(encoding="utf-8"))
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -38,6 +40,7 @@ def normalize_cache(state_dir: Path, *, checked_at: datetime, allow_daily_forwar
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("preserve", "normalize"))
     args = parser.parse_args()

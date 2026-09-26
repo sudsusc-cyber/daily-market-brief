@@ -31,7 +31,7 @@ def validate_history(index, *, symbol: str, interval: str, now: datetime) -> dat
     observed = local_index[-1].date()
     expected = latest_closed_session(symbol, now)
     minimum = expected - timedelta(days=expected.weekday()) if interval == "1wk" else expected
-    if not minimum <= observed <= now.astimezone(cal.tz).date():
+    if not minimum <= observed <= expected:
         raise ValueError(f"行情日期过期或超前: {observed}; 最近交易日 {expected}")
     if interval == "1d" and not cal.is_session(observed.isoformat()):
         raise ValueError("日线日期不是该交易所交易日")
@@ -72,4 +72,8 @@ def validate_quote(timestamp, *, symbol: str, now: datetime) -> date:
         raise ValueError("行情报价时间过期或超前")
     if not cal.is_session(day.isoformat()):
         raise ValueError("行情报价不属于有效交易日")
+    expected = latest_closed_session(symbol, now)
+    close = cal.session_close(day.isoformat()).to_pydatetime()
+    if day != expected or observed < close:
+        raise ValueError("盘中报价不能作为目标交易日收盘价")
     return day

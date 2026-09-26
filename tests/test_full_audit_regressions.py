@@ -260,8 +260,8 @@ def test_run_success_is_not_a_delivery_receipt(monkeypatch, conclusion, confirme
     response.read.return_value = json.dumps({"workflow_runs": [{"id": 100, "head_branch": "main",
         "created_at": "2026-09-04T00:00:00Z", "status": "completed", "conclusion": conclusion}]}).encode()
     monkeypatch.setattr(idempotency.urllib.request, "urlopen", lambda *a, **k: response)
-    check = MagicMock(return_value=confirmed)
-    monkeypatch.setattr(idempotency, "_run_has_successful_step", check)
+    check = MagicMock(return_value={"accepted": confirmed})
+    monkeypatch.setattr(idempotency, "run_evidence", check)
     assert idempotency.already_sent_today() is expected
     check.assert_called_once()
 
@@ -270,14 +270,14 @@ def test_run_success_is_not_a_delivery_receipt(monkeypatch, conclusion, confirme
     ("_fetch_shiller_pe", "Shiller PE"), ("_fetch_fred_hy_spread", "高收益债利差")])
 def test_exception_cache_recovery_retains_scoring_identity(monkeypatch, tmp_path, broken, expected):
     def metric(name, value):
-        return sentiment.SentimentMetric(name, value, value, None)
+        return sentiment.SentimentMetric(name, value, value, None, observed_at="2026-09-03", source="fixture")
     monkeypatch.setattr(sentiment, "_fetch_cnn_fear_greed", lambda: metric("CNN Fear & Greed", 50))
     monkeypatch.setattr(sentiment, "_fetch_vix_primary", lambda: metric("VIX", 20))
     monkeypatch.setattr(sentiment, "_fetch_simple_index", lambda *a: metric("DXY", 100))
     monkeypatch.setattr(sentiment, "_fetch_shiller_pe", lambda: metric("Shiller PE", 30))
     monkeypatch.setattr(sentiment, "_fetch_fred_hy_spread", lambda *a: metric("高收益债利差", 3))
     monkeypatch.setattr(sentiment, broken, MagicMock(side_effect=RuntimeError("fixture")))
-    monkeypatch.setattr(LastGoodCache, "get", lambda *a: ({"current": 50, "prior": 49}, "2026-09-03"))
+    monkeypatch.setattr(LastGoodCache, "get", lambda *a: ({"current": 50, "prior": 49, "observed_at": "2026-09-03", "source": "fixture"}, "2026-09-03"))
     monkeypatch.setattr(LastGoodCache, "put", lambda *a, **k: None)
     bundle = sentiment.fetch_all("fixture", state_dir=tmp_path, today=NOW.date())
     score = score_sentiment(bundle)

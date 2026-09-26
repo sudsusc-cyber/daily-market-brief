@@ -175,10 +175,11 @@ def test_stock_yfinance_failure_uses_direct_chart(monkeypatch) -> None:
         lambda _symbol: ([100.0 + index for index in range(220)], 321.0),
     )
 
+    monkeypatch.setattr(stocks, "_yf_verified_daily", lambda _: stocks.PriceHistory([321], observed_at="2026-08-14"))
     signal = stocks.fetch_one(HOLDINGS[0])
 
     assert signal.error is None
-    assert signal.data_source == "yahoo_chart"
+    assert signal.data_source == "yahoo_chart+daily:yfinance"
     assert signal.last_close == 321.0
 
 
@@ -191,7 +192,7 @@ def test_sentiment_yfinance_failure_uses_direct_chart(monkeypatch) -> None:
     monkeypatch.setattr(
         sentiment,
         "_fetch_yahoo_chart_close",
-        lambda *_args, **_kwargs: [98.0, 99.0],
+        lambda *_args, **_kwargs: sentiment.DatedValues([98.0, 99.0], observed_at="2026-08-14", source="Yahoo"),
     )
 
     metric = sentiment._fetch_simple_index("DX-Y.NYB", "DXY")

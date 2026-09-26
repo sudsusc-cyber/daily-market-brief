@@ -30,11 +30,11 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from difflib import SequenceMatcher
 from pathlib import Path
 
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
+from src.utils.news_facts import content_key, equivalent
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -47,6 +47,9 @@ class MacroNewsItem:
     published_at: datetime  # aware UTC
     url: str
     source: str  # "WSJ" / "FT" / "Bloomberg" / "Reuters"
+
+    translated_title: str = ""
+    summary: str = ""
 
 
 @dataclass
@@ -84,6 +87,7 @@ def _fetch_feed(url: str) -> list[MacroNewsItem]:
         pub = datetime(*pp[:6], tzinfo=UTC)
         items.append(MacroNewsItem(
             title=str(getattr(e, "title", "") or "").strip(),
+            summary=str(getattr(e, "summary", "") or "").strip(),
             published_at=pub,
             url=str(getattr(e, "link", "") or ""),
             source="",  # 由调用方填充
@@ -100,13 +104,7 @@ def _normalize_for_similarity(text: str) -> str:
 
 
 def _similar(a: str, b: str, threshold: float = 0.72) -> bool:
-    """SequenceMatcher 相似度 ≥ threshold 视为同一事件。
-
-    阈值 0.72,与 company_news 保持一致。
-    """
-    return SequenceMatcher(
-        None, _normalize_for_similarity(a), _normalize_for_similarity(b),
-    ).ratio() >= threshold
+    return equivalent(a, b)
 
 
 # ---------- 状态持久化(7 天跨天去重,Phase 1) ----------
@@ -116,10 +114,7 @@ def _content_hash(source: str, item: MacroNewsItem) -> str:
     source 作为前缀而非 ticker——macro 不绑公司,同一标题被不同媒体登
     不算同一 hash(各家是独立发布,各自 hash 没问题)。
     """
-    title = (item.title or "").lower()
-    title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
-    title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
-    title = title[:80]
+    title = content_key(item)
     h = hashlib.sha1(
         f"{source}|{title}".encode(), usedforsecurity=False,
     ).hexdigest()
@@ -212,12 +207,12 @@ def fetch_all(*, state_path: Path) -> tuple[list[MacroFeedBundle], dict[str, str
         for it in b.items:
             all_items.append((it, b))
     all_items.sort(
-        key=lambda x: (_SOURCE_PRIORITY.get(x[0].source, 99), -x[0].published_at.timestamp()),
+        key=lambda x: (-x[0].published_at.timestamp(), _SOURCE_PRIORITY.get(x[0].source, 99)),
     )
 
     deduped: list[tuple[MacroNewsItem, MacroFeedBundle]] = []
     for it, b in all_items:
-        if any(_similar(it.title, k.title) for k, _ in deduped):
+        if any(_similar(content_key(it), content_key(k)) for k, _ in deduped):
             continue
         deduped.append((it, b))
 

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -30,7 +29,7 @@ def test_workflow_dispatch_also_dedups(monkeypatch) -> None:
     run(无论是 schedule 还是 workflow_dispatch),应当跳过本次。
     """
     _clean_env(monkeypatch)
-    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_: True)
+    monkeypatch.setattr(idempotency, "run_evidence", lambda *a, **k: {"accepted": True})
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")
@@ -112,23 +111,14 @@ def test_queued_run_counts(monkeypatch) -> None:
 
 def _mock_api_response(monkeypatch, runs: list[dict]) -> None:
     """注入假的 GitHub API 响应。"""
-    body = json.dumps({"workflow_runs": runs}).encode()
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = body
-    mock_resp.__enter__.return_value = mock_resp
-    mock_resp.__exit__.return_value = False
-    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: mock_resp)
-    # urlopen 返回的对象 read() 是 bytes,但 json.load 需要可读文件对象
-    monkeypatch.setattr(
-        "json.load",
-        lambda fp: json.loads(body.decode()),
-    )
+    monkeypatch.setattr(idempotency, "_github_json", lambda url, token:
+                        {"jobs": []} if "/jobs?" in url else {"workflow_runs": runs})
 
 
 def test_today_success_returns_true(monkeypatch) -> None:
     """今日(UTC)有成功的 schedule run → True(应该跳过)"""
     _clean_env(monkeypatch)
-    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_: True)
+    monkeypatch.setattr(idempotency, "run_evidence", lambda *a, **k: {"accepted": True})
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "schedule")
@@ -184,7 +174,7 @@ def test_partial_delivery_failure_counts_as_sent_to_avoid_duplicates(monkeypatch
         "status": "completed",
         "created_at": f"{today}T04:08:00Z",
     }])
-    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_kwargs: True)
+    monkeypatch.setattr(idempotency, "run_evidence", lambda *a, **k: {"accepted": True})
 
     assert already_sent_today() is True
 
@@ -218,7 +208,7 @@ def test_cross_utc_midnight_same_bjt_day(monkeypatch) -> None:
     其在 BJT 视角等于 _today_beijing_iso() 但 UTC 视角是昨天。
     """
     _clean_env(monkeypatch)
-    monkeypatch.setattr(idempotency, "_run_has_successful_step", lambda **_: True)
+    monkeypatch.setattr(idempotency, "run_evidence", lambda *a, **k: {"accepted": True})
     monkeypatch.setenv("GH_TOKEN", "x")
     monkeypatch.setenv("GH_REPO", "owner/repo")
     monkeypatch.setenv("GH_EVENT_NAME", "workflow_dispatch")

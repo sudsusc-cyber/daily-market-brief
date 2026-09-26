@@ -29,6 +29,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
+from src.processors.source_grounding import INSTRUCTION, grounded_text
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class CompanyNewsSummary:
     """LLM 加工产物"""
     summary_html: str
     footnotes: list[Footnote] = field(default_factory=list)
+    evidence: list[dict] = field(default_factory=list)
     is_silence: bool = False
 
 
@@ -200,7 +202,7 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
             flat_items.append(it)
             n = len(flat_items)
             src = f" — {it.source}" if it.source else ""
-            lines.append(f"  #{n}. {it.title}{src}")
+            lines.append(f"  #{n}. 原始标题={it.title}{src}\n原始摘要={it.summary}")
     return "\n".join(lines), flat_items
 
 
@@ -313,6 +315,7 @@ def _rebuild_safe_summary(
             raw_rows.append(("", strip_all_tags(line)))
 
     verified_rows = []
+    evidence = []
     for cn, summary in raw_rows:
         company = strip_all_tags(cn).strip()
         company = {"美国运通": "运通", "伯克希尔哈撒韦": "伯克希尔", "苹果公司": "苹果",
@@ -332,7 +335,13 @@ def _rebuild_safe_summary(
         if not valid:
             logger.warning("news_summarizer.company_source_mismatch company=%r", company)
             continue
-        verified_rows.append((cn, summary))
+        claim = FOOTNOTE_RE.sub("", strip_all_tags(summary)).strip()
+        supported, mapping = grounded_text(claim, cited)
+        if not supported:
+            continue
+        evidence.extend(mapping)
+        citations = "".join(match.group(0) for match in FOOTNOTE_RE.finditer(summary))
+        verified_rows.append((cn, escape_text(supported) + citations))
     raw_rows = verified_rows
     combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)
     rewrite, footnotes = _resolve_footnote_mapping(combined_for_scan, flat_items)
@@ -372,7 +381,7 @@ def _rebuild_safe_summary(
         return None
     return CompanyNewsSummary(
         summary_html="".join(rendered_rows),
-        footnotes=footnotes,
+        footnotes=footnotes, evidence=evidence,
     )
 
 
@@ -389,7 +398,7 @@ def summarize(
         return None
     last_error: str | None = None
     for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
-        task_instruction = _TASK_INSTRUCTION
+        task_instruction = _TASK_INSTRUCTION + INSTRUCTION
         if history is not None:
             task_instruction += history.context("company")
         if attempt > 1:

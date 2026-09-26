@@ -31,6 +31,7 @@ class _FakeHistory:
 
     def __init__(self, closes: list[object]) -> None:
         self._closes = closes
+        self.index = [f"2026-09-{day:02d}" for day in range(1, len(closes)+1)]
 
     def __getitem__(self, key: str) -> _FakeClose:
         assert key == "Close"
@@ -58,7 +59,7 @@ class _FakeCNNResp:
 
 
 def _cnn_payload(score: float, historical: list, previous_close: float | None = None) -> dict:
-    fg: dict = {"score": score, "rating": "neutral"}
+    fg: dict = {"score": score, "rating": "neutral", "timestamp": "2026-05-22T20:00:00Z"}
     if previous_close is not None:
         fg["previous_close"] = previous_close
     return {
@@ -155,11 +156,12 @@ def test_cnn_fg_prior_handles_millisecond_timestamps(monkeypatch) -> None:
     assert m.prior == pytest.approx(55.0)
 
 
-def test_fetch_yfinance_close_drops_nonfinite_values(monkeypatch) -> None:
+def test_fetch_yfinance_close_preserves_missing_prior_rows(monkeypatch) -> None:
     monkeypatch.setattr(
         sentiment.yf,
         "Ticker",
         lambda _ticker: _FakeTicker([100.0, float("nan"), None, float("inf"), 101.5]),
     )
 
-    assert sentiment._fetch_yfinance_close("^VIX", period="3mo") == [100.0, 101.5]
+    monkeypatch.setattr(sentiment, "_validate_observation", lambda *a, **k: None)
+    assert sentiment._fetch_yfinance_close("^VIX", period="3mo") == [100.0, None, None, None, 101.5]

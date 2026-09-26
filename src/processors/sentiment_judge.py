@@ -273,6 +273,7 @@ def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
         stale = f"(数据源故障,沿用 {m.stale_from} 的值)" if m.stale_from else ""
         lines.append(
             f"- {m.name}{rating}: 当前 {cur} | 前一日 {pri} | 变化 {delta}{stale}"
+            f" | 实际观测 {m.observed_at or '未知'} | 来源 {m.source or '未知'}"
         )
     return "\n".join(lines)
 

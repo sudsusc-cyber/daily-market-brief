@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -22,6 +22,16 @@ from src.collectors.sentiment import (
 )
 from src.renderer.render import _filter_iso_date_md
 from src.utils.last_good import LastGoodCache
+
+
+@pytest.fixture(autouse=True)
+def fixed_observation_clock(monkeypatch):
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 5, 8, 0, tzinfo=UTC)
+    monkeypatch.setattr(sentiment, "datetime", Clock)
+
 
 # ─── _fetch_cboe_vix ─────────────────────────────────────────────
 
@@ -57,7 +67,7 @@ def test_cboe_vix_returns_last_two_closes(monkeypatch) -> None:
     assert prior == pytest.approx(16.99)
 
 
-def test_cboe_vix_skips_invalid_close_rows(monkeypatch) -> None:
+def test_cboe_vix_preserves_missing_prior_instead_of_sliding_back(monkeypatch) -> None:
     payload = {
         "data": [
             {"date": "2026-05-05", "close": "17.0"},
@@ -70,7 +80,7 @@ def test_cboe_vix_skips_invalid_close_rows(monkeypatch) -> None:
     )
     current, prior = _fetch_cboe_vix()
     assert current == pytest.approx(17.83)
-    assert prior == pytest.approx(17.0)
+    assert prior is None
 
 
 def test_cboe_vix_raises_on_empty(monkeypatch) -> None:
@@ -92,7 +102,7 @@ def tmp_state(tmp_path: Path) -> Path:
 
 
 def _make_ok(name: str, current: float, prior: float | None = None) -> SentimentMetric:
-    return SentimentMetric(name=name, current=current, prior=prior, rating=None)
+    return SentimentMetric(name=name, current=current, prior=prior, rating=None, observed_at="2026-05-07", source="fixture")
 
 
 def _make_failed(name: str, msg: str = "boom") -> SentimentMetric:
@@ -115,13 +125,13 @@ def test_with_last_good_persists_on_success(tmp_state: Path) -> None:
     cached = LastGoodCache(tmp_state).get("sentiment.VIX")
     assert cached is not None
     assert cached[0]["current"] == 17.83
-    assert cached[1] == "2026-05-08"
+    assert cached[1] == "2026-05-07"
 
 
 def test_with_last_good_falls_back_on_failure(tmp_state: Path) -> None:
     cache = LastGoodCache(tmp_state)
     # 先存一个成功值
-    cache.put("sentiment.VIX", {"current": 17.5, "prior": 16.9, "rating": None, "unit": ""},
+    cache.put("sentiment.VIX", {"current": 17.5, "prior": 16.9, "rating": None, "unit": "", "observed_at": "2026-05-07", "source": "fixture"},
               today=date(2026, 5, 7))
     # 第二天失败:应沿用昨天的值,带 stale_from
     m = _with_last_good(
@@ -147,7 +157,7 @@ def test_with_last_good_no_cache_passes_through(tmp_state: Path) -> None:
 def test_with_last_good_stale_passes_through_error(tmp_state: Path) -> None:
     """缓存存在但已过 7 天 → 透传原 error,不沿用。"""
     cache = LastGoodCache(tmp_state)
-    cache.put("sentiment.VIX", {"current": 17.5, "prior": 16.9, "rating": None, "unit": ""},
+    cache.put("sentiment.VIX", {"current": 17.5, "prior": 16.9, "rating": None, "unit": "", "observed_at": "2026-05-07", "source": "fixture"},
               today=date(2026, 4, 1))  # 5 周前
     m = _with_last_good(
         lambda: _make_failed("VIX", "still failing"),
@@ -173,7 +183,7 @@ def test_with_last_good_cache_miss_passes_through_error(tmp_state: Path) -> None
 def test_with_last_good_recovery_clears_stale(tmp_state: Path) -> None:
     """先有 stale,后来恢复成功 → 新值入 cache,不再带 stale_from。"""
     cache = LastGoodCache(tmp_state)
-    cache.put("sentiment.VIX", {"current": 17.5, "prior": 16.9, "rating": None, "unit": ""},
+    cache.put("sentiment.VIX", {"current": 17.5, "prior": 16.9, "rating": None, "unit": "", "observed_at": "2026-05-07", "source": "fixture"},
               today=date(2026, 5, 7))
     m = _with_last_good(
         lambda: _make_ok("VIX", 18.5, 17.5),
@@ -289,7 +299,7 @@ def test_fetch_all_vix_both_fail_uses_last_good(
     """CBOE + yfinance 都挂 + cache 有昨天值 → 沿用,带 stale_from。"""
     LastGoodCache(tmp_state).put(
         "sentiment.VIX",
-        {"current": 17.5, "prior": 16.9, "rating": None, "unit": ""},
+        {"current": 17.5, "prior": 16.9, "rating": None, "unit": "", "observed_at": "2026-05-07", "source": "fixture"},
         today=date(2026, 5, 7),
     )
 

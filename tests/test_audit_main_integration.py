@@ -18,12 +18,14 @@ from src.valuation.models import ValuationDisplay
 @pytest.mark.parametrize("exhausted,scenario", [
     (False, "normal"), (True, "normal"), (False, "failed_delivery"),
     (False, "partial_delivery"), (False, "thesis_publication"), (False, "valuation_timeout"),
+    (False, "qqqm_retry"), (False, "qqqm_retry_fail"), (False, "qqqm_retry_timeout"),
 ])
 def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(monkeypatch, tmp_path, exhausted, scenario):
     main = importlib.import_module("src.main")
     subject = importlib.import_module("src.processors.subject.generator")
     now = datetime(2026, 9, 4, 0, tzinfo=UTC)
     monkeypatch.setattr(main, "_STATE_DIR", tmp_path)
+    monkeypatch.setenv("BRIEF_AUDIT_DIR", str(tmp_path / "audit"))
     state_files = {
         "pushed_company_news.json": main.company_news,
         "pushed_macro_news.json": main.macro_news,
@@ -52,6 +54,18 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     if exhausted:
         monkeypatch.setattr(main, "RuntimeBudget", lambda: RuntimeBudget(seconds=0))
     stock_call = MagicMock(return_value=[main.stocks.StockSignal(HOLDINGS[0], 500, 400, 300, .25, .667, "NONE")])
+    qqqm_calls = []
+    if scenario.startswith("qqqm_retry"):
+        stock_call.return_value.append(main.stocks.StockSignal(HOLDINGS[-1], 300, 280, 240, .1, .2, "NONE"))
+        def qqqm_prepare(**kwargs):
+            qqqm_calls.append(kwargs)
+            if len(qqqm_calls) == 2 and scenario == "qqqm_retry_timeout":
+                raise StageTimeout()
+            if len(qqqm_calls) == 2 and scenario == "qqqm_retry":
+                return ValuationDisplay("QQQM", "current", 400, financial_as_of="2026-09-03")
+            return ValuationDisplay("QQQM", "source_unavailable")
+        monkeypatch.setattr(main, "prepare_qqqm_display", qqqm_prepare)
+        monkeypatch.setattr(main, "cached_qqqm_display", lambda **_: ValuationDisplay("QQQM", "source_unavailable"))
     monkeypatch.setattr(main.stocks, "fetch_all", stock_call)
     monkeypatch.setattr(main, "MorningstarPublicProvider", lambda: MagicMock())
     valuation_calls = []
@@ -127,6 +141,9 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         return
     assert main.main() == 0
     assert len(sent) == 1
+    if scenario.startswith("qqqm_retry"):
+        assert len(qqqm_calls) == 2
+        assert valuation_calls[-1]["qqqm_display"].status == ("current" if scenario == "qqqm_retry" else "source_unavailable")
     assert sent[0]["recipient"] == ["a@example.com", "b@example.com"]
     assert "Microsoft source never published" not in sent[0]["html_body"]
     assert company_news._load_pushed_news(tmp_path / "pushed_company_news.json") == (previous if exhausted else {})

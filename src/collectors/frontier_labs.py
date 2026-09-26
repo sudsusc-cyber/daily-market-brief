@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -21,6 +20,7 @@ import finnhub  # type: ignore[import-untyped]
 
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
+from src.utils.news_facts import canonical_fact, content_key
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -48,6 +48,8 @@ class FrontierItem:
     source: str
     source_type: SourceType
     related_tickers: list[str]
+
+    translated_title: str = ""
 
 
 @dataclass
@@ -184,10 +186,7 @@ def _finnhub_items_for_lab(raw: list[dict], lab: FrontierLab) -> list[FrontierIt
 
 
 def _normalize_title(title: str) -> str:
-    title = (title or "").lower()
-    title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
-    title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
-    return title[:100]
+    return canonical_fact(title)
 
 
 def _normalize_url(url: str) -> str:
@@ -195,7 +194,7 @@ def _normalize_url(url: str) -> str:
 
 
 def _content_hash(lab: str, item: FrontierItem) -> str:
-    key = _normalize_title(item.title) or _normalize_url(item.url)
+    key = content_key(item) or _normalize_url(item.url)
     h = hashlib.sha1(
         f"{lab}|{key}".encode(), usedforsecurity=False,
     ).hexdigest()
@@ -255,11 +254,9 @@ def _dedupe_items(items: list[FrontierItem]) -> list[FrontierItem]:
     seen_urls: set[str] = set()
     kept: list[FrontierItem] = []
     for item in items:
-        title_key = _normalize_title(item.title)
+        title_key = content_key(item)
         url_key = _normalize_url(item.url)
         if title_key and title_key in seen_titles:
-            continue
-        if url_key and url_key in seen_urls:
             continue
         if title_key:
             seen_titles.add(title_key)

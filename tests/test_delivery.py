@@ -34,6 +34,7 @@ def test_delivery_receipt_written_only_when_configured(tmp_path, monkeypatch) ->
         "accepted_count": 2,
         "refused_count": 0,
         "run_id": "123",
+        "run_attempt": "1", "edition": "2026-07-11",
         "sent_at": "2026-07-11T00:00:00+00:00",
         "status": "full",
     }

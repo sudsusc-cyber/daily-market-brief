@@ -304,6 +304,111 @@ def _compact_inline_styles(html: str) -> str:
     return re.sub(r'style="(?P<body>[^"]*)"', _compact, html)
 
 
+def _compact_inherited_styles(html: str) -> str:
+    """Drop identical inherited declarations while preserving original markup."""
+    from html.parser import HTMLParser
+
+    inherited_keys = {"font-family", "font-size", "font-style", "font-weight", "color",
+                      "line-height", "letter-spacing", "font-variant-numeric", "font-feature-settings"}
+    defaults = {"strong": {"font-weight"}, "b": {"font-weight"}, "th": {"font-weight"},
+                "em": {"font-style"}, "i": {"font-style"}, "a": {"color"},
+                "small": {"font-size"}, "sup": {"font-size"}, "sub": {"font-size"}}
+    void = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+
+    class Compactor(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.stack = []
+            self.parts = []
+
+        def start(self, tag, attrs, closed=False):
+            inherited = self.stack[-1][1] if self.stack else {}
+            style = {}
+            for declaration in (dict(attrs).get("style") or "").split(";"):
+                key, separator, value = declaration.partition(":")
+                if separator:
+                    style[key.strip()] = value.strip()
+            original = dict(style)
+            for key in inherited_keys - defaults.get(tag, set()):
+                if key in style and style[key] == inherited.get(key) and not (tag == "table" and key == "font-family"):
+                    del style[key]
+            if tag == "table" and "font-family" not in style and inherited.get("font-family"):
+                style["font-family"] = inherited["font-family"]
+            raw = self.get_starttag_text()
+            if style != original:
+                value = ";".join(f"{key}:{value}" for key, value in style.items())
+                replacement = f' style="{value}"' if value else ""
+                if "style" in dict(attrs):
+                    raw = re.sub(r'\s+style="[^"]*"', lambda _: replacement, raw)
+                elif replacement:
+                    raw = raw[:-1] + replacement + ">"
+            self.parts.append(raw)
+            effective = {**inherited, **{key: value for key, value in original.items() if key in inherited_keys}}
+            for key in defaults.get(tag, set()) - original.keys():
+                effective.pop(key, None)
+            if not closed and tag not in void:
+                self.stack.append((tag, effective))
+
+        def handle_starttag(self, tag, attrs):
+            self.start(tag, attrs)
+
+        def handle_startendtag(self, tag, attrs):
+            self.start(tag, attrs, closed=True)
+
+        def handle_endtag(self, tag):
+            self.parts.append(f"</{tag}>")
+            for index in range(len(self.stack)-1, -1, -1):
+                if self.stack[index][0] == tag:
+                    del self.stack[index:]
+                    break
+
+        def handle_data(self, data):
+            self.parts.append(data)
+
+        def handle_comment(self, data):
+            self.parts.append(f"<!--{data}-->")
+
+        def handle_decl(self, decl):
+            self.parts.append(f"<!{decl}>")
+
+        def handle_entityref(self, name):
+            self.parts.append(f"&{name};")
+
+        def handle_charref(self, name):
+            self.parts.append(f"&#{name};")
+
+    parser = Compactor()
+    parser.feed(html)
+    parser.close()
+    return "".join(parser.parts)
+
+
+def _factor_repeated_styles(html: str) -> str:
+    """Compact layout for full editions; all text, links and tables survive.
+
+    Standard email clients support head styles. Clients stripping style blocks
+    retain semantic tables and every source, with simpler default typography.
+    """
+    from collections import Counter
+
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    counts = Counter(node.get("style") for node in soup.select("[style]"))
+    styles = {style: f"brief{index}" for index, (style, count) in enumerate(counts.items())
+              if count > 1 and (count - 1) * len(style) > count * 22 + 32}
+    for node in soup.select("[style]"):
+        if name := styles.get(node["style"]):
+            node["class"] = [*node.get("class", []), name]
+            del node["style"]
+    if styles and soup.head:
+        sheet = soup.new_tag("style", type="text/css")
+        sheet.string = "".join(f".{name}{{{style}}}" for style, name in styles.items())
+        soup.head.append(sheet)
+        if soup.body:
+            soup.body["data-email-layout"] = "compact"
+    return str(soup)
+
+
 def render_email(
     *,
     signals: list[StockSignal],
@@ -411,8 +516,11 @@ def render_email(
     )
     # 邮件客户端按解码后的 HTML 体积裁剪。inline style 是模板中
     # 最大的重复项;只压缩属性内 CSS 分隔符与标签间排版空白,不碰正文。
-    compacted = _compact_inline_styles(html)
+    compacted = _compact_inherited_styles(_compact_inline_styles(html))
     compacted = re.sub(r"(?<=>)\s+(?=<)", "", compacted).strip()
+    if len(compacted.encode("utf-8")) > _EMAIL_HTML_WARNING_BYTES:
+        compacted = _factor_repeated_styles(compacted)
+        logger.info("render.compact_layout content_preserved=true")
     size_bytes = len(compacted.encode("utf-8"))
     logger.info("render.email_html_size bytes=%d", size_bytes)
     if size_bytes > _EMAIL_HTML_WARNING_BYTES:

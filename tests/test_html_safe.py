@@ -196,7 +196,8 @@ def test_news_summarizer_neutralizes_xss_in_summary() -> None:
     assert "<img" not in html.lower()
     assert "onerror" not in html.lower()
     # 文本内容应被 escape 后保留(非字符级删除)— "推出新产品" 应可见
-    assert "推出新产品" in html
+    assert "原文摘录：ok" in html
+    assert "推出新产品" not in html
 
 
 def test_news_summarizer_neutralizes_xss_in_company_name() -> None:
@@ -250,7 +251,8 @@ def test_macro_filter_neutralizes_xss_paragraph() -> None:
     assert "steal" not in html  # 函数名作为属性值时被 escape
     # 但段落主题与正文文本仍可见
     assert "能源市场" in html
-    assert "布伦特原油上涨" in html
+    assert bundle.items[0].title in html
+    assert "布伦特原油上涨" not in html
 
 
 def test_macro_filter_drops_javascript_url() -> None:
@@ -311,4 +313,5 @@ def test_macro_filter_strips_unknown_tags() -> None:
     assert "onclick" not in html.lower()
     assert "evil.com" not in html or "&quot;" in html  # 已 escape
     # 文本仍可见
-    assert "中国经济复苏" in html
+    assert bundle.items[0].title in html
+    assert "中国经济复苏" not in html

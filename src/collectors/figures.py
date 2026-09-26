@@ -31,6 +31,7 @@ import finnhub  # type: ignore[import-untyped]
 
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
+from src.utils.news_facts import content_key
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -44,6 +45,8 @@ class FigureMention:
     published_at: datetime
     url: str
     source: str  # 媒体名
+
+    translated_title: str = ""
 
 
 @dataclass
@@ -200,13 +203,7 @@ def _finnhub_mentions_for_person(
 def _content_hash(person: str, item: FigureMention) -> str:
     """归一化 hash:去空白/标点/媒体后缀,让不同媒体的近似 title 共享同一 hash,
     避免"第一财经报道 X 与 搜狐转载 X" 在 7 天窗口内重复推送。"""
-    title = (item.title or "").lower()
-    # 去掉常见媒体后缀(如 " - MSN" / " — 新浪财经" / " - Reuters")
-    title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
-    # 去标点和空白,只保留字母数字和中日韩文字
-    title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
-    # 截前 80 字符,避免过长 title 因尾部差异错过去重
-    title = title[:80]
+    title = content_key(item)
     h = hashlib.sha1(
         f"{person}|{title}".encode(), usedforsecurity=False,
     ).hexdigest()

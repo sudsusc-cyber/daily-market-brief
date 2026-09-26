@@ -5,7 +5,7 @@
 处理:
   1. 规则层预筛(__pre_rule_filter):候选必须含直接引语标记,否则丢弃
   2. LLM 层判断:是否为本人近期发声 + 质量评分(1-5) + 跨媒体合并 + 提炼关键观点
-  3. 文本相似度兜底:对 LLM 漏掉的相似观点,Python 端用 SequenceMatcher 再去一道
+  3. 事实等价兜底:只删除规范化后相同的事实,未知改写保留候选
   4. 版面限流(select_voice_summaries):最多 3 位人物,每人最多 1 条观点
 
 输出:list[FigureSummary](人物 → 中文摘要 list)
@@ -19,11 +19,12 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from difflib import SequenceMatcher
 
 from src.collectors.figures import FigureBundle, FigureMention
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
+from src.processors.source_grounding import INSTRUCTION, grounded_text
+from src.utils.news_facts import content_key, equivalent
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,8 @@ class FigureKeyPoint:
     source_name: str  # 媒体名
     footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
     score: int = 0  # LLM 质量评分 1-5;>=4 才可展示
-    published_at: datetime | None = None  # 原始报道时间,用于限流排序
+    published_at: datetime | None = None
+    evidence: list[dict] = field(default_factory=list)  # 原始报道时间,用于限流排序
 
 
 @dataclass
@@ -221,8 +223,7 @@ def _normalize(text: str) -> str:
 
 
 def _similar(a: str, b: str, threshold: float = 0.6) -> bool:
-    """SequenceMatcher 文本相似度;阈值 0.6 适合中文新闻标题/观点合并。"""
-    return SequenceMatcher(None, _normalize(a), _normalize(b)).ratio() >= threshold
+    return equivalent(a, b)
 
 
 @dataclass
@@ -243,6 +244,7 @@ class _FigureParseResult:
 def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseResult:
     kept: list[FigureKeyPoint] = []
     index_counts: dict[int, int] = {}
+    seen_source_facts: set[str] = set()
     invalid_yes = False
     for line in text.splitlines():
         m = _LINE_RE.match(line.strip())
@@ -281,28 +283,24 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
         if score < 4:
             logger.info("figure_filter.low_score score=%d text=%s", score, body[:60])
             continue
-        # 解析索引(可能是 "1" 或 "1,3,5"),取第一个有效的为代表来源
-        primary_idx = valid_indexes[0]
-        # 兜底相似度去重:LLM 万一漏判,Python 端再做一道
-        # 阈值 0.6 适合中文短句:即便措辞不同但讲同一事件也会被合并
-        is_dup = any(_similar(body, k.text) for k in kept)
-        if is_dup:
-            continue
-        src_item = items[primary_idx - 1]
-        # URL scheme 白名单防御
-        if not is_safe_url(src_item.url):
-            logger.warning(
-                "figure_filter.dropped_unsafe_url url=%r",
-                (src_item.url or "")[:80],
-            )
-            continue
-        kept.append(FigureKeyPoint(
-            text=body,
-            source_url=src_item.url,
-            source_name=src_item.source,
-            score=score,
-            published_at=src_item.published_at,
-        ))
+        # A model merging indexes does not prove that their facts are equal.
+        for source_index in valid_indexes:
+            src_item = items[source_index - 1]
+            if not is_safe_url(src_item.url):
+                continue
+            key = content_key(src_item)
+            if key in seen_source_facts:
+                continue
+            supported, mapping = grounded_text(body, [src_item])
+            if not supported:
+                invalid_yes = True
+                continue
+            seen_source_facts.add(key)
+            kept.append(FigureKeyPoint(
+                text=supported, evidence=mapping,
+                source_url=src_item.url, source_name=src_item.source,
+                score=score, published_at=src_item.published_at,
+            ))
     return _FigureParseResult(
         items=kept,
         covered_indexes=set(index_counts),
@@ -338,7 +336,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
     payload = _format_input(qualified)
     last_error: str | None = None
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
-        instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person)
+        instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person) + INSTRUCTION
         if history is not None:
             instruction += history.context("figures", bundle.person)
         if attempt > 1:

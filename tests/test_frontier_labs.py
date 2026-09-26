@@ -197,7 +197,7 @@ def test_frontier_labs_parse_keeps_major_item_with_tickers() -> None:
         "OpenAI",
     )
 
-    assert len(out) == 1
+    assert len(out) == 2  # Distinct source facts survive a model merge.
     assert out[0].lab == "OpenAI"
     assert out[0].score == 5
     assert out[0].related_tickers == ["MSFT", "NVDA", "TSM"]

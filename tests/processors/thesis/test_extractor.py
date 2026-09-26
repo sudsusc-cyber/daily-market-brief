@@ -296,6 +296,7 @@ def test_extract_caps_evidence_items():
     summary = SimpleNamespace(
         summary_html=" ".join(item["text"] for item in payload),
         footnotes=[SimpleNamespace(url=source_url)],
+        evidence=[{"url": source_url, "original_title": item["text"], "excerpt": item["text"], "output_text": item["text"]} for item in payload],
     )
 
     result = extract(

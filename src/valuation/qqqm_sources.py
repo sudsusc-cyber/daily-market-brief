@@ -8,13 +8,15 @@ import logging
 import math
 import re
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar, copy_context
 from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from threading import Event
 
 import requests
 from bs4 import BeautifulSoup
 
 from src.utils.holidays import is_us_market_open
+from src.utils.market_clock import latest_closed_session
 
 logger = logging.getLogger(__name__)
 _BASE = "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46138G649"
@@ -25,21 +27,27 @@ PAIR_URL = "https://historyofmarket.com/api/ndx/forward-pe.json"
 PE_URL = "https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio"
 PE_READER_URL = "https://r.jina.ai/" + PE_URL
 DAILY_FORWARD_BASIS = "dl-blended-fy1fy2"
+_CANCEL_FETCH: ContextVar = ContextVar("qqqm_cancel_fetch", default=None)
+SOURCE_DIAGNOSTICS: ContextVar = ContextVar("qqqm_source_diagnostics", default=None)
+
+
+def _diagnose(**record) -> None:
+    sink = SOURCE_DIAGNOSTICS.get()
+    if sink is not None:
+        sink(record)
+
+
 DIV_BACKUP_URL = "https://stockanalysis.com/etf/qqqm/dividend/"
 
 
 def latest_closed_date(checked_at: datetime) -> date:
-    eastern = checked_at.astimezone(ZoneInfo("America/New_York"))
-    anchor = eastern.date()
-    if eastern.hour < 16:
-        anchor -= timedelta(days=1)
-    while not is_us_market_open(anchor):
-        anchor -= timedelta(days=1)
-    return anchor
+    return latest_closed_session("QQQM", checked_at)
 
 
 def _fetch(url: str) -> dict | None:
     for attempt in range(2):
+        if (cancel := _CANCEL_FETCH.get()) is not None and cancel.is_set():
+            return None
         try:
             response = requests.get(url, timeout=15)
             response.raise_for_status()
@@ -141,6 +149,8 @@ def parse_gurufocus_pe(text: str, *, anchor: date, reader: bool = False) -> floa
 def fetch_gurufocus_pe(*, anchor: date) -> dict | None:
     # Two transports, one underlying public source and one valuation definition.
     for url, reader in ((PE_URL, False), (PE_READER_URL, True)):
+        if (cancel := _CANCEL_FETCH.get()) is not None and cancel.is_set():
+            return None
         try:
             response = requests.get(url, timeout=15)
             response.raise_for_status()
@@ -188,7 +198,11 @@ def dividend_rows(payload: dict, *, anchor: date) -> dict[str, float]:
     # A future distribution-schedule change requires review, not guessing.
     ordered = sorted(date.fromisoformat(day) for day in dates)
     boundaries = [start, *ordered, anchor]
-    if len(ordered) != 4 or any((b - a).days > 110 for a, b in zip(boundaries, boundaries[1:], strict=False)):
+    quarters = [day.year * 4 + (day.month - 1) // 3 for day in ordered]
+    if (len(ordered) not in (4, 5)
+            or any(b - a != 1 for a, b in zip(quarters, quarters[1:], strict=False))
+            or any(not 60 <= (b - a).days <= 110 for a, b in zip(ordered, ordered[1:], strict=False))
+            or any((b - a).days > 110 for a, b in zip(boundaries, boundaries[1:], strict=False))):
         raise ValueError("QQQM quarterly dividend coverage incomplete or schedule changed")
     # Use actual total cash per share in both providers, not a tax-income subset.
     return {row["exDate"]: _positive(row.get("distributionAmountPerUnit")) for row in selected}
@@ -248,7 +262,7 @@ def build_source_packet(
             or dividends.get("cusip") != "46138G649" or dividends.get("currencyCode") != "USD"):
         raise ValueError("QQQM source identity/currency mismatch")
     if nav.get("effectiveDate") != anchor.isoformat():
-        raise ValueError("QQQM official NAV is not from latest closed trading day")
+        raise ValueError(f"QQQM official NAV is not from latest closed trading day expected_date={anchor.isoformat()} actual_date={str(nav.get('effectiveDate'))[:40]}")
     nav_value = _positive(nav.get("nav"))
     nav_evidence = verify_nav_history(nav_history, anchor=anchor, nav_value=nav_value)
     if dividends_url not in {DIV_URL, DIV_BACKUP_URL}:
@@ -305,12 +319,38 @@ def build_source_packet(
 
 def fetch_source_packet(*, checked_at: datetime, allow_daily_forward: bool = False) -> dict | None:
     anchor = latest_closed_date(checked_at)
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        pe_future = pool.submit(fetch_gurufocus_pe, anchor=anchor)
-        backup_future = pool.submit(fetch_dividend_backup, anchor=anchor)
-        nav, dividends, pair, history = list(pool.map(_fetch, (NAV_URL, DIV_URL, PAIR_URL, NAV_HISTORY_URL)))
+    cancel = Event()
+    token = _CANCEL_FETCH.set(cancel)
+    pool = ThreadPoolExecutor(max_workers=6)
+    try:
+        pe_future = pool.submit(copy_context().run, fetch_gurufocus_pe, anchor=anchor)
+        backup_future = pool.submit(copy_context().run, fetch_dividend_backup, anchor=anchor)
+        futures = [pool.submit(copy_context().run, _fetch, url)
+                   for url in (NAV_URL, DIV_URL, PAIR_URL, NAV_HISTORY_URL)]
+        nav, dividends, pair, history = [future.result() for future in futures]
         pe = pe_future.result()
         backup = backup_future.result()
+    except BaseException:
+        # SIGALRM must not turn into ThreadPoolExecutor.__exit__'s blocking join.
+        # In-flight read-only HTTP calls retain their 15s timeout; no retry or
+        # state write can occur after cancellation.
+        cancel.set()
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    else:
+        pool.shutdown(wait=True)
+    finally:
+        _CANCEL_FETCH.reset(token)
+    diagnostic = {"expected_date": anchor.isoformat(),
+                  "actual_date": str((nav or {}).get("effectiveDate"))[:40],
+                  "checked_at": checked_at.isoformat()}
+    try:
+        diagnostic["nav_history"] = verify_nav_history(
+            history, anchor=anchor, nav_value=_positive((nav or {}).get("nav")))
+        diagnostic["nav_history_status"] = "matched"
+    except (KeyError, TypeError, ValueError) as exc:
+        diagnostic.update(nav_history_status="rejected", nav_history_reason=str(exc)[:240])
+    _diagnose(**diagnostic)
     if nav is None or history is None:
         logger.warning("valuation.qqqm_nav_history_unavailable")
         return None
@@ -344,5 +384,7 @@ def fetch_source_packet(*, checked_at: datetime, allow_daily_forward: bool = Fal
                                         "date": pe["date"], "quote": str(pe["value"])})
         return packet
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("valuation.qqqm_source_packet_invalid reason=%s", exc)
+        _diagnose(status="rejected", reason=str(exc)[:240], **diagnostic)
+        logger.warning("valuation.qqqm_source_packet_invalid expected_date=%s actual_date=%s reason=%s",
+                       anchor, diagnostic["actual_date"], exc)
         return None

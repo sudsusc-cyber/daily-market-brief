@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.sender.smtp_sender import send_html_email
 from src.settings import load_email_settings
+from src.utils.action_evidence import candidate_run, run_evidence, workflow_runs
 from src.utils.dates import BEIJING
 from src.utils.holidays import should_send_today
 
@@ -70,14 +71,8 @@ def _github_json(url: str, token: str) -> dict:
 
 def _run_has_delivery_confirmation(*, repo: str, token: str, run_id: int) -> bool:
     """Jobs API 中存在成功的 Confirm email delivery 步骤才算实际送达。"""
-    url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
-    data = _github_json(url, token)
-    return any(
-        step.get("name") in {"Confirm full email delivery", "Confirm email delivery"}
-        and step.get("conclusion") == "success"
-        for job in (data.get("jobs", []) or [])
-        for step in (job.get("steps", []) or [])
-    )
+    return run_evidence(lambda url: _github_json(url, token), repo, run_id,
+                        today=_today_beijing_iso())["full"]
 
 
 def check_today_status() -> tuple[bool, str]:
@@ -102,21 +97,11 @@ def check_today_status() -> tuple[bool, str]:
         return False, "GH_REPO 不是合法的 owner/repo"
 
     today = _today_beijing_iso()
-    url = (
-        f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
-        f"?branch=main&per_page=30"
-    )
     try:
-        data = _github_json(url, token)
-    except Exception as exc:  # noqa: BLE001
-        return False, f"GH API 调用失败: {exc!r}"
-
-    runs = data.get("workflow_runs", []) or []
-    today_runs = [
-        r for r in runs
-        if _bjt_date_of_iso(r.get("created_at") or "") == today
-        and r.get("head_branch", "main") == "main"
-    ]
+        runs = list(workflow_runs(lambda url: _github_json(url, token), repo))
+    except Exception as exc:
+        return False, f"GH API 调用失败: {type(exc).__name__}"
+    today_runs = [run for run in runs if candidate_run(run, today)]
 
     if not today_runs:
         return False, f"今日({today} BJT)无 daily.yml run 记录"
@@ -127,11 +112,14 @@ def check_today_status() -> tuple[bool, str]:
         if not isinstance(run_id, int):
             continue
         try:
-            if _run_has_delivery_confirmation(repo=repo, token=token, run_id=run_id):
-                return True, (
-                    f"今日邮件已确认送达 run_id={run_id} "
-                    f"created_at={run.get('created_at')}"
-                )
+            evidence = run_evidence(lambda url: _github_json(url, token), repo, run_id, today=today)
+            if evidence["accepted"]:
+                if not evidence["full"]:
+                    return False, f"SMTP 部分接受 run_id={run_id}；禁止自动整封重发，请核对拒收状态"
+                if evidence["degraded"]:
+                    return False, f"邮件已全体 SMTP 接受，但内容降级 run_id={run_id}；仅质量告警，禁止整封重发"
+                return True, f"今日邮件已确认送达 run_id={run_id} edition={today}"
+
         except Exception as exc:  # noqa: BLE001
             job_lookup_errors.append(f"run_id={run_id}: {type(exc).__name__}: {exc}")
 
@@ -166,7 +154,7 @@ def send_alert(reason: str) -> None:
     cronjob_url = "https://console.cron-job.org/jobs"
     safe_reason = _html.escape(reason or "未知原因")
 
-    subject = "⚠️ 朝闻录监控告警 — 今日邮件可能未发出"
+    subject = "⚠️ 朝闻录监控告警 — 投递或内容质量异常"
     body = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
       <h2 style="color: #c0392b; margin-top: 0;">⚠️ 朝闻录监控告警</h2>
@@ -220,31 +208,20 @@ def _alert_already_sent_today() -> bool:
     if not _REPO_SLUG_RE.fullmatch(repo):
         logger.warning("monitor.alert_dedup_invalid_repo")
         return False
-    url = (
-        f"https://api.github.com/repos/{repo}/actions/workflows/monitor.yml/runs"
-        f"?branch=main&per_page=30"
-    )
     try:
-        runs = (_github_json(url, token).get("workflow_runs", []) or [])
-        for run in runs:
-            if str(run.get("id", "")) == current_run:
+        def get_json(url):
+            return _github_json(url, token)
+        for run in workflow_runs(get_json, repo, "monitor.yml"):
+            if not candidate_run(run, _today_beijing_iso()):
                 continue
-            if run.get("head_branch", "main") != "main":
+            rid = run.get("id")
+            current_attempt = int(os.environ.get("GH_RUN_ATTEMPT", "1"))
+            if str(rid) == current_run and current_attempt == 1:
                 continue
-            if _bjt_date_of_iso(run.get("created_at") or "") != _today_beijing_iso():
-                continue
-            run_id = run.get("id")
-            if not isinstance(run_id, int):
-                continue
-            jobs_url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
-            jobs = (_github_json(jobs_url, token).get("jobs", []) or [])
-            if any(
-                step.get("name") == "Send monitor alert"
-                and step.get("conclusion") == "success"
-                for job in jobs
-                for step in (job.get("steps", []) or [])
-            ):
+            if run_evidence(get_json, repo, rid, today=_today_beijing_iso(),
+                            exclude_attempt=current_attempt if str(rid) == current_run else None)["alerted"]:
                 return True
+
     except Exception as exc:  # noqa: BLE001
         # 去重检查失败不能吞掉真正告警；最多承担重复一封的较小风险。
         logger.warning("monitor.alert_dedup_failed exc_type=%s", type(exc).__name__)
@@ -299,6 +276,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     if "--check-only" in sys.argv:
         sys.exit(check_only())
     if "--send-request" in sys.argv:

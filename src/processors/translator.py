@@ -121,9 +121,9 @@ def translate_titles(
 
 
 def translate_in_place_news(items: Iterable, *, client: LLMClient) -> None:
-    """把 NewsItem / FigureMention / MacroNewsItem 等对象的 .title 替换为中文。"""
+    """原始标题保持不变；译文仅存于 translated_title，不能充当原始证据。"""
     items_list = list(items)
     titles = [getattr(it, "title", "") for it in items_list]
     translated = translate_titles(titles, client=client)
     for it, t in zip(items_list, translated, strict=True):
-        it.title = t
+        it.translated_title = t

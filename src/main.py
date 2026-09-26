@@ -23,6 +23,7 @@ LLM 调用失败时各区块独立降级；宏观视野不展示未加工 RSS �
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -61,6 +62,7 @@ from src.processors.thesis import state as thesis_state
 from src.renderer.render import render_email
 from src.sender.smtp_sender import InlineImage, send_html_email
 from src.settings import load_settings
+from src.utils.brief_audit import archive_delivery, archive_publication, content_report
 from src.utils.dates import now_beijing
 from src.utils.delivery import clear_delivery_receipt, write_delivery_receipt
 from src.utils.holidays import should_send_today
@@ -171,7 +173,7 @@ def _translate_all_bundles(
     macro_bundles: list,
     client: LLMClient,
 ) -> None:
-    """把所有 collector 的标题就地替换为中文,只翻译模板渲染的前 5 条"""
+    """为各 collector 前 5 条另存参考译文，原始标题/摘要保持不变"""
     titles_to_translate: list[object] = []
     for b in cn_bundles:
         titles_to_translate.extend(b.items[:5])
@@ -642,6 +644,18 @@ def main() -> int:
     # 发送前第二遍检查，封住“第一遍检查后、邮件渲染前发布新财报”的竞态窗口；
     # Morningstar 在真实晚时点重读；旧的自算模型仍只复核财报编号。
     if settings.valuation_enabled:
+        if qqqm_signal is not None and (qqqm_display is None or qqqm_display.status != "current"):
+            logger.info("valuation.qqqm_final_retry")
+            first_qqqm = qqqm_display
+            retry_qqqm = budget.call(
+                prepare_qqqm_display, seconds=75,
+                fallback=lambda: timed_out("QQQM 发送前复核", cached_qqqm_display(
+                    price=qqqm_signal.last_close, state_dir=_STATE_DIR, checked_at=now_beijing())),
+                price=qqqm_signal.last_close, client=llm, state_dir=_STATE_DIR,
+                checked_at=now_beijing(),
+            )
+            qqqm_display = (first_qqqm if first_qqqm is not None and not first_qqqm.is_pending
+                            and retry_qqqm.is_pending else retry_qqqm)
         logger.info("valuation.freshness_final_check")
         valuation_displays, valuation_freshness = budget.call(prepare_valuation_displays,
             seconds=360, fallback=valuation_timeout,
@@ -658,7 +672,7 @@ def main() -> int:
         publishable = sum(
             1 for value in (valuation_displays or {}).values() if not value.is_pending
         )
-        expected_valuations = len(COMPANY_HOLDINGS) + (1 if qqqm_display is not None else 0)
+        expected_valuations = len(HOLDINGS)
         if publishable < expected_valuations:
             _record_quality_alert(
                 f"{'公允价值' if settings.morningstar_fair_value_enabled else '内在价值'}"
@@ -747,6 +761,44 @@ def main() -> int:
             cost_cny,
         )
 
+    try:
+        qqqm_diagnostics = json.loads((_STATE_DIR / "qqqm_calculation_audit.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        qqqm_diagnostics = {}
+    report = content_report(
+        signals=signals, valuations=valuation_displays, sentiment=sentiment_bundle,
+        diagnostics={"QQQM": qqqm_diagnostics},
+        expected_tickers=[holding.ticker for holding in HOLDINGS] if settings.valuation_enabled else [],
+        news={
+            "company": (sum(len(b.items) for b in cn_bundles), [company_news_summary]),
+            "macro": (sum(len(b.items) for b in macro_bundles), [macro_news_summary]),
+            "figures": (sum(len(b.items) for b in fig_bundles), [item for group in figure_summaries for item in group.items]),
+            "frontier": (sum(len(b.items) for b in frontier_labs_bundles), frontier_labs_items),
+        },
+    )
+    audit_directory = archive_publication(html, generated_at=now_bj, report=report)
+    if report["status"] == "degraded" or len(html.encode()) > 98304:
+        _record_quality_alert("内容存在沿用、缺失、来源冲突或原文摘录降级；详见结构化审计。")
+
+    first_acceptance_at = None
+
+    def delivery_progress(result):
+        nonlocal audit_directory, first_acceptance_at
+        if first_acceptance_at is None:
+            first_acceptance_at = now_beijing()
+        accepted_at = first_acceptance_at
+        write_delivery_receipt(sent_at=accepted_at, accepted_count=len(result.accepted),
+                               refused_count=len(result.refused), run_id=os.environ.get("GH_RUN_ID"))
+        # SMTP acceptance must remain authoritative even if optional archiving fails.
+        try:
+            audit_directory = archive_delivery(audit_directory, {
+                "status": "partial" if result.refused else "full", "accepted_count": len(result.accepted),
+                "refused_count": len(result.refused), "sent_at": accepted_at.isoformat(),
+                "edition": accepted_at.date().isoformat(),
+            })
+        except OSError as exc:
+            _record_quality_alert(f"邮件留档发送状态更新失败：{type(exc).__name__}")
+
     # ---------- 发送 ----------
     recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
     # 收件人邮箱不全写日志,用 mask_emails 只留首字母 + 域名,降低 PII 在日志被
@@ -760,17 +812,9 @@ def main() -> int:
         subject=subject,
         html_body=html,
         inline_images=inline_images,
-        on_progress=lambda result: write_delivery_receipt(
-            sent_at=now_beijing(), accepted_count=len(result.accepted),
-            refused_count=len(result.refused), run_id=os.environ.get("GH_RUN_ID"),
-        ),
+        on_progress=delivery_progress,
     )
-    write_delivery_receipt(
-        sent_at=now_beijing(),
-        accepted_count=len(delivery.accepted),
-        refused_count=len(delivery.refused),
-        run_id=os.environ.get("GH_RUN_ID"),
-    )
+    delivery_progress(delivery)
     if thesis_publication_state is not None and thesis_publication_themes:
         try:
             for theme in thesis_publication_themes:

@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from difflib import SequenceMatcher
 
 from src.collectors.frontier_labs import FrontierBundle, FrontierItem, SourceType
 from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
+from src.processors.source_grounding import INSTRUCTION, grounded_text
+from src.utils.news_facts import content_key, equivalent
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class FrontierKeyPoint:
     score: int
     source_type: SourceType = "google_news"
     published_at: datetime | None = None
+    evidence: list[dict] = field(default_factory=list)
 
 
 _TASK_INSTRUCTION = """\
@@ -120,7 +122,7 @@ def _normalize(text: str) -> str:
 
 
 def _similar(a: str, b: str, threshold: float = 0.62) -> bool:
-    return SequenceMatcher(None, _normalize(a), _normalize(b)).ratio() >= threshold
+    return equivalent(a, b)
 
 
 def _parse_tickers(raw: str | None) -> list[str]:
@@ -167,6 +169,7 @@ def _parse_output_result(
 ) -> _FrontierParseResult:
     kept: list[FrontierKeyPoint] = []
     index_counts: dict[int, int] = {}
+    seen_source_facts: set[str] = set()
     invalid_yes = False
     for line in text.splitlines():
         match = _LINE_RE.match(line.strip())
@@ -215,34 +218,25 @@ def _parse_output_result(
             invalid_yes = True
             continue
 
-        primary_idx = valid_indexes[0]
-        if not body:
-            invalid_yes = True
-            continue
-        if any(_similar(body, existing.text) for existing in kept):
-            continue
-
-        source_item = items[primary_idx - 1]
-        if not is_safe_url(source_item.url):
-            logger.warning(
-                "frontier_labs_filter.dropped_unsafe_url lab=%s url=%r",
-                lab,
-                (source_item.url or "")[:80],
-            )
-            continue
-
-        kept.append(
-            FrontierKeyPoint(
-                lab=lab,
-                text=body,
-                related_tickers=tickers,
-                source_url=source_item.url,
-                source_name=source_item.source,
-                score=score,
-                source_type=source_item.source_type,
-                published_at=source_item.published_at,
-            )
-        )
+        # A model merging indexes does not prove that their facts are equal.
+        for source_index in valid_indexes:
+            source_item = items[source_index - 1]
+            if not is_safe_url(source_item.url):
+                continue
+            key = content_key(source_item)
+            if key in seen_source_facts:
+                continue
+            supported, mapping = grounded_text(body, [source_item])
+            if not supported:
+                invalid_yes = True
+                continue
+            seen_source_facts.add(key)
+            kept.append(FrontierKeyPoint(
+                lab=lab, related_tickers=tickers, source_type=source_item.source_type,
+                text=supported, evidence=mapping,
+                source_url=source_item.url, source_name=source_item.source,
+                score=score, published_at=source_item.published_at,
+            ))
     return _FrontierParseResult(
         items=kept,
         covered_indexes=set(index_counts),
@@ -309,7 +303,7 @@ def _filter_one_with_status(
 
     last_error: str | None = None
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
-        instruction = _TASK_INSTRUCTION
+        instruction = _TASK_INSTRUCTION + INSTRUCTION
         if attempt > 1:
             instruction += """
 
