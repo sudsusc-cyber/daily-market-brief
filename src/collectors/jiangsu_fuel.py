@@ -5,8 +5,9 @@
 和“每 10 个工作日”机制滚动生成；方向和幅度优先来自近期媒体/行业预测，失败
 时用 Brent/WTI 均价代理估算方向，再失败仍展示调价时间和“方向待确认”。
 
-国家成品油价格原则上每 10 个工作日调整一次。正常只在距离窗口 1 或 2 个自然日
-时返回展示对象；若调价日为周二，前两天恰逢本系统不发刊的周日、周一，则提前
+国家成品油价格原则上每 10 个工作日调整一次。正常在调价日当天及前 1 或 2 个
+自然日返回展示对象：当日 24 时是次日 00 时，当天晨报仍须预告。若调价日为周二，
+前两天恰逢本系统不发刊的周日、周一，则提前
 到周六（3 天前）展示一次，确保可用发刊日不漏报。
 """
 
@@ -600,7 +601,9 @@ def _estimate_direction_from_crude(
 
 def _is_alert_delivery_day(today: date, target: date) -> bool:
     days_until = (target - today).days
-    if days_until in (1, 2):
+    # today is the Beijing edition date. D 日 24 时 = D+1 日 00 时，
+    # 所以 D 日全天仍属于生效前的提醒窗口，不能在当天 00 时提前隐藏。
+    if days_until in (0, 1, 2):
         return True
     # 本晨报只在周二至周六发刊。周二调价时，前 1—2 天为周日、周一，
     # 因此在最近的可用发刊日周六提前一次，避免整个预告窗口被跳过。
@@ -608,7 +611,7 @@ def _is_alert_delivery_day(today: date, target: date) -> bool:
 
 
 def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
-    """在调价窗口前返回预告；任何预测源故障都不会让应显示的模块消失。"""
+    """按北京日期在调价日（24 时生效）及提前提醒窗口返回预告。"""
     target = (
         _next_known_window(today)
         or _discover_next_window(today)

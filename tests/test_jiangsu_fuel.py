@@ -26,7 +26,7 @@ def _entry(
     )
 
 
-def test_fetch_only_returns_during_one_or_two_day_window(monkeypatch) -> None:
+def test_fetch_returns_none_outside_alert_window(monkeypatch) -> None:
     def should_not_fetch(_target):
         raise AssertionError("窗口之外不应抓预测新闻")
 
@@ -278,3 +278,61 @@ def test_future_windows_roll_forward_by_ten_china_workdays(monkeypatch) -> None:
     monkeypatch.setattr(jiangsu_fuel, "_fetch_holiday_overrides", calendar)
 
     assert jiangsu_fuel._next_calculated_window(date(2026, 12, 25)) == date(2027, 1, 8)
+
+
+@pytest.mark.parametrize('instant,expected', [
+    ('2026-09-23T23:59:59+08:00', True),
+    ('2026-09-24T00:00:00+08:00', True),
+    ('2026-09-24T07:00:00+08:00', True),
+    ('2026-09-24T23:59:59+08:00', True),
+    ('2026-09-25T00:00:00+08:00', False),
+    ('2026-09-24T15:59:59+00:00', True),
+    ('2026-09-24T16:00:00+00:00', False),
+])
+def test_adjustment_day_alert_survives_until_beijing_midnight(monkeypatch, instant, expected):
+    from datetime import datetime
+
+    from src.renderer.render import render_email
+    from src.utils.dates import to_beijing
+
+    entries = [_entry('9月24日24时，预计92号汽油每升下调0.18元',
+                      published='2026-09-23 03:00:00')]
+    monkeypatch.setattr(jiangsu_fuel, '_fetch_forecast_entries', lambda _: entries)
+    now_bj = to_beijing(datetime.fromisoformat(instant))
+    alert = jiangsu_fuel.fetch(today=now_bj.date())
+    html = render_email(signals=[], generated_at=now_bj, jiangsu_fuel_alert=alert)
+
+    if expected:
+        assert alert is not None
+        assert alert.adjustment_date == date(2026, 9, 24)
+        assert alert.days_until == (alert.adjustment_date - now_bj.date()).days
+        assert '预计 9 月 24 日 24 时下调' in html
+        assert '92 号约 -0.18 元/升' in html
+        assert '媒体预测' in html
+    else:
+        assert alert is None
+        assert '油价预告' not in html
+        assert jiangsu_fuel._next_known_window(now_bj.date()) == date(2026, 10, 15)
+
+
+@pytest.mark.parametrize('method', ['crude_proxy', 'schedule_only'])
+def test_adjustment_day_keeps_fallback_alert_when_news_fails(monkeypatch, method):
+    from datetime import datetime
+
+    from src.renderer.render import render_email
+    from src.utils.dates import BEIJING
+
+    def fail(_):
+        raise RuntimeError('forecast temporarily unavailable')
+
+    monkeypatch.setattr(jiangsu_fuel, '_fetch_forecast_entries', fail)
+    monkeypatch.setattr(jiangsu_fuel, '_estimate_direction_from_crude',
+                        lambda _: ('下调', -0.02) if method == 'crude_proxy' else None)
+    alert = jiangsu_fuel.fetch(today=date(2026, 9, 24))
+    assert alert is not None
+    assert alert.days_until == 0
+    assert alert.forecast_method == method
+    html = render_email(signals=[], generated_at=datetime(2026, 9, 24, 7, tzinfo=BEIJING),
+                        jiangsu_fuel_alert=alert)
+    assert '9 月 24 日 24 时' in html
+    assert ('模型代理' if method == 'crude_proxy' else '涨跌方向与幅度待更新') in html
