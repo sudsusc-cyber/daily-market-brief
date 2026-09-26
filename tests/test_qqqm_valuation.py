@@ -164,12 +164,15 @@ def test_corrupt_cache_does_not_crash_email(tmp_path):
     assert display.is_pending
 
 
-def test_cached_snapshot_expires_without_renewing_its_data_date(tmp_path):
+def test_cached_snapshot_remains_available_without_renewing_its_data_date(tmp_path):
     client = _Client(LLMResponse(text=_payload(), usage=LLMUsage()))
     prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW)
     client.response = LLMResponse(text=None, error="blocked", usage=LLMUsage())
     display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path, checked_at=NOW + timedelta(days=14))
-    assert display.is_pending
+    assert not display.is_pending
+    assert display.status == "not_due"
+    assert display.financial_as_of == "2026-09-02"
+    assert "15 天" in display.data_note
 
 
 def test_reject_not_yet_closed_date():
@@ -214,15 +217,15 @@ def test_complete_legacy_cache_is_recomputed_not_reused_as_weighted_value(tmp_pa
     assert display.formula_id == "qqqm_optimistic_cashflow_v1_6"
 
 
-def test_stale_forward_pair_cannot_produce_an_optimistic_value():
+def test_latest_available_forward_pair_keeps_its_actual_date():
     payload = json.loads(_payload())
     payload["data"]["fwd_date"] = "2026-08-05"
     for citation in payload["citations"]:
         if citation["field"].startswith("pe_pair"):
             citation["date"] = "2026-08-05"
     inputs = parse_qqqm_inputs(json.dumps(payload), price=300, checked_at=NOW)
-    with pytest.raises(ValueError, match="乐观情景缺少"):
-        calculate_qqqm(inputs)
+    assert calculate_qqqm(inputs).value > 0
+    assert inputs.fwd_date == "2026-08-05"
 
 
 def test_prompt_and_display_keep_single_scenario_and_gap_return():
@@ -310,7 +313,8 @@ def test_cache_save_gate_does_not_republish_old_base_snapshot(tmp_path):
     assert normalize_cache(tmp_path, checked_at=NOW, allow_daily_forward=False)
     restored = json.loads((tmp_path / "qqqm_valuation.json").read_text())
     assert json.loads(restored["source_response"])["data"]["pe_pair_t"] == 30
-    assert not normalize_cache(tmp_path, checked_at=NOW + timedelta(days=14), allow_daily_forward=False)
+    assert normalize_cache(tmp_path, checked_at=NOW + timedelta(days=14), allow_daily_forward=False)
+    assert (tmp_path / "qqqm_valuation.json").read_text() == json.dumps(restored, ensure_ascii=False)
 
 
 def test_needs_review_reports_which_inputs_are_missing(tmp_path):
@@ -330,7 +334,7 @@ def test_malformed_primary_source_response_does_not_block_valid_secondary(tmp_pa
     assert not prepare_qqqm_display(price=300, client=failed, state_dir=tmp_path, checked_at=NOW).is_pending
 
 
-def test_bootstrap_snapshot_is_recomputed_and_expires(tmp_path, monkeypatch):
+def test_bootstrap_snapshot_is_recomputed_and_retained(tmp_path, monkeypatch):
     bootstrap = tmp_path / "verified-startup.json"
     bootstrap.write_text(json.dumps({"source_response": _payload(), "value": 1}))
     monkeypatch.setattr("src.valuation.qqqm._BOOTSTRAP_PATH", bootstrap)
@@ -342,7 +346,10 @@ def test_bootstrap_snapshot_is_recomputed_and_expires(tmp_path, monkeypatch):
     assert normalize_cache(tmp_path / "state", checked_at=NOW, allow_daily_forward=False)
     display = prepare_qqqm_display(price=300, client=client, state_dir=tmp_path / "state",
                                    checked_at=NOW + timedelta(days=14))
-    assert display.is_pending
+    assert not display.is_pending
+    assert display.status == "not_due"
+    assert display.financial_as_of == "2026-09-02"
+    assert "15 天" in display.data_note
 
 
 def test_model_upgrade_does_not_trigger_unattributed_value_jump(tmp_path, monkeypatch):

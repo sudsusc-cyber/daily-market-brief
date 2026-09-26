@@ -221,8 +221,11 @@ def test_migration_does_not_extend_bootstrap_observation_age():
     valid = qqqm._from_cache(qqqm._BOOTSTRAP_PATH, price=300, checked_at=NOW, allow_daily_forward=True)
     assert valid.value == pytest.approx(331.2820647655544)
     assert valid.inputs.data_date == "2026-09-02"
-    assert qqqm._from_cache(qqqm._BOOTSTRAP_PATH, price=300, checked_at=NOW + timedelta(days=14),
-                           allow_daily_forward=True) is None
+    retained = qqqm._from_cache(qqqm._BOOTSTRAP_PATH, price=300, checked_at=NOW + timedelta(days=14),
+                                allow_daily_forward=True)
+    assert retained.value == valid.value
+    assert retained.inputs.stale_days == valid.inputs.stale_days + 14
+    assert retained.inputs.data_date == valid.inputs.data_date
 
 
 @pytest.mark.parametrize("observations", [None, [], "bad", 1])

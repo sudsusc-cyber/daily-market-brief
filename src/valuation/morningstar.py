@@ -1179,7 +1179,9 @@ def load_verified_values(
         for ticker, value in load_cache(path).items():
             try:
                 _validate_live(
-                    value, previous=None, current_price=prices.get(ticker), checked_at=checked_at,
+                    # Price moves since the report do not invalidate its historical
+                    # value. The magnitude gate still applies to new live input.
+                    value, previous=None, current_price=None, checked_at=checked_at,
                     allow_historical=True,
                 )
             except (ValueError, TypeError) as exc:
@@ -1322,7 +1324,7 @@ def refresh_fair_values(
                 old,
                 fallback_used=True,
                 stale_cache=True,
-                warning=f"本次未取得较新合格证据，沿用 {old.retrieved_at[:10]} 最后核验值：{reason}",
+                warning=f"本次未取得较新合格证据，沿用 {old.fair_value_updated_at} 报告值：{reason}",
             )
         else:
             final_failures.setdefault(ticker, "尚无可信 Morningstar 历史核验值，不可编造")

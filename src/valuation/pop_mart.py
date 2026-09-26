@@ -15,7 +15,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urljoin, urlparse
@@ -284,14 +284,16 @@ def load_target(*, state_dir: Path, config_dir: Path, checked_at: datetime) -> A
         except (OSError, ValueError, TypeError, AttributeError):
             logger.warning("pop_mart.invalid_cache path=%s", path)
     # File precedence must not replace a newer verified report with an older one.
-    # Same-day disagreements retain the already-verified value; publication time
-    # can be a syndication time, not the broker's revision timestamp.
+    # Prefer the newest actual article timestamp, including same-day updates.
+    # A retrieval timestamp alone cannot make an older report newer.
     values.sort(key=lambda row: _date(row.published_at))
     chosen = None
     for value in values:
         if (chosen is None
-            or _date(value.published_at).astimezone(HK).date() > _date(chosen.published_at).astimezone(HK).date()
-            or (value.target_price == chosen.target_price and _date(value.verified_at) > _date(chosen.verified_at))):
+            or _date(value.published_at) > _date(chosen.published_at)
+            or (_date(value.published_at) == _date(chosen.published_at)
+                and value.target_price == chosen.target_price
+                and _date(value.verified_at) > _date(chosen.verified_at))):
             chosen = value
     return chosen
 
@@ -504,7 +506,7 @@ def target_display(value: AnalystTarget, *, price: float | None, retained: bool 
         source_url=value.source_url, source_document_id=f"morgan-stanley:9992.HK:{value.published_at}:{value.target_price:g}",
         formula_id="analyst_target_price_gap", model_version="pop-mart-morgan-stanley-v1",
         return_label="IRR", value_label="公允价值", verified_at=value.verified_at,
-        data_note="泡泡玛特沿用已核验目标价（最新报告本次未确认）" if retained else None,
+        data_note=f"泡泡玛特沿用 {value.published_at[:10]} 报告目标价（最新报告本次未确认）" if retained else None,
     )
 
 
@@ -528,15 +530,19 @@ def refresh_target(*, state_dir: Path, config_dir: Path, checked_at: datetime,
     selected = known
     retained = True
     if values:
-        latest = max(_date(row.published_at).astimezone(HK).date() for row in values)
-        newest = [row for row in values if _date(row.published_at).astimezone(HK).date() == latest]
-        same_day_known = known and _date(known.published_at).astimezone(HK).date() == latest
+        latest = max(_date(row.published_at) for row in values)
+        newest = [row for row in values if _date(row.published_at) == latest]
         numbers = {row.target_price for row in newest}
-        if same_day_known:
-            numbers.add(known.target_price)
-        if len(numbers) == 1 and (known is None or latest >= _date(known.published_at).astimezone(HK).date()):
+        if known is None or (len(numbers) == 1 and (
+            latest > _date(known.published_at) or (
+                latest == _date(known.published_at) and numbers == {known.target_price}
+            )
+        )):
             selected = max(newest, key=lambda row: (urlparse(row.source_url).hostname == "secure.aastocks.com", row.source_url))
             retained = not discovery_ok
+            if len({row.target_price for row in values}) > 1:
+                logger.warning("pop_mart.disagreement_selected newest_published_at=%s target=%s",
+                               selected.published_at, selected.target_price)
         else:
             logger.warning("pop_mart.conflicting_or_older_report retained_last_verified=true")
     if selected is None:
@@ -546,7 +552,12 @@ def refresh_target(*, state_dir: Path, config_dir: Path, checked_at: datetime,
     _save_source_diagnostic(state_dir, checked_at, provider, values, selected, retained)
     logger.info("pop_mart.selected target=%.2f published=%s retained=%s source=%s",
                 selected.target_price, selected.published_at, retained, selected.source_url)
-    return target_display(selected, price=price, retained=retained)
+    display = target_display(selected, price=price, retained=retained)
+    if len({row.target_price for row in values}) > 1:
+        note = f"泡泡玛特来源分歧，采用 {selected.published_at} 报告值"
+        display = replace(display, warnings=(note,),
+                          data_note="；".join(filter(None, (display.data_note, note))))
+    return display
 
 
 def _save_source_diagnostic(state_dir: Path, checked_at: datetime, provider: PopMartTargetProvider,

@@ -57,6 +57,7 @@ def enforce_jump_guard(
     *,
     state_dir: Path,
     threshold: float = _MAX_UNATTRIBUTED_MOVE,
+    prices: Mapping[str, float | None] | None = None,
 ) -> dict[str, ValuationDisplay]:
     """阻断无新财报、无模型升级却单日跳变超过阈值的内在价值。"""
     previous = _load_published_state(state_dir)
@@ -78,12 +79,15 @@ def enforce_jump_guard(
         move = abs(display.intrinsic_value / old_value - 1)
         if move <= threshold:
             continue
+        price = (prices or {}).get(ticker)
         guarded[ticker] = replace(
             display,
             status="manual_review",
-            intrinsic_value=None,
-            implied_return=None,
-            warnings=(f"同一官方文件与模型下内在价值跳变 {move:.1%}，待人工核验",),
+            intrinsic_value=old_value,
+            implied_return=(old_value / price - 1
+                            if price is not None and math.isfinite(price) and price > 0 else None),
+            data_note=f"{ticker} 新计算异常，保留同一来源文件的最近已发布值",
+            warnings=(*display.warnings, f"同一官方文件与模型下内在价值跳变 {move:.1%}，沿用前值待核验"),
         )
         logger.warning(
             "valuation.jump_blocked ticker=%s old=%.4f new=%.4f move=%.4f",
@@ -165,7 +169,7 @@ def apply_morningstar_fair_values(
         )
         warning = (fair_value.warning,) if fair_value.warning else ()
         if fair_value.stale_cache:
-            note = f"{ticker} 沿用 {fair_value.retrieved_at[:10]} 核验值"
+            note = f"{ticker} 沿用 {fair_value.fair_value_updated_at} 报告值"
             if "尚未核实" in (fair_value.warning or ""):
                 note += "（新报告未核实）"
         elif any(word in (fair_value.warning or "") for word in ("冲突", "分歧")):
@@ -284,7 +288,7 @@ def prepare_valuation_displays(
             displays[POP_MART_TICKER] = pop_mart
         if qqqm_display is not None:
             displays["QQQM"] = qqqm_display
-        displays = enforce_jump_guard(displays, state_dir=state_dir)
+        displays = enforce_jump_guard(displays, state_dir=state_dir, prices=prices)
         current = sum(1 for value in displays.values() if not value.is_pending)
         logger.info(
             "valuation.morningstar_fast_path skipped_internal_reviews=%d",
@@ -401,7 +405,7 @@ def prepare_valuation_displays(
         )
     if qqqm_display is not None:
         displays["QQQM"] = qqqm_display
-    displays = enforce_jump_guard(displays, state_dir=state_dir)
+    displays = enforce_jump_guard(displays, state_dir=state_dir, prices=prices)
     current = sum(1 for value in displays.values() if not value.is_pending)
     for ticker, value in displays.items():
         logger.info(

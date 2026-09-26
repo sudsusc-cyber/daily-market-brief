@@ -202,7 +202,8 @@ def test_cached_value_is_visible_with_its_real_date_not_only_attempt_time():
     displays = apply_morningstar_fair_values(initial, fair_values={"MSFT": value}, failures={}, prices={"MSFT": 500})
     assert displays["MSFT"].status == "not_due"
     html = render_email(signals=[holding_signal()], generated_at=NOW, valuations=displays, valuation_checked_at=NOW)
-    assert "600.00" in html and "2026-09-02" in html and "沿用" in html
+    assert "600.00" in html and value.fair_value_updated_at in html and "沿用" in html
+    assert displays["MSFT"].verified_at == "2026-09-02T00:00:00+00:00"
     fresh = apply_morningstar_fair_values(initial, fair_values={"MSFT": fair_value()}, failures={}, prices={"MSFT": 500})
     assert fresh["MSFT"].status == "current" and fresh["MSFT"].data_note is None
 

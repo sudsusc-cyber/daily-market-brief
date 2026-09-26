@@ -53,7 +53,7 @@ def test_pair_uses_observation_dates_not_page_refresh():
     pair = {"updated": "2026-09-02", "current": {"trailing": 28, "forward": 22},
             "trailing": [{"date": "2026-08-05", "value": 28}],
             "forward": [{"date": "2026-08-05", "value": 22}]}
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["fwd_date"] is None
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["fwd_date"] == "2026-08-05"
     for key in ("trailing", "forward"):
         pair[key][0]["date"] = "2026-08-31"
     result = build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())
@@ -121,14 +121,14 @@ def test_opt_in_daily_consensus_uses_dated_pair_and_records_basis():
         "forwardOwn": [{"date": "2026-09-02", "value": 21.21, "basis": DAILY_FORWARD_BASIS},
                        {"date": "2026-09-03", "value": 20, "basis": DAILY_FORWARD_BASIS}],
     }
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["pe_pair_f"] is None
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history())["pe_pair_f"] == 22.37
     result = build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history(), allow_daily_forward=True)
     assert result["pe_pair_t"] == 28.06
     assert result["pe_pair_f"] == 21.21
     assert result["fwd_date"] == "2026-09-02"
     assert result["forward_basis"] == DAILY_FORWARD_BASIS
     pair["forwardOwn"][0]["basis"] = "unknown-new-method"
-    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history(), allow_daily_forward=True)["pe_pair_f"] is None
+    assert build_source_packet(nav, dividends, pair, checked_at=NOW, nav_history=_history(), allow_daily_forward=True)["pe_pair_f"] == 22.37
 
 
 def test_pair_ignores_bad_history_but_rejects_conflicting_current_values():
@@ -203,7 +203,9 @@ def test_source_packet_backup_recovery_and_cross_check(monkeypatch, primary_mode
     monkeypatch.setattr("src.valuation.qqqm_sources.fetch_dividend_backup", lambda **kwargs: backup)
     packet = fetch_source_packet(checked_at=NOW)
     if primary_mode == "conflict":
-        assert packet is None
+        assert packet["div_ttm"] == pytest.approx(1.35315)
+        assert packet["citations"][1]["source"] == DIV_URL
+        assert "来源分歧" in packet["selection_note"]
     else:
         assert packet["div_ttm"] == pytest.approx(1.3053)
         assert packet["citations"][1]["source"] == (DIV_URL if primary_mode == "matching" else DIV_BACKUP_URL)

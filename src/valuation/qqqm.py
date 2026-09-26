@@ -96,7 +96,7 @@ def build_qqqm_prompt(*, checked_at: datetime, price: float, allow_daily_forward
 数据日 D_anchor 是最近已收盘美股交易日 {latest_closed_date(checked_at).isoformat()}。NAV_anchor 和 PE_ttm 必须同为 D_anchor 日，DIV_ttm 是截至该日的过去12个月分红合计。
 GuruFocus 唯一目标页面是 {PE_URL}，不是 FRA:NDX 的 Nordex 股票，也不是 QQQM 基金本身的 PE。若页面标题和旧统计表日期不同，取实际数据日匹配的最新读数。最多搜索3次；缺失则立即输出 needs_review JSON，不输出过程叙述。
 优先搜索 site:gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio "As of {latest_closed_date(checked_at).isoformat()}"。若原页返回403，可读取搜索结果中完全相同URL的公开标题或原文摘要，但必须同时明确包含 Nasdaq 100 PE Ratio、数值与匹配的数据日期；不得用其他网址的二手转述或猜测。
-请搜索 QQQM 的 Invesco 官方 NAV、GuruFocus Nasdaq 100 PE Ratio（PE_ttm）以及 Invesco 分红历史（允许 stockanalysis.com/etf/qqqm/dividend/）；乐观情景必需的 PE_pair_t/PE_pair_f 仅取 historyofmarket.com 的同日 NDX trailing/forward PE 配对，记录 fwd_date，距 D_anchor 最多3个交易日。找不到配对时将两个值及 fwd_date 写 null、status=needs_review，并保留已确认的 NAV、PE_ttm、DIV_ttm；不要反复搜索或猜测配对，不得回退到基准或保守情景。
+请搜索 QQQM 的 Invesco 官方 NAV、GuruFocus Nasdaq 100 PE Ratio（PE_ttm）以及 Invesco 分红历史（允许 stockanalysis.com/etf/qqqm/dividend/）；乐观情景必需的 PE_pair_t/PE_pair_f 仅取 historyofmarket.com 的同日 NDX trailing/forward PE 配对，记录真实 fwd_date，选择不晚于 D_anchor 的最新可用配对；发布较慢时保留日期并标记沿用。找不到配对时将两个值及 fwd_date 写 null、status=needs_review，并保留已确认的 NAV、PE_ttm、DIV_ttm；不要反复搜索或猜测配对，不得回退到基准或保守情景。
 {pair_rule}
 固定规则（QQQM v1.6，不可改）：仅采用乐观情景，不做加权平均。E0=NAV_anchor/PE_ttm；k=DIV_ttm/E0；g_mkt=PE_pair_t/PE_pair_f-1；第1年盈利 E1=E0×(1+g_mkt)，不得再乘1.15；第2–5年增速15%，第6–10年增速7%；PE_exit=24.65；QQQM fee=0.15%；折现率=10%；预测期=10年。邮件 IRR 是公允价值/现价-1 的差额收益率，非年化。你只整理输入，不计算 IV 或 IRR。
 只返回 JSON：{{"status":"ok|needs_review","data":{{"nav_anchor":数值,"pe_ttm":数值,"pe_pair_t":数值或null,"pe_pair_f":数值或null,"fwd_date":"YYYY-MM-DD或null","div_ttm":数值,"data_date":"YYYY-MM-DD","source_urls":["https://..."]}},"citations":[{{"field":"nav_anchor|pe_ttm|div_ttm|pe_pair_t|pe_pair_f","source":"URL","date":"真实数据日YYYY-MM-DD","quote":"不超过25字"}}]}}。核心字段 nav_anchor、pe_ttm、div_ttm 各有引文；有配对数值才需要配对引文。"""
@@ -133,6 +133,7 @@ def _numeric_basis(inputs: QQQMInputs) -> tuple[float, float]:
 
 def parse_qqqm_inputs(
     text: str, *, price: float, checked_at: datetime, allow_daily_forward: bool = False,
+    allow_historical: bool = False,
 ) -> QQQMInputs:
     if not isinstance(text, str) or not text.strip():
         raise ValueError("QQQM 来源响应必须是非空文本")
@@ -198,7 +199,7 @@ def parse_qqqm_inputs(
         raise ValueError("QQQM data_date 无效") from exc
     checked_date = checked_at.astimezone(_BEIJING).date()
     stale_days = (checked_date - anchor).days
-    if stale_days < 0 or stale_days > _STALE_DAYS:
+    if stale_days < 0 or (stale_days > _STALE_DAYS and not allow_historical):
         raise ValueError(f"QQQM 数据日距今日 {stale_days} 天，超过 14 天或在未来")
     if anchor > latest_closed_date(checked_at) or not is_us_market_open(anchor):
         raise ValueError("QQQM 数据日不是已收盘交易日或属于未来数据")
@@ -264,11 +265,8 @@ def parse_qqqm_inputs(
         if (dates != {fwd_date} or forward > anchor
                 or not is_us_market_open(forward)):
             raise ValueError("配对日期无效")
-        start, end = sorted((anchor, forward))
-        gap = sum(is_us_market_open(start + timedelta(days=i))
-                  for i in range(1, (end - start).days + 1))
-        if gap > 3 or not -0.10 <= pair_t / pair_f - 1 <= 0.40:
-            raise ValueError("配对超过时效或增速范围")
+        if not -0.10 <= pair_t / pair_f - 1 <= 0.40:
+            raise ValueError("配对增速超出范围")
     except (ValueError, TypeError):
         pair_t = pair_f = None
         fwd_date = None
@@ -399,9 +397,11 @@ def _from_cache(
     payload = {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        # Re-run all value/date/source gates, not just the cache age check.
+        # Historical observations remain available, with their original dates.
+        # Only the age limit is waived; source, calendar, evidence and math gates
+        # still apply. A restore/read never makes this a current observation.
         inputs = parse_qqqm_inputs(payload["source_response"], price=price, checked_at=checked_at,
-                                   allow_daily_forward=allow_daily_forward)
+                                   allow_daily_forward=allow_daily_forward, allow_historical=True)
         result = calculate_qqqm(inputs)
         if payload.get("schema_version") == 3:
             evidence = payload.get("nav_history_evidence")
@@ -410,7 +410,7 @@ def _from_cache(
                 raise ValueError("QQQM 历史 NAV 核验证据指纹不一致")
         else:
             # Only migrate exact dated NAVs independently tied out before rollout.
-            # This file neither fills live fields nor extends the 14-day expiry.
+            # This file never fills live fields or changes an observation date.
             observations = json.loads(_LEGACY_NAV_PATH.read_text())["observations"]
             if not isinstance(observations, dict):
                 raise ValueError("QQQM 旧快照历史 NAV 迁移证据损坏")
@@ -439,7 +439,8 @@ def _from_cache(
 
 
 def cache_paths(state_dir: Path) -> tuple[Path, ...]:
-    return (state_dir / _CACHE_NAME, state_dir / _DAILY_CACHE_NAME, _BOOTSTRAP_PATH)
+    return (state_dir / _CACHE_NAME, state_dir / _DAILY_CACHE_NAME,
+            _BOOTSTRAP_PATH.with_name("qqqm_verified_snapshot_latest.json"), _BOOTSTRAP_PATH)
 
 
 def select_cached_snapshot(state_dir: Path, *, price: float, checked_at: datetime,
@@ -548,7 +549,7 @@ def prepare_qqqm_display(*, price: float, client: LLMClient, state_dir: Path,
 def _prepare_qqqm_display(
     *, price: float, client: LLMClient, state_dir: Path, checked_at: datetime
 ) -> ValuationDisplay:
-    """每日整理输入；失败时只用 14 日内能重算乐观情景的完整快照。"""
+    """优先最新完整输入；失败时沿用可核验、可复算的最近完整快照。"""
     allow_daily = daily_forward_enabled()
     prior = select_cached_snapshot(state_dir, price=price, checked_at=checked_at, allow_daily_forward=allow_daily)
     previous = prior[1] if prior else None
@@ -642,6 +643,7 @@ def _prepare_qqqm_display(
                                        nav_history_evidence=audit["confirmation_source_packet"]["nav_history_evidence"])
             result = candidate
             _write_json(state_dir / _CACHE_NAME, payload)
+            warning = source_packet.get("selection_note") if source_packet else None
         except OSError as exc:
             # A valid live result remains usable when persisting its cache fails.
             warning = f"QQQM 快照保存失败：{type(exc).__name__}"
@@ -654,7 +656,7 @@ def _prepare_qqqm_display(
         result = previous
         if result is not None:
             warning = (
-                f"{warning}；沿用 14 日内同日输入快照" if warning else "沿用 14 日内同日输入快照"
+                f"{warning}；沿用最近完整输入快照" if warning else "沿用最近完整输入快照"
             )
     audit["status"] = "unavailable" if result is None else "cached" if used_cache else "verified"
     _write_audit(state_dir, audit, result=result, previous=previous, warning=warning)
@@ -672,7 +674,8 @@ def _prepare_qqqm_display(
     return _display_result(result, price=price, warning=warning, checked_at=checked_at, cached=used_cache)
 
 
-def cached_qqqm_display(*, price: float, state_dir: Path, checked_at: datetime) -> ValuationDisplay:
+def cached_qqqm_display(*, price: float, state_dir: Path, checked_at: datetime,
+                        reason: str = "取数超时") -> ValuationDisplay:
     """Local-only recovery after the collection deadline; never invent inputs."""
     selected = select_cached_snapshot(state_dir, price=price, checked_at=checked_at,
                                       allow_daily_forward=daily_forward_enabled())
@@ -682,16 +685,26 @@ def cached_qqqm_display(*, price: float, state_dir: Path, checked_at: datetime) 
         audit = {**pending, **audit}
     except (OSError, ValueError, TypeError, AttributeError):
         pass
-    _write_audit(state_dir, audit, result=selected[1] if selected else None, warning="取数超时")
+    _write_audit(state_dir, audit, result=selected[1] if selected else None, warning=reason)
     if not selected:
         return ValuationDisplay(ticker="QQQM", status="source_unavailable", value_label="公允价值",
-                                warnings=("QQQM 取数超时且没有有效快照",))
+                                warnings=(f"QQQM {reason}且没有有效快照",))
     result = selected[1]
-    return _display_result(result, price=price, warning="取数超时，沿用已验证快照", checked_at=checked_at, cached=True)
+    return _display_result(result, price=price, warning=f"{reason}，沿用已验证快照", checked_at=checked_at, cached=True)
 
 
 def _display_result(result: QQQMResult, *, price: float, warning: str | None,
                     checked_at: datetime, cached: bool = False) -> ValuationDisplay:
+    anchor = date.fromisoformat(result.inputs.data_date)
+    forward = date.fromisoformat(result.inputs.fwd_date)
+    gap = sum(is_us_market_open(forward + timedelta(days=i))
+              for i in range(1, (anchor - forward).days + 1))
+    carried_pair = gap > 3
+    notes = []
+    if cached:
+        notes.append(f"QQQM 沿用 {result.inputs.data_date} 完整输入（距今 {result.inputs.stale_days} 天）")
+    if carried_pair:
+        notes.append(f"前瞻配对沿用最新可用 {result.inputs.fwd_date} 数据")
     logger.info(
         "valuation.qqqm_ready value=%.4f gap_return=%.6f data_date=%s forward_basis=%s fallback=%s input_key=%s inputs=%s",
         result.value, result.value / price - 1, result.inputs.data_date, result.inputs.forward_basis, cached,
@@ -699,7 +712,7 @@ def _display_result(result: QQQMResult, *, price: float, warning: str | None,
     )
     return ValuationDisplay(
         ticker="QQQM",
-        status="not_due" if cached else "current",
+        status="not_due" if cached or carried_pair else "current",
         intrinsic_value=result.value,
         # Email IRR is the user's value-gap return, not the document's 10Y IRR.
         implied_return=result.value / price - 1,
@@ -707,7 +720,7 @@ def _display_result(result: QQQMResult, *, price: float, warning: str | None,
         currency_symbol="$",
         financial_as_of=result.inputs.data_date,
         verified_at=None if cached else checked_at.isoformat(),
-        data_note=f"QQQM 沿用 {result.inputs.data_date} 输入" if cached else None,
+        data_note="；".join(notes) or None,
         source_url=result.inputs.source_urls[0],
         source_document_id=(f"qqqm-v{_MODEL_VERSION}:{result.inputs.data_date}:"
                             f"{result.inputs.fwd_date}:{result.inputs.forward_basis}:"

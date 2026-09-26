@@ -9,7 +9,7 @@ import math
 import re
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar, copy_context
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from threading import Event
 
 import requests
@@ -293,11 +293,8 @@ def build_source_packet(
             common = sorted(d for d in trailing.keys() & forward.keys()
                             if d <= anchor.isoformat() and is_us_market_open(date.fromisoformat(d)))
             for key in reversed(common):
-                pair_date = date.fromisoformat(key)
-                gap = sum(is_us_market_open(pair_date + timedelta(days=i))
-                          for i in range(1, (anchor - pair_date).days + 1))
                 t, f = trailing[key], forward[key]
-                if gap <= 3 and -0.10 <= t / f - 1 <= 0.40:
+                if -0.10 <= t / f - 1 <= 0.40:
                     candidates.append((key, not daily, t, f, basis))
                     break
         if candidates:
@@ -362,6 +359,7 @@ def fetch_source_packet(*, checked_at: datetime, allow_daily_forward: bool = Fal
             except (KeyError, TypeError, ValueError):
                 logger.warning("valuation.qqqm_dividend_primary_invalid")
         dividends_url = DIV_URL
+        selection_note = None
         if primary_rows is None:
             if backup is None:
                 return None
@@ -373,10 +371,24 @@ def fetch_source_packet(*, checked_at: datetime, allow_daily_forward: bool = Fal
                 not math.isclose(value, backup_rows[day], rel_tol=1e-8, abs_tol=1e-8)
                 for day, value in primary_rows.items()
             ):
-                raise ValueError("QQQM 分红主备源逐笔冲突，需核对，不静默选值")
+                # Compare actual ex-dividend dates, never fetch/page-update time.
+                # Each complete annual window passed identity/coverage checks.
+                # Same-date ties keep the official source and record disagreement.
+                if max(backup_rows) > max(primary_rows):
+                    dividends, dividends_url = backup, DIV_BACKUP_URL
+                selection_note = (f"分红来源分歧：主源最新除息日 {max(primary_rows)}，"
+                                  f"备源 {max(backup_rows)}；按数据日期择新，同日采用官方来源")
+                _diagnose(stage="dividend_selection", status="disagreement_selected",
+                          primary_date=max(primary_rows), backup_date=max(backup_rows),
+                          selected_source=dividends_url,
+                          reason="newest_observation_then_official_on_tie")
+                logger.warning("valuation.qqqm_dividend_disagreement primary_date=%s backup_date=%s selected=%s",
+                               max(primary_rows), max(backup_rows), dividends_url)
         packet = build_source_packet(nav, dividends, pair, checked_at=checked_at,
                                      nav_history=history,
                                      allow_daily_forward=allow_daily_forward, dividends_url=dividends_url)
+        if selection_note:
+            packet["selection_note"] = selection_note
         if pe is not None:
             packet.update(pe_ttm=pe["value"], pe_transport=pe["transport"])
             packet["source_urls"].append(PE_URL)
