@@ -431,7 +431,7 @@
                 <tr>
                   <td valign="middle" style="padding:14px 0 14px 0; border-bottom:1px solid {{ color_hairline }};">
                     <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ color_ink }}; letter-spacing:0.02em;">
-                      {% if m.observed_at and not m.stale_from %}<small>{{ m.observed_at }} · </small>{% endif %}{{ m.name }}{% if m.unit %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:4px;">({{ m.unit }})</span>{% endif %}{% if m.stale_from %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:6px; font-style:italic;">(沿用 {{ m.stale_from }})</span>{% endif %}
+                      {{ m.name }}{% if m.unit %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:4px;">({{ m.unit }})</span>{% endif %}{% if m.stale_from %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:6px; font-style:italic;">(沿用 {{ m.stale_from }})</span>{% endif %}
                     </div>
                     {# m.rating(如 CNN F&G 的 "greed" 英文标签)不再显示:数字本身已传达情绪 #}
                   </td>
@@ -447,7 +447,7 @@
               </tbody>
             </table>
             <div style="margin-top:14px; font-family:{{ serif_body }}; font-size:10.5px; color:{{ color_muted }}; line-height:1.7; letter-spacing:0.02em;">
-              “上期”取来源提供的上一条可比观测，并非统一为前一交易日；FRED 信用利差有发布滞后，Shiller PE 属慢变量。日期为实际观测日期，沿用值单独标注。
+              “上期”取来源提供的上一条可比观测，并非统一为前一交易日；FRED 信用利差有发布滞后，Shiller PE 属慢变量。沿用值单独标注真实日期。
             </div>
           </td>
         </tr>

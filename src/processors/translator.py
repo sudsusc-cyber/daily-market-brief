@@ -135,7 +135,7 @@ def translate_titles(
 
 
 def translate_in_place_news(items: Iterable, *, client: LLMClient) -> None:
-    """原始标题保持不变；译文仅存于 translated_title，不能充当原始证据。"""
+    """保留原文，单独保存核验用完整译文；邮件行文由 grounded_text 整理。"""
     items_list = list(items)
     excerpts = [factual_excerpt(it) for it in items_list]
     diagnostics = {}

@@ -14,6 +14,7 @@ import logging
 from dataclasses import asdict, dataclass
 
 from src.processors.html_safe import is_safe_url
+from src.processors.news_presentation import publication_text
 from src.processors.news_selection import factual_excerpt, plain_source, sentences
 from src.processors.translation_guard import translation_errors
 from src.utils.news_facts import canonical_fact, source_text
@@ -32,6 +33,9 @@ class SourceEvidence:
     source_sha256: str
     output_text: str
     mode: str
+    validated_text: str
+    source_name: str
+    presentation_version: int = 1
 
 
 def source_sentences(item) -> list[str]:
@@ -93,16 +97,19 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
         logger.warning("news.source_extract_fallback candidates=%d", len(selected))
     if not selected:
         return "", []
-    output = "；".join(dict.fromkeys(
-        checked_excerpt(item)[1] if mode == "checked_translation" else
-        ("原文摘录：" if mode == "source_extract" else "") + sentence
-        for item, sentence, mode in selected))
     evidence = []
+    outputs = []
     for item, excerpt, mode in selected:
         original = source_text(item)
         # Excerpts come from complete source fields/sentences after HTML removal.
         if excerpt not in plain_source(original):
             continue
+        validated = checked_excerpt(item)[1] if mode == "checked_translation" else excerpt
+        source_name = str(getattr(item, "source", "") or "")
+        displayed = publication_text(validated, source_name=source_name)
+        if not displayed:
+            continue
+        outputs.append(("原文摘录：" if mode == "source_extract" else "") + displayed)
         evidence.append(
             asdict(
                 SourceEvidence(
@@ -114,11 +121,14 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
                     excerpt=excerpt,
                     published_at=str(getattr(item, "published_at", "") or ""),
                     source_sha256=hashlib.sha256(original.encode()).hexdigest(),
-                    output_text=checked_excerpt(item)[1] if mode == "checked_translation" else excerpt,
+                    output_text=displayed,
                     mode=mode,
+                    validated_text=validated,
+                    source_name=source_name,
                 )
             )
         )
         if mode == "source_extract":
             evidence[-1]["translation_diagnostic"] = getattr(item, "translation_diagnostic", {})
+    output = "；".join(dict.fromkeys(outputs))
     return (output, evidence) if evidence else ("", [])
