@@ -54,6 +54,7 @@ from src.processors import (
 )
 from src.processors.editorial_history import EditorialHistory
 from src.processors.llm_client import LLMClient
+from src.processors.news_selection import company_candidate, frontier_candidate, meaningful_quote
 from src.processors.thesis import consolidation as thesis_consolidation
 from src.processors.thesis import extractor as thesis_extractor
 from src.processors.thesis import renderer as thesis_renderer
@@ -177,13 +178,13 @@ def _translate_all_bundles(
     """按实际选稿窗口翻译，原始标题/摘要保持不变。"""
     titles_to_translate: list[object] = []
     for b in cn_bundles:
-        titles_to_translate.extend(b.items[:5])
+        titles_to_translate.extend([item for item in b.items if company_candidate(item, b.holding.ticker)][:5])
     for f in fig_bundles:
-        titles_to_translate.extend(f.items[:5])
+        titles_to_translate.extend([item for item in f.items if meaningful_quote(item)][:5])
     for m in macro_bundles:
         titles_to_translate.extend(m.items[:8])
     for bundle in frontier_bundles or []:
-        titles_to_translate.extend(bundle.items[:8])
+        titles_to_translate.extend([item for item in bundle.items if frontier_candidate(item)][:8])
     if titles_to_translate:
         translator.translate_in_place_news(titles_to_translate, client=client)
 

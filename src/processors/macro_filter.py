@@ -23,6 +23,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
+from src.processors.news_selection import neutral_macro_topic
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
@@ -249,9 +250,9 @@ def _rebuild_safe_html(
             evidence.extend(mapping)
         # Topic labels are model output too. Only non-assertive category names
         # may survive outside the grounded sentence.
-        topics = {"美联储", "地缘政治", "通胀数据", "货币政策", "财政政策", "经济数据", "国际贸易", "能源", "能源市场", "宏观动态"}
+        topics = {"美联储", "地缘政治", "通胀数据", "货币政策", "财政政策", "经济数据", "国际贸易", "能源", "能源市场", "宏观动态", "资本流动"}
         topic = split.group(1).strip() if split else ""
-        clean_para = ((topic if topic in topics else "宏观动态") + "。" if split else "") + supported
+        clean_para = ((topic if topic in topics and topic != "宏观动态" else neutral_macro_topic([flat_items[index - 1] for index in valid_indexes])) + "。" if split else "") + supported
         m = _THEME_SPLIT_RE.match(clean_para)
         if m:
             theme_text = m.group(1).strip()

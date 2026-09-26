@@ -16,6 +16,7 @@ from src.collectors.frontier_labs import FrontierBundle, FrontierItem, SourceTyp
 from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
+from src.processors.news_selection import frontier_candidate
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
 
@@ -219,7 +220,7 @@ def _parse_output_result(
         # A model merging indexes does not prove that their facts are equal.
         for source_index in valid_indexes:
             source_item = items[source_index - 1]
-            if not is_safe_url(source_item.url):
+            if not is_safe_url(source_item.url) or not frontier_candidate(source_item):
                 continue
             key = content_key(source_item)
             if key in seen_source_facts:
@@ -294,7 +295,7 @@ def _filter_one_with_status(
         source_error = f"SourceError: {'; '.join(bundle.errors)[:240]}"
     if not bundle.items:
         return [], source_error
-    items = bundle.items[:max_items]
+    items = [item for item in bundle.items if frontier_candidate(item)][:max_items]
     payload = _format_input(items)
     if not payload.strip():
         return [], None

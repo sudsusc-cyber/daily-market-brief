@@ -29,6 +29,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
+from src.processors.news_selection import company_candidate
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
@@ -196,7 +197,7 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
         cn_name = _CN_NAME_HINT.get(b.holding.ticker, b.holding.name)
         head = f"【{cn_name}({b.holding.ticker})】"
         lines.append(head)
-        for it in b.items[:5]:
+        for it in [item for item in b.items if company_candidate(item, b.holding.ticker)][:5]:
             it.holding_ticker = b.holding.ticker
             it.related_holding_tickers = tuple(sorted(source_companies.get(it.url, {b.holding.ticker})))
             flat_items.append(it)
@@ -332,7 +333,7 @@ def _rebuild_safe_summary(
             # Compatibility for direct callers; obvious company/source mismatches
             # are still rejected. Production always supplies explicit identities.
             valid = ticker is None or not cited or any(_is_relevant(item, ticker) for item in cited)
-        if not valid:
+        if not valid or any(not company_candidate(item, ticker or "") for item in cited):
             logger.warning("news_summarizer.company_source_mismatch company=%r", company)
             continue
         claim = FOOTNOTE_RE.sub("", strip_all_tags(summary)).strip()
@@ -341,7 +342,7 @@ def _rebuild_safe_summary(
             continue
         evidence.extend(mapping)
         citations = "".join(match.group(0) for match in FOOTNOTE_RE.finditer(summary))
-        verified_rows.append((cn, escape_text(supported) + citations))
+        verified_rows.append((cn, supported + citations))
     raw_rows = verified_rows
     combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)
     rewrite, footnotes = _resolve_footnote_mapping(combined_for_scan, flat_items)
@@ -394,8 +395,8 @@ def summarize(
     if not bundles:
         return None
     payload, flat_items = _format_input(bundles)
-    if not payload.strip():
-        return None
+    if not flat_items:
+        return CompanyNewsSummary(summary_html="", is_silence=True) if any(b.items and not b.error for b in bundles) else None
     last_error: str | None = None
     for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
         task_instruction = _TASK_INSTRUCTION + INSTRUCTION
