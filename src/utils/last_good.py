@@ -37,7 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,10 +95,11 @@ class LastGoodCache:
         entry = self._data.get(key)
         if not entry:
             return None
-        return entry["value"], entry["saved_at"]
+        return entry["value"], entry.get("observed_at", entry["saved_at"])
 
-    def put(self, key: str, value: Any, *, today: date | None = None) -> None:
-        """保存 value 到 key,saved_at = today(默认今日)。
+    def put(self, key: str, value: Any, *, today: date | None = None,
+            observed_at: str | None = None, fetched_at: str | None = None, source: str = "") -> None:
+        """保存 value 到 key；带来源日期时 saved_at 固定为 observed_at。
 
         立即原子写入磁盘(.tmp + os.replace),保证多 collector 并发或中途
         crash 不留半截文件。
@@ -108,7 +109,10 @@ class LastGoodCache:
             today = date.today()
         self._data[key] = {
             "value": value,
-            "saved_at": today.isoformat(),
+            "saved_at": observed_at or today.isoformat(),
+            "observed_at": observed_at or today.isoformat(),
+            "fetched_at": fetched_at or datetime.now(UTC).isoformat(),
+            "source": source,
         }
         self._flush()
 

@@ -23,6 +23,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
+from src.processors.source_grounding import INSTRUCTION, grounded_text
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class Footnote:
 class MacroNewsSummary:
     summary_html: str
     footnotes: list[Footnote] = field(default_factory=list)
+    evidence: list[dict] = field(default_factory=list)
 
 
 _TASK_INSTRUCTION = """\
@@ -140,7 +142,7 @@ def _format_input(bundles: list[MacroFeedBundle]) -> tuple[str, list[MacroNewsIt
         for it in b.items[:8]:
             flat_items.append(it)
             n = len(flat_items)
-            lines.append(f"  #{n}. {it.title}")
+            lines.append(f"  #{n}. 原始标题={it.title}\n原始摘要={it.summary}")
     return "\n".join(lines), flat_items
 
 
@@ -157,7 +159,7 @@ _THEME_SPLIT_RE = re.compile(r"^([^。.::]+)[。.::]\s*(.+)$", re.DOTALL)
 
 
 def _rebuild_safe_html(
-    raw_text: str, flat_items: list[MacroNewsItem]
+    raw_text: str, flat_items: list[MacroNewsItem], evidence: list[dict] | None = None
 ) -> tuple[str, list[Footnote]]:
     """LLM 输出 → 安全 HTML + 脚注列表。
 
@@ -238,6 +240,18 @@ def _rebuild_safe_html(
         # 先从正文任意位置移除，再按本段首次出现顺序统一追加到段尾。
         clean_para = FOOTNOTE_RE.sub("", para).strip()
         citation_html = "".join(_build_anchor(index) for index in valid_indexes)
+        split = _THEME_SPLIT_RE.match(clean_para)
+        claim = split.group(2).strip() if split else clean_para
+        supported, mapping = grounded_text(claim, [flat_items[index - 1] for index in valid_indexes])
+        if not supported:
+            continue
+        if evidence is not None:
+            evidence.extend(mapping)
+        # Topic labels are model output too. Only non-assertive category names
+        # may survive outside the grounded sentence.
+        topics = {"美联储", "地缘政治", "通胀数据", "货币政策", "财政政策", "经济数据", "国际贸易", "能源", "能源市场", "宏观动态"}
+        topic = split.group(1).strip() if split else ""
+        clean_para = ((topic if topic in topics else "宏观动态") + "。" if split else "") + supported
         m = _THEME_SPLIT_RE.match(clean_para)
         if m:
             theme_text = m.group(1).strip()
@@ -274,7 +288,7 @@ def summarize(
         return None
     last_error: str | None = None
     for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
-        task_instruction = _TASK_INSTRUCTION
+        task_instruction = _TASK_INSTRUCTION + INSTRUCTION
         if attempt > 1:
             task_instruction += """
 
@@ -296,13 +310,14 @@ def summarize(
             )
             continue
 
-        body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items)
+        evidence = []
+        body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items, evidence)
         if body_html:
             logger.info(
                 "macro_filter.ok footnotes=%d attempt=%d (sanitized)",
                 len(footnotes), attempt,
             )
-            return MacroNewsSummary(summary_html=body_html, footnotes=footnotes)
+            return MacroNewsSummary(summary_html=body_html, footnotes=footnotes, evidence=evidence)
 
         last_error = "AllParagraphsDroppedWithoutValidSources"
         logger.warning(

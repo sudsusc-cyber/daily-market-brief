@@ -37,7 +37,7 @@ def _mock_api(monkeypatch, runs: list[dict], *, delivered_ids: set[int] | None =
         conclusion = "success" if run_id in delivered_ids else "skipped"
         return {
             "jobs": [{
-                "steps": [{"name": "Confirm email delivery", "conclusion": conclusion}],
+                "steps": [{"name": "Confirm email delivery", "conclusion": conclusion, "completed_at": f"{_today()}T04:10:00Z"}],
             }],
         }
 
@@ -226,7 +226,7 @@ def test_duplicate_monitor_trigger_skips_second_alert(tmp_path, monkeypatch) -> 
                 "created_at": f"{_today()}T04:00:00Z",
             }]}
         return {"jobs": [{"steps": [{
-            "name": "Send monitor alert", "conclusion": "success",
+            "name": "Send monitor alert", "conclusion": "success", "completed_at": f"{_today()}T04:10:00Z",
         }]}]}
 
     monkeypatch.setattr(monitor, "_github_json", fake_json)

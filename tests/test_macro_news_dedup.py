@@ -31,8 +31,8 @@ def _bundle(source: str, items: list[MacroNewsItem]) -> MacroFeedBundle:
 
 
 def test_content_hash_normalizes_media_suffix() -> None:
-    a = _item("Fed raises rates by 25bp - WSJ")
-    b = _item("Fed raises rates by 25bp - Reuters")
+    a = _item("Fed raises rates by 25bp - WSJ", source="WSJ")
+    b = _item("Fed raises rates by 25bp - Reuters", source="Reuters")
     assert macro_news._content_hash("WSJ", a) == macro_news._content_hash("WSJ", b)
 
 
@@ -47,7 +47,7 @@ def test_content_hash_different_source_different_hash() -> None:
 
 
 def test_similar_merges_near_identical() -> None:
-    assert macro_news._similar(
+    assert not macro_news._similar(
         "Fed raises interest rates by 25 basis points",
         "Fed raises interest rates by 25 basis points today",
     )
@@ -78,8 +78,8 @@ def test_fetch_all_cross_source_fuzzy_dedup(tmp_path, monkeypatch) -> None:
         )
         for i, t in enumerate([
             "Fed raises interest rates by 25 basis points",
-            "Fed raises interest rates by 25 bps",
-            "Fed raises interest rates by 25 bp",
+            "Fed raises interest rates by 25 basis points",
+            "Fed raises interest rates by 25 basis points",
         ])
     ])
 

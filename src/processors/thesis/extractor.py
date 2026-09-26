@@ -13,12 +13,15 @@ import json
 import logging
 import re
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urldefrag
 
 from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url, strip_all_tags
 from src.processors.llm_client import LLMClient
+from src.processors.source_grounding import source_sentences
+from src.utils.news_facts import canonical_fact
 
 from .models import ThesisEvidence
 from .prompts import MAX_EVIDENCE_ITEMS, SYSTEM_EXTRA, build_user_prompt
@@ -54,9 +57,9 @@ def _value(obj: Any, name: str, default: Any = None) -> Any:
 
 
 def _normalize_grounding_text(value: Any) -> str:
-    """忽略标点与空白做保守的逐字摘录校验。"""
+    """保留小数、符号、单位和词边界的原文事实校验。"""
     text = strip_all_tags(str(value or ""))
-    return "".join(ch.lower() for ch in text if ch.isalnum())
+    return canonical_fact(text)
 
 
 def _normalize_grounding_url(value: Any) -> str:
@@ -73,62 +76,34 @@ def _grounding_material(
     figure_summaries: list[Any] | None,
     frontier_labs_events: list[Any] | None,
 ) -> dict[str, dict[str, Any]]:
-    """收集最终邮件会展示的事实正文与来源链接。"""
+    """Only original-source-bound published text is eligible for thesis extraction."""
     material: dict[str, dict[str, Any]] = {}
-
-    def add(section: str, text: Any, urls: list[Any]) -> None:
-        normalized_text = _normalize_grounding_text(text)
-        normalized_urls = {
-            url for raw in urls if (url := _normalize_grounding_url(raw))
-        }
-        if not normalized_text or not normalized_urls:
-            return
-        bucket = material.setdefault(section, {"text": "", "urls": set()})
-        bucket["text"] += f"|{normalized_text}|"
-        bucket["urls"].update(normalized_urls)
-
-    def add_summary(section: str, summary: Any | None) -> None:
-        if not summary:
-            return
-        if hasattr(summary, "summary_html"):
-            footnotes = _value(summary, "footnotes", []) or []
-            add(
-                section,
-                _value(summary, "summary_html", ""),
-                [_value(item, "url", "") for item in footnotes],
-            )
-            return
-        # 兼容旧调用形态；生产路径使用上面的已筛选 summary。
-        texts: list[str] = []
-        urls: list[str] = []
-        for bundle in summary if isinstance(summary, (list, tuple)) else []:
-            for item in _value(bundle, "items", []) or []:
-                texts.extend([
-                    str(_value(item, "title", "") or ""),
-                    str(_value(item, "summary", "") or ""),
-                ])
-                urls.append(str(_value(item, "url", "") or ""))
-        add(section, " ".join(texts), urls)
-
-    add_summary("company_news", company_news)
-    add_summary("macro", macro_news)
-
-    voice_texts: list[str] = []
-    voice_urls: list[str] = []
+    def add(section, obj):
+        for row in _value(obj, "evidence", []) or []:
+            if not isinstance(row, dict):
+                continue
+            excerpt = strip_all_tags(str(row.get("excerpt", "")))
+            raw = strip_all_tags(str(row.get("original_title", "")) + "\n" + str(row.get("original_summary", "")))
+            output = str(row.get("output_text", ""))
+            url = _normalize_grounding_url(row.get("url"))
+            published = strip_all_tags(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
+            source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""))
+            complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
+            if (not excerpt or excerpt not in raw or not url or not output or not complete
+                    or canonical_fact(output) != canonical_fact(excerpt) or excerpt not in published):
+                continue
+            bucket = material.setdefault(section, {"text": "", "urls": set(), "by_url": {}})
+            normalized = _normalize_grounding_text(output)
+            bucket["text"] += f"|{normalized}|"
+            bucket["urls"].add(url)
+            bucket["by_url"].setdefault(url, []).append(normalized)
+    add("company_news", company_news)
+    add("macro", macro_news)
     for summary in figure_summaries or []:
         for item in _value(summary, "items", []) or []:
-            voice_texts.append(str(_value(item, "text", "") or ""))
-            voice_urls.append(str(_value(item, "source_url", "") or ""))
-    add("voices", " ".join(voice_texts), voice_urls)
-
-    frontier_texts: list[str] = []
-    frontier_urls: list[str] = []
+            add("voices", item)
     for item in frontier_labs_events or []:
-        frontier_texts.append(str(_value(item, "text", "") or ""))
-        frontier_urls.append(str(
-            _value(item, "url", "") or _value(item, "source_url", "") or ""
-        ))
-    add("frontier_labs", " ".join(frontier_texts), frontier_urls)
+        add("frontier_labs", item)
     return material
 
 
@@ -148,7 +123,8 @@ def _filter_grounded_evidence(
                 item.theme, item.source_section,
             )
             continue
-        if len(normalized_text) < 8 or normalized_text not in bucket["text"]:
+        if len(normalized_text) < 8 or not any(
+                normalized_text == text for text in bucket.get("by_url", {}).get(normalized_url, [])):
             logger.warning(
                 "extractor.skip_ungrounded_text theme=%s section=%s",
                 item.theme, item.source_section,

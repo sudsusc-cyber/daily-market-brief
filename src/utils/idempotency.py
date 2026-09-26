@@ -5,7 +5,7 @@
 本工作流。需要避免一天发两封邮件。
 
 实现:启动时通过 GitHub Actions REST API 查询本仓库今日(**BJT**)是否已有
-"有 SMTP 接受凭证 OR 更早且正在运行" 的 run(排除当前 run)。已有 → 跳过本次。
+"有 SMTP 接受凭证 OR 更早且正在运行" 的执行(仅排除当前 attempt)。已有 → 跳过本次。
 
 TODO(audit-2026-05-04 #B1): leader 失败 + follower 后保存时,cache 会回退一天 state。
 monitor.yml 能捕获 leader 失败并告警,手动 force_send 后自动恢复。
@@ -36,7 +36,8 @@ Leader election(防双 fail):
 环境变量(由 daily.yml 注入,本地运行时缺失,函数返回 False 不阻塞):
 - GH_TOKEN:GitHub 自动生成的临时 token,只读 actions:read 权限够用
 - GH_REPO:owner/repo 形如 sudsusc-cyber/daily-market-brief
-- GH_RUN_ID:当前 run 的 id,排除自己
+- GH_RUN_ID:当前 run 的 id
+- GH_RUN_ATTEMPT:仅排除此 attempt，历史 attempts 仍检查
 
 幂等性策略:
 - 所有触发类型(schedule / workflow_dispatch / repository_dispatch)统一参与幂等
@@ -56,6 +57,7 @@ import re
 import urllib.request
 from datetime import datetime
 
+from src.utils.action_evidence import candidate_run, run_evidence, workflow_runs
 from src.utils.dates import BEIJING  # 统一时区源,避免每个 module 重复 ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -67,7 +69,7 @@ class IdempotencyUnavailableError(RuntimeError):
 
 
 def _today_beijing_iso() -> str:
-    """BJT 当日 ISO 日期(YYYY-MM-DD),用于与 created_at 转 BJT 后比对。"""
+    """BJT 当日 ISO 日期(YYYY-MM-DD),用于与实际 SMTP 确认版次比对。"""
     return datetime.now(BEIJING).date().isoformat()
 
 
@@ -85,138 +87,49 @@ def _bjt_date_of_iso(iso_str: str) -> str | None:
     return dt.astimezone(BEIJING).date().isoformat()
 
 
-def _run_has_successful_step(
-    *, repo: str, token: str, run_id: int, step_names: set[str],
-) -> bool:
-    """查询 Jobs API；用于识别部分送达后至少已有 SMTP acceptance 的失败 run。"""
-    url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"
+def _github_json(url: str, token: str) -> dict:
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    # URL 固定为 https://api.github.com，repo 已通过 slug 白名单。
     with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
-        data = json.load(resp)
-    return any(
-        step.get("name") in step_names and step.get("conclusion") == "success"
-        for job in (data.get("jobs", []) or [])
-        for step in (job.get("steps", []) or [])
-    )
+        return json.load(resp)
 
 
 def already_sent_today() -> bool:
-    """
-    True = 当日已有 run 在跑或已成功(排除当前 run)→ 应当跳过本次发送。
-    False = 本地运行 / 确认今日无并发或成功 run → 允许发送。
-
-    GitHub API 或关键环境异常时抛 IdempotencyUnavailableError，让 workflow 失败；
-    后续串行触发可在外部状态恢复后自动重试。
-    """
-    token = os.environ.get("GH_TOKEN")
-    repo = os.environ.get("GH_REPO")
-    cur_run_id_str = os.environ.get("GH_RUN_ID", "")
-
+    """Fail closed if the API cannot prove that another execution has not sent."""
+    token, repo = os.environ.get("GH_TOKEN"), os.environ.get("GH_REPO")
     if not token or not repo:
-        # 本地运行:不查询,允许发送
         return False
     if not _REPO_SLUG_RE.fullmatch(repo):
         raise IdempotencyUnavailableError("GH_REPO is not a valid owner/repo slug")
-
     try:
-        cur_run_id = int(cur_run_id_str) if cur_run_id_str else None
-    except ValueError:
-        cur_run_id = None
-
+        current = int(os.environ.get("GH_RUN_ID", ""))
+        attempt = int(os.environ.get("GH_RUN_ATTEMPT", os.environ.get("GITHUB_RUN_ATTEMPT", "1")))
+        if current < 1 or attempt < 1:
+            raise ValueError("invalid execution")
+    except ValueError as exc:
+        raise IdempotencyUnavailableError("GH_RUN_ID/attempt missing or invalid") from exc
     today = _today_beijing_iso()
-    # 关键:必须按 workflow file 过滤,只查 daily.yml 的 runs。
-    # 否则 monitor.yml 等其他 workflow 今天的成功 run 会被误判为"daily.yml
-    # 已发过",导致 daily.yml 永远 skip 不发邮件。
-    # per_page=100:24h 内 daily.yml run 通常 1-3 个,但 force_send 手测时容易
-    # 短时密集触发;20 太窄,真实 run 可能被挤出页面而误判为"未发"导致重发。
-    url = (
-        f"https://api.github.com/repos/{repo}/actions/workflows/daily.yml/runs"
-        f"?branch=main&per_page=100"
-    )
-    req = urllib.request.Request(url)
-    req.add_header("Authorization", f"Bearer {token}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-
+    def get_json(url):
+        return _github_json(url, token)
     try:
-        # URL 固定为 https://api.github.com，repo 已通过 slug 白名单。
-        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
-            data = json.load(resp)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("idempotency.api_failed reason=%r", exc)
-        raise IdempotencyUnavailableError("GitHub Actions API unavailable") from exc
-
-    runs = data.get("workflow_runs", []) or []
-
-    # A successful run can be a holiday/duplicate skip, not an email delivery.
-    for run in runs:
-        if cur_run_id is not None and run.get("id") == cur_run_id:
-            continue
-        if run.get("head_branch", "main") != "main":
-            continue
-        if _bjt_date_of_iso(run.get("created_at") or "") != today:
-            continue
-        # 部分送达会让 Confirm full email delivery 失败、run 结论为 failure；
-        # 但至少一位收件人已经收到，不能让后续兜底给他们重发。
-        if run.get("conclusion") in {"success", "failure", "cancelled", "timed_out"} and isinstance(run.get("id"), int):
-            try:
-                accepted = _run_has_successful_step(
-                    repo=repo,
-                    token=token,
-                    run_id=run["id"],
-                    step_names={"Confirm SMTP acceptance", "Confirm full email delivery", "Confirm email delivery"},
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.error("idempotency.jobs_api_failed run_id=%s reason=%r", run["id"], exc)
-                raise IdempotencyUnavailableError("GitHub Jobs API unavailable") from exc
-            if accepted:
-                logger.warning(
-                    "idempotency.partial_delivery run_id=%s → skip duplicate resend",
-                    run["id"],
-                )
-                return True
-
-    # 第二步:没有成功 run,但有其他 run 在 queued/in_progress —— 走 leader election。
-    # 只有"自己的 run_id 是今日所有 active run 中最小(最早创建)" 才发,其他让位。
-    # 这样两个并发 run 也不会"双双 skip":必有一个是最小 id → 发。
-    if cur_run_id is None:
-        # 异常:GH 环境通常有 GH_RUN_ID(由 daily.yml 显式注入)。能走到这里意味着
-        # token / repo 都齐全但 GH_RUN_ID 缺失或非数字 — 多半是 daily.yml 改坏了。
-        # 此时无法 leader election → 保守 skip(避免重发);monitor 会观察到漏发并告警。
-        logger.error(
-            "idempotency.no_run_id token+repo present but GH_RUN_ID missing/invalid — "
-            "cannot elect leader; check daily.yml env wiring",
-        )
-        raise IdempotencyUnavailableError("GH_RUN_ID missing or invalid")
-
-    active_today_ids: list[int] = [cur_run_id]
-    for run in runs:
-        rid = run.get("id")
-        if rid is None or rid == cur_run_id:
-            continue
-        if run.get("head_branch", "main") != "main":
-            continue
-        if _bjt_date_of_iso(run.get("created_at") or "") != today:
-            continue
-        if run.get("status") in ("queued", "in_progress"):
-            try:
-                active_today_ids.append(int(rid))
-            except (TypeError, ValueError):
+        runs = list(workflow_runs(get_json, repo))
+        # Always examine our own old attempts, including when a run listing
+        # page omitted the current in-progress execution.
+        candidates = {run["id"]: run for run in runs if candidate_run(run, today)}
+        if attempt > 1:
+            candidates.setdefault(current, {"id": current})
+        for rid in candidates:
+            if rid == current and attempt == 1:
                 continue
-
-    leader_id = min(active_today_ids)
-    if cur_run_id == leader_id:
-        logger.info(
-            "idempotency.leader run_id=%s active_today=%s → 发",
-            cur_run_id, sorted(active_today_ids),
-        )
-        return False
-    logger.info(
-        "idempotency.follower run_id=%s leader=%s → skip",
-        cur_run_id, leader_id,
-    )
-    return True
+            evidence = run_evidence(get_json, repo, rid, today=today,
+                                    exclude_attempt=attempt if rid == current else None)
+            if evidence["accepted"]:
+                logger.warning("idempotency.smtp_accepted run_id=%s edition=%s", rid, today)
+                return True
+        active = [run["id"] for run in runs if candidate_run(run, today)
+                  and run.get("status") in {"queued", "in_progress"}]
+        return current != min([current, *active])
+    except Exception as exc:
+        raise IdempotencyUnavailableError("GitHub delivery evidence unavailable") from exc

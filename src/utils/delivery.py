@@ -12,6 +12,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from src.utils.dates import BEIJING
+
 _RECEIPT_ENV = "DELIVERY_RECEIPT_PATH"
 
 
@@ -35,6 +37,8 @@ def write_delivery_receipt(
     if not raw_path:
         return
 
+    if sent_at.tzinfo is None:
+        raise ValueError("SMTP acceptance time must be timezone-aware")
     path = Path(raw_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -46,6 +50,8 @@ def write_delivery_receipt(
                 "sent_at": sent_at.isoformat(timespec="seconds"),
                 "status": "full" if refused_count == 0 else "partial",
                 "run_id": run_id or "",
+                "run_attempt": os.environ.get("GH_RUN_ATTEMPT", os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+                "edition": sent_at.astimezone(BEIJING).date().isoformat(),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -83,10 +89,20 @@ def receipt_satisfies(path: str | Path, requirement: str) -> bool:
 
 
 def _main(argv: list[str]) -> int:
-    if len(argv) != 3 or argv[1] not in {"accepted", "full"}:
-        print("usage: python -m src.utils.delivery <accepted|full> <receipt-path>")
+    if len(argv) != 3 or argv[1] not in {"accepted", "full", "edition"}:
+        print("usage: python -m src.utils.delivery <accepted|full|edition> <receipt-path>")
         return 2
     try:
+        if argv[1] == "edition":
+            data = read_delivery_receipt(argv[2])
+            stamp = datetime.fromisoformat(data["sent_at"])
+            if stamp.tzinfo is None:
+                raise ValueError("SMTP acceptance time must be timezone-aware")
+            edition = stamp.astimezone(BEIJING).date().isoformat()
+            if env_path := os.environ.get("GITHUB_ENV"):
+                with Path(env_path).open("a", encoding="utf-8") as stream:
+                    stream.write(f"DELIVERY_EDITION={edition}\n")
+            return 0
         ok = receipt_satisfies(argv[2], argv[1])
     except Exception as exc:  # noqa: BLE001 - CLI 必须以非零表达任何无效 receipt
         print(f"delivery receipt invalid: {type(exc).__name__}: {exc}")

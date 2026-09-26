@@ -118,7 +118,7 @@ class TestFigureFilter:
             items,
         )
         assert len(out) == 1
-        assert out[0].text == "黄仁勋说算力是未来"
+        assert out[0].text == "原文摘录：A"
         assert out[0].source_url == "https://a"
 
     def test_parse_output_skips_invalid_index(self) -> None:
@@ -139,17 +139,17 @@ class TestFigureFilter:
                          url="https://cnbc/c", source="CNBC"),
         ]
         out = fig_parse("▦ 1,2,3: yes | score=5 | AI 推理需求增长远超预期", items)
-        assert len(out) == 1
+        assert len(out) == 3  # Different originals cannot be merged by a model alone.
         # 主索引 1 应作为代表来源
         assert out[0].source_url == "https://reuters/a"
         assert out[0].source_name == "Reuters"
-        assert out[0].text == "AI 推理需求增长远超预期"
+        assert out[0].text == "原文摘录：A"
 
     def test_parse_output_dedupe_same_text(self) -> None:
         # 二重保险:LLM 误输出两条同样观点(空格差异),仍只保留一条
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
-            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
+            FigureMention(title="算力是未来的核心资产", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
+            FigureMention(title="算力是未来的核心资产", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
         ]
         out = fig_parse(
             "▦ 1: yes | score=4 | 算力是未来的核心资产\n▦ 2: yes | score=4 |  算力是未来的核心资产 ",
@@ -408,7 +408,7 @@ class TestFigureFilterScore:
         out = fig_parse("▦ 1: yes | score=4 | AI 推理需求增长远超预期", items)
         assert len(out) == 1
         assert out[0].score == 4
-        assert out[0].text == "AI 推理需求增长远超预期"
+        assert out[0].text == "原文摘录：A"
 
     def test_parse_score_5_keeps(self) -> None:
         items = [
@@ -468,7 +468,7 @@ class TestFigureFilterScore:
                          url="https://b", source="Bloomberg"),
         ]
         out = fig_parse("▦ 1,2: yes | score=5 | 合并后的重大判断", items)
-        assert len(out) == 1
+        assert len(out) == 2
         assert out[0].score == 5
         assert out[0].source_url == "https://a"
 

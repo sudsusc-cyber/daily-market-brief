@@ -24,17 +24,18 @@ from __future__ import annotations
 
 import logging
 import math
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pandas as pd
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 
 from src.utils.last_good import LastGoodCache
+from src.utils.market_clock import latest_closed_session
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -60,6 +61,10 @@ class SentimentMetric:
     error: str | None = None
     stale_from: str | None = None  # ISO 日期;非空表示沿用了 last-known-good 缓存值
 
+    observed_at: str | None = None
+    fetched_at: str | None = None
+    source: str = ""
+
     @property
     def delta(self) -> float | None:
         current = _finite_float(self.current)
@@ -73,6 +78,54 @@ class SentimentMetric:
 class SentimentBundle:
     metrics: list[SentimentMetric]
     fetched_at: datetime  # aware UTC
+
+
+# Frequency rules concern observations, not HTTP success. FRED daily credit
+# series has a publication lag; Shiller's underlying earnings are monthly.
+_MAX_OBSERVATION_AGE = {"FREDHY": 7, "ShillerPE": 45, "DXY": 4}
+
+
+def _observation_day(raw) -> str:
+    if raw is None or isinstance(raw, bool):
+        raise ValueError("missing observation date")
+    if isinstance(raw, (int, float)):
+        raw = datetime.fromtimestamp(raw / 1000 if raw > 10_000_000_000 else raw, UTC)
+    stamp = pd.Timestamp(raw)
+    if pd.isna(stamp):
+        raise ValueError("invalid observation date")
+    return stamp.date().isoformat()
+
+
+def _validate_observation(observed: str | None, key: str, today: date,
+                          now: datetime | None = None) -> None:
+    if not observed:
+        raise ValueError("来源缺少实际观测日期")
+    day = date.fromisoformat(observed)
+    if key in _MAX_OBSERVATION_AGE:
+        if not 0 <= (today - day).days <= _MAX_OBSERVATION_AGE[key]:
+            raise ValueError(f"来源观测已过期或超前: {observed}")
+    elif day != latest_closed_session("SPY", now or datetime.now(UTC)):
+        raise ValueError(f"来源观测不是最近已收盘交易日: {observed}")
+
+
+class DatedValues(list):
+    def __init__(self, values, *, observed_at: str, source: str):
+        super().__init__(values)
+        self.observed_at = observed_at
+        self.source = source
+        self.fetched_at = datetime.now(UTC).isoformat()
+
+
+def _dated_values(values, dates, *, source: str, key: str) -> DatedValues:
+    if not values or len(values) != len(dates):
+        raise ValueError("价格与日期数量不一致")
+    days = [_observation_day(raw) for raw in dates]
+    if days != sorted(set(days)):
+        raise ValueError("来源日期重复或乱序")
+    if _finite_float(values[-1]) is None:
+        raise ValueError("最新观测无效；不得悄悄使用上一条")
+    _validate_observation(days[-1], key, datetime.now(UTC).date())
+    return DatedValues([_finite_float(value) for value in values], observed_at=days[-1], source=source)
 
 
 # ---------- CNN Fear & Greed ----------
@@ -125,6 +178,8 @@ def _fetch_cnn_fear_greed() -> SentimentMetric:
         prior_raw = _cnn_prior_from_historical(historical)
     return SentimentMetric(
         name="CNN Fear & Greed",
+        observed_at=_observation_day(fg.get("timestamp")),
+        fetched_at=datetime.now(UTC).isoformat(), source=url,
         current=_finite_float(current),
         prior=_finite_float(prior_raw),
         rating=str(rating) if rating else None,
@@ -155,18 +210,11 @@ def _fetch_cboe_vix() -> tuple[float, float | None]:
     data = (resp.json() or {}).get("data") or []
     if not data:
         raise RuntimeError("CBOE VIX 返回空数据")
-    # data 按日期升序,只看最后 5 行避免遍历整个 1990 年至今的数组
     tail = data[-5:]
-    closes: list[float] = []
-    for row in tail:
-        c = _finite_float(row.get("close"))
-        if c is not None:
-            closes.append(c)
-    if not closes:
-        raise RuntimeError("CBOE VIX close 列无有效数据")
-    current = closes[-1]
-    prior = closes[-2] if len(closes) >= 2 else None
-    return current, prior
+    values = _dated_values([row.get("close") for row in tail],
+                           [row.get("date") for row in tail], source=_CBOE_VIX_URL, key="VIX")
+    return DatedValues([values[-1], values[-2] if len(values) > 1 else None],
+                       observed_at=values.observed_at, source=values.source)
 
 
 # ---------- yfinance: VIX(备路径) / DXY ----------
@@ -177,14 +225,8 @@ def _fetch_yfinance_close(ticker: str, period: str = "2mo") -> list[float]:
     hist = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=False)
     if hist is None or hist.empty:
         raise RuntimeError(f"{ticker} 返回空数据")
-    closes = [
-        close
-        for raw in hist["Close"].tolist()
-        if (close := _finite_float(raw)) is not None
-    ]
-    if not closes:
-        raise RuntimeError(f"{ticker} Close 列无有效数据")
-    return closes
+    return _dated_values(hist["Close"].tolist(), list(hist.index),
+                         source=f"yfinance:{ticker}", key="VIX" if ticker == "^VIX" else "DXY")
 
 
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
@@ -207,14 +249,9 @@ def _fetch_yahoo_chart_close(ticker: str, period: str = "2mo") -> list[float]:
     if not results:
         raise RuntimeError(f"{ticker} Yahoo Chart 返回空 result")
     quotes = (((results[0].get("indicators") or {}).get("quote")) or [{}])[0]
-    closes = [
-        value
-        for raw in quotes.get("close") or []
-        if (value := _finite_float(raw)) is not None
-    ]
-    if not closes:
-        raise RuntimeError(f"{ticker} Yahoo Chart Close 列无有效数据")
-    return closes
+    stamps = results[0].get("timestamp") or []
+    return _dated_values(quotes.get("close") or [], stamps,
+                         source=url, key="VIX" if ticker == "^VIX" else "DXY")
 
 
 def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> SentimentMetric:
@@ -251,27 +288,25 @@ def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> Senti
     current = closes[-1]
     # 前一交易日(closes[-2])作为"前一日"参考
     prior = closes[-2] if len(closes) >= 2 else None
-    return SentimentMetric(name=display_name, current=current, prior=prior, rating=None, unit=unit)
+    return SentimentMetric(name=display_name, current=current, prior=prior, rating=None, unit=unit,
+                           observed_at=closes.observed_at, fetched_at=closes.fetched_at, source=closes.source)
 
 # ---------- multpl.com: Shiller PE ----------
 @retry(max_attempts=3, base_delay=1.0)
 def _fetch_shiller_pe() -> SentimentMetric:
-    resp = requests.get(
-        "https://www.multpl.com/shiller-pe",
-        headers={"User-Agent": "Mozilla/5.0 (compatible; daily-market-brief/0.1)"},
-        timeout=20,
-    )
+    url = "https://www.multpl.com/shiller-pe/table/by-month"
+    resp = requests.get(url, headers={"User-Agent": "daily-market-brief/0.1"}, timeout=20)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "lxml")
-    current_node = soup.select_one("#current")
-    if not current_node:
-        return SentimentMetric(name="Shiller PE", current=None, prior=None, rating=None,
-                              error="multpl 选择器未命中 #current")
-    text = " ".join(current_node.get_text(" ", strip=True).split())
-    # 形如:"Current Shiller PE Ratio: 40.53 -0.01 (-0.02%)..."
-    m = re.search(r":\s*(\d+(?:\.\d+)?)", text)
-    current = float(m.group(1)) if m else None
-    return SentimentMetric(name="Shiller PE", current=current, prior=None, rating=None)
+    rows = [row.find_all("td") for row in soup.select("#datatable tr") if row.find_all("td")]
+    if not rows or len(rows[0]) != 2:
+        raise ValueError("multpl dated observation table missing")
+    # The first row contains the current published price-based CAPE; older
+    # rows are monthly. Do not replace a bad first row with a previous month.
+    observed = _observation_day(rows[0][0].get_text(" ", strip=True))
+    current = _finite_float(rows[0][1].get_text(" ", strip=True))
+    return SentimentMetric(name="Shiller PE", current=current, prior=None, rating=None,
+                           observed_at=observed, fetched_at=datetime.now(UTC).isoformat(), source=url)
 
 
 # ---------- FRED: 高收益债利差 BAMLH0A0HYM2 ----------
@@ -305,7 +340,9 @@ def _fetch_fred_hy_spread(api_key: str) -> SentimentMetric:
     current = _val(obs[0])
     # FRED 是降序;obs[1] 即前一观测日(节假日 FRED 不更新即为前一交易日)
     prior = _val(obs[1]) if len(obs) > 1 else None
-    return SentimentMetric(name="高收益债利差", current=current, prior=prior, rating=None, unit="%")
+    return SentimentMetric(name="高收益债利差", current=current, prior=prior, rating=None, unit="%",
+                           observed_at=_observation_day(obs[0].get("date")),
+                           fetched_at=datetime.now(UTC).isoformat(), source="FRED:BAMLH0A0HYM2")
 
 
 # ---------- VIX 主路径(CBOE → yfinance)----------
@@ -315,8 +352,10 @@ def _fetch_vix_primary() -> SentimentMetric:
     """
     # Layer 1: CBOE 官方源
     try:
-        current, prior = _fetch_cboe_vix()
-        return SentimentMetric(name="VIX", current=current, prior=prior, rating=None)
+        values = _fetch_cboe_vix()
+        current, prior = values
+        return SentimentMetric(name="VIX", current=current, prior=prior, rating=None,
+                               observed_at=values.observed_at, fetched_at=values.fetched_at, source=values.source)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "sentiment.cboe_failed exc_type=%s msg=%s",
@@ -345,6 +384,11 @@ def _with_last_good(
     """
     m = fn()
     if not m.error and _finite_float(m.current) is not None:
+        try:
+            _validate_observation(m.observed_at, cache_key, today)
+        except ValueError as exc:
+            m.current, m.prior, m.error = None, None, str(exc)
+    if not m.error and _finite_float(m.current) is not None:
         # 成功:持久化(cache 不可用时悄悄跳过,不影响主流程)
         if cache is not None:
             cache.put(
@@ -354,8 +398,9 @@ def _with_last_good(
                     "prior": m.prior,
                     "rating": m.rating,
                     "unit": m.unit,
+                    "observed_at": m.observed_at, "fetched_at": m.fetched_at, "source": m.source,
                 },
-                today=today,
+                today=today, observed_at=m.observed_at, fetched_at=m.fetched_at, source=m.source,
             )
         return m
 
@@ -366,7 +411,8 @@ def _with_last_good(
     if not cached:
         return m
     value, saved_at = cached
-    if LastGoodCache.is_stale(saved_at, today=today):
+    if (not isinstance(value, dict) or value.get("observed_at") != saved_at
+            or not value.get("source") or LastGoodCache.is_stale(saved_at, today=today)):
         logger.info(
             "sentiment.last_good_stale metric=%s saved_at=%s",
             cache_key, saved_at,
@@ -383,6 +429,7 @@ def _with_last_good(
         rating=value.get("rating") if isinstance(value, dict) else None,
         unit=value.get("unit", m.unit) if isinstance(value, dict) else m.unit,
         stale_from=saved_at,
+        observed_at=saved_at, fetched_at=value.get("fetched_at"), source=value.get("source", ""),
     )
 
 
@@ -434,7 +481,8 @@ def fetch_all(
             )
             if cache is not None:
                 cached = cache.get(f"sentiment.{cache_key}")
-                if cached and not LastGoodCache.is_stale(cached[1], today=today):
+                if (cached and isinstance(cached[0], dict) and cached[0].get("observed_at") == cached[1]
+                        and cached[0].get("source") and not LastGoodCache.is_stale(cached[1], today=today)):
                     value, saved_at = cached
                     logger.info(
                         "sentiment.last_good_used_after_raise metric=%s saved_at=%s",
@@ -446,7 +494,8 @@ def fetch_all(
                         prior=value.get("prior") if isinstance(value, dict) else None,
                         rating=value.get("rating") if isinstance(value, dict) else None,
                         unit=value.get("unit", "") if isinstance(value, dict) else "",
-                        stale_from=saved_at,
+                        stale_from=saved_at, observed_at=saved_at,
+                        fetched_at=value.get("fetched_at"), source=value.get("source", ""),
                     ))
                     continue
             metrics.append(err_metric)

@@ -202,6 +202,7 @@ def test_thesis_retries_invalid_json_and_accepts_valid_empty_array() -> None:
         client=client,
         company_news=SimpleNamespace(
             summary_html="已筛选的个股摘要包含可核对事实。",
+            evidence=[{"url": "https://example.com/source", "original_title": "已筛选的个股摘要包含可核对事实。", "excerpt": "已筛选的个股摘要包含可核对事实。", "output_text": "已筛选的个股摘要包含可核对事实。"}],
             footnotes=[SimpleNamespace(url="https://example.com/source")],
         ),
         today=date(2026, 8, 4),

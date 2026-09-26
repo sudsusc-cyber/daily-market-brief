@@ -22,6 +22,7 @@ from src.valuation.models import ValuationDisplay
 from src.valuation.qqqm_sources import (
     DAILY_FORWARD_BASIS,
     PE_URL,
+    SOURCE_DIAGNOSTICS,
     fetch_source_packet,
     latest_closed_date,
     validate_nav_evidence,
@@ -395,6 +396,7 @@ def calculate_qqqm(inputs: QQQMInputs) -> QQQMResult:
 def _from_cache(
     path: Path, *, price: float, checked_at: datetime, allow_daily_forward: bool = False,
 ) -> QQQMResult | None:
+    payload = {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         # Re-run all value/date/source gates, not just the cache age check.
@@ -422,7 +424,17 @@ def _from_cache(
                 != hashlib.sha256(payload["source_response"].encode()).hexdigest()):
             raise ValueError("QQQM 快照校验指纹或计算结果不一致")
         return result
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        try:
+            data_date = json.loads(payload.get("source_response", "{}" )).get("data", {}).get("data_date")
+        except (ValueError, TypeError, AttributeError):
+            data_date = None
+        record = {"cache": path.name, "data_date": data_date, "reason": str(exc)[:240]}
+        sink = SOURCE_DIAGNOSTICS.get()
+        if sink is not None:
+            sink(record)
+        logger.warning("valuation.qqqm_cache_rejected cache=%s data_date=%s reason=%s",
+                       path.name, data_date, record["reason"])
         return None
 
 
@@ -472,6 +484,14 @@ def _write_audit(state_dir: Path, audit: dict, *, result: QQQMResult | None = No
                                == calculation_record(result.inputs)["input_key"]}
     audit["warning"] = warning
     try:
+        try:
+            prior_audit = json.loads((state_dir / _AUDIT_NAME).read_text(encoding="utf-8"))
+            rounds = prior_audit.get("prior_rounds", [])
+            if prior_audit.get("checked_at") != audit.get("checked_at"):
+                rounds = [*rounds, {k: v for k, v in prior_audit.items() if k != "prior_rounds"}]
+            audit["prior_rounds"] = rounds[-4:]
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
         _write_json(state_dir / _AUDIT_NAME, audit)
     except (OSError, ValueError) as exc:
         logger.warning("valuation.qqqm_audit_save_failed type=%s", type(exc).__name__)
@@ -502,7 +522,30 @@ def verify_searched_inputs(inputs: QQQMInputs, *, checked_at: datetime, allow_da
     return packet
 
 
-def prepare_qqqm_display(
+def prepare_qqqm_display(*, price: float, client: LLMClient, state_dir: Path,
+                         checked_at: datetime) -> ValuationDisplay:
+    diagnostics: list[dict] = []
+    def record(item):
+        diagnostics.append(item)
+        del diagnostics[:-16]
+        try:
+            audit = json.loads((state_dir / _AUDIT_NAME).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            audit = {"checked_at": checked_at.isoformat(), "status": "collecting"}
+        if audit.get("checked_at") != checked_at.isoformat():
+            audit = {"checked_at": checked_at.isoformat(), "status": "collecting"}
+        audit["diagnostics"] = list(diagnostics)
+        _write_audit(state_dir, audit, warning=audit.get("warning"))
+    token = SOURCE_DIAGNOSTICS.set(record)
+    try:
+        return _prepare_qqqm_display(price=price, client=client, state_dir=state_dir, checked_at=checked_at)
+    finally:
+        SOURCE_DIAGNOSTICS.reset(token)
+        if diagnostics:
+            record({"stage": "round_finished"})
+
+
+def _prepare_qqqm_display(
     *, price: float, client: LLMClient, state_dir: Path, checked_at: datetime
 ) -> ValuationDisplay:
     """每日整理输入；失败时只用 14 日内能重算乐观情景的完整快照。"""
@@ -636,8 +679,7 @@ def cached_qqqm_display(*, price: float, state_dir: Path, checked_at: datetime) 
     audit = {"checked_at": checked_at.isoformat(), "status": "timeout_cached" if selected else "unavailable"}
     try:
         pending = json.loads((state_dir / _AUDIT_NAME).read_text(encoding="utf-8"))
-        if pending.get("status") == "collecting":
-            audit = {**pending, **audit}
+        audit = {**pending, **audit}
     except (OSError, ValueError, TypeError, AttributeError):
         pass
     _write_audit(state_dir, audit, result=selected[1] if selected else None, warning="取数超时")

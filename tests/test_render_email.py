@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -1013,8 +1014,11 @@ def test_full_editorial_email_preserves_sources_above_size_warning(
         },
     ])
 
+    from scripts.preview_email import _build_mock_valuations
+
     html = render_email(
         signals=signals,
+        valuations=_build_mock_valuations(),
         generated_at=datetime(2026, 8, 6, 7, 0, tzinfo=UTC),
         header_image_url="cid:header_image",
         holdings_intro="价格与长期均线的距离仍需结合企业基本面与资本配置纪律一并观察。",
@@ -1048,8 +1052,9 @@ def test_full_editorial_email_preserves_sources_above_size_warning(
     ))
     assert "长 期 判 断" not in html
     assert "LONG-TERM VIEW" not in html
-    assert len(html.encode("utf-8")) > _EMAIL_HTML_WARNING_BYTES
-    assert ("content_preserved=true" in caplog.text) == (
+    if warning_threshold <= _EMAIL_HTML_WARNING_BYTES:
+        assert len(html.encode("utf-8")) < _EMAIL_HTML_WARNING_BYTES
+    assert ("render.email_html_oversize" in caplog.text) == (
         len(html.encode("utf-8")) > warning_threshold
     )
 
@@ -1066,11 +1071,19 @@ def test_full_editorial_email_preserves_sources_above_size_warning(
     source_anchors = {anchor.get("href"): anchor for anchor in soup.select("a.source-link")}
     assert len(soup.select('tr[data-source-list="true"]')) == 4
     assert expected_inline_urls <= source_anchors.keys()
+    def computed_style(node):
+        declarations = node.get("style", "")
+        for sheet in soup.find_all("style"):
+            for name in node.get("class", []):
+                match = re.search(r"\." + re.escape(name) + r"\{([^}]+)\}", sheet.get_text())
+                if match:
+                    declarations += ";" + match[1]
+        return declarations
     for url in expected_inline_urls:
         assert source_anchors[url].get_text(strip=True)
-        assert "color:#0563C1!important" in source_anchors[url].get("style", "")
-        assert "font-size:11.5px" in source_anchors[url].get("style", "")
+        assert "color:#0563C1!important" in computed_style(source_anchors[url])
+        assert "font-size:11.5px" in computed_style(source_anchors[url])
         assert source_anchors[url].get("target") == "_blank"
-        style = inline_anchors[url].get("style", "")
+        style = computed_style(inline_anchors[url])
         assert "color:#0563C1!important" in style
         assert "text-decoration:none!important" in style

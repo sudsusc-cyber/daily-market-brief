@@ -107,6 +107,8 @@ class JiangsuFuelAlert:
     forecast_url: str | None = None
     forecast_title: str | None = None
     forecast_method: str = "schedule_only"
+    observed_at: str | None = None
+    fetched_at: str | None = None
     official_url: str = JIANGSU_OFFICIAL_NOTICES_URL
 
 
@@ -471,6 +473,7 @@ def _fetch_fred_crude_closes(
     series_id: str,
     *,
     api_key: str,
+    today: date | None = None,
 ) -> list[float]:
     """FRED 官方日度现货价，作为 Yahoo/yfinance 的独立备源。"""
     resp = requests.get(
@@ -488,17 +491,42 @@ def _fetch_fred_crude_closes(
     if resp.status_code != 200:
         raise RuntimeError(f"FRED {series_id} HTTP {resp.status_code}")
     observations = (resp.json() or {}).get("observations") or []
-    closes: list[float] = []
-    for item in reversed(observations):
-        try:
-            value = float(item.get("value"))
-        except (TypeError, ValueError):
-            continue
-        if math.isfinite(value) and value > 0:
-            closes.append(value)
-    if len(closes) < 20:
-        raise RuntimeError(f"FRED {series_id} 有效观测仅 {len(closes)} 条")
-    return closes
+    rows = list(reversed(observations))
+    return _validated_crude_window(
+        [item.get("value") for item in rows], [item.get("date") for item in rows],
+        today=today or datetime.now(UTC).date(), max_age_days=7)
+
+
+class CrudeWindow(list):
+    def __init__(self, values, days):
+        super().__init__(values)
+        self.observed_at = days[-1].isoformat()
+        self.window_start = days[0].isoformat()
+
+
+class CrudeEstimate(tuple):
+    def __new__(cls, direction, change, observations, sources):
+        obj = super().__new__(cls, (direction, change))
+        obj.observed_at = min(observations) if observations else None
+        obj.fetched_at = datetime.now(UTC).isoformat()
+        obj.source = ", ".join(sources)
+        return obj
+
+
+def _validated_crude_window(values, dates, *, today: date, max_age_days: int) -> list[float]:
+    if len(values) != len(dates) or len(values) < 20:
+        raise ValueError("原油窗口不足20条或日期未绑定")
+    # FRED can explicitly mark non-publication holidays as missing. Retain
+    # these in the 20-row validation: never slide an invalid latest row away.
+    days = [date.fromisoformat(str(day)[:10]) for day in dates[-20:]]
+    closes = [float(value) for value in values[-20:]]
+    if days != sorted(set(days)) or not 0 <= (today - days[-1]).days <= max_age_days:
+        raise ValueError("原油窗口日期过期、超前、重复或乱序")
+    if (days[-1] - days[0]).days > 40 or any((b-a).days > 7 for a,b in zip(days, days[1:], strict=False)):
+        raise ValueError("原油窗口跨度异常或缺失过多")
+    if any(not math.isfinite(value) or value <= 0 for value in closes):
+        raise ValueError("原油窗口包含无效观测")
+    return CrudeWindow(closes, days)
 
 
 def _ten_day_change(closes: list[float]) -> float | None:
@@ -519,14 +547,12 @@ def _estimate_direction_from_crude(
     Brent/WTI 官方日度现货序列。
     """
     changes: list[float] = []
+    observations, sources = [], []
     for symbol in _CRUDE_PROXY_SYMBOLS:
         try:
             history = _fetch_crude_history(symbol)
-            closes = [
-                float(value)
-                for index, value in history["Close"].items()
-                if index.date() <= today and math.isfinite(float(value)) and float(value) > 0
-            ]
+            closes = _validated_crude_window(history["Close"].tolist(), list(history.index),
+                                             today=today, max_age_days=4)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "jiangsu_fuel.crude_proxy_failed symbol=%s exc_type=%s msg=%s",
@@ -535,11 +561,14 @@ def _estimate_direction_from_crude(
             continue
         if (change := _ten_day_change(closes)) is not None:
             changes.append(change)
+            if getattr(closes, "observed_at", None):
+                observations.append(closes.observed_at)
+            sources.append(f"Yahoo:{symbol}")
 
     if not changes and fred_api_key:
         for series_id in _FRED_CRUDE_SERIES:
             try:
-                closes = _fetch_fred_crude_closes(series_id, api_key=fred_api_key)
+                closes = _fetch_fred_crude_closes(series_id, api_key=fred_api_key, today=today)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "jiangsu_fuel.fred_crude_failed series=%s exc_type=%s msg=%s",
@@ -550,6 +579,9 @@ def _estimate_direction_from_crude(
                 continue
             if (change := _ten_day_change(closes)) is not None:
                 changes.append(change)
+                if getattr(closes, "observed_at", None):
+                    observations.append(closes.observed_at)
+                sources.append(f"FRED:{series_id}")
         if changes:
             logger.warning(
                 "jiangsu_fuel.crude_fallback_used primary=yfinance fallback=fred series_count=%d",
@@ -560,10 +592,10 @@ def _estimate_direction_from_crude(
         return None
     average_change = sum(changes) / len(changes)
     if average_change > _CRUDE_DIRECTION_THRESHOLD:
-        return "上调", average_change
+        return CrudeEstimate("上调", average_change, observations, sources)
     if average_change < -_CRUDE_DIRECTION_THRESHOLD:
-        return "下调", average_change
-    return "待定", average_change
+        return CrudeEstimate("下调", average_change, observations, sources)
+    return CrudeEstimate("待定", average_change, observations, sources)
 
 
 def _is_alert_delivery_day(today: date, target: date) -> bool:
@@ -626,7 +658,9 @@ def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
                 days_until=days_until,
                 direction=direction,
                 detail=f"预计{direction}，具体幅度待更新",
-                forecast_source="Brent/WTI 原油均价代理",
+                forecast_source=getattr(crude_estimate, "source", "Brent/WTI 原油均价代理"),
+                observed_at=getattr(crude_estimate, "observed_at", None),
+                fetched_at=getattr(crude_estimate, "fetched_at", None),
                 forecast_method="crude_proxy",
             )
 
@@ -652,4 +686,5 @@ def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
         forecast_url=best.url,
         forecast_title=best.title,
         forecast_method="news",
+        observed_at=best.published_at.date().isoformat(), fetched_at=datetime.now(UTC).isoformat(),
     )

@@ -55,17 +55,18 @@ class TestJudgeSignal:
         assert _judge_signal(last_close=140.0, sma_120=140.0, sma_200=120.0) == "DCA"
 
 
-def test_nonfinite_live_price_falls_back_to_weekly_close(monkeypatch) -> None:
+def test_nonfinite_live_price_uses_dated_daily_close(monkeypatch) -> None:
     closes = pd.Series([100.0 + i / 10 for i in range(220)])
     history = _history(closes)
     fake_ticker = _ticker(float("nan"))
     monkeypatch.setattr(stocks.yf, "Ticker", lambda _symbol: fake_ticker)
     monkeypatch.setattr(stocks, "_yf_history", lambda _ticker: history)
 
+    monkeypatch.setattr(stocks, "_yf_verified_daily", lambda _: stocks.PriceHistory([123.45], observed_at="2026-09-03"))
     signal = stocks.fetch_one(HOLDINGS[0])
 
     assert signal.error is None
-    assert signal.last_close == closes.iloc[-1]
+    assert signal.last_close == 123.45
 
 
 def test_each_holding_has_exactly_one_strategy():
@@ -118,7 +119,8 @@ def test_growth_average_uses_exact_last_250_daily_closes():
     assert signal.sma_250d == pytest.approx(225.5)
     assert signal.sma_120 == 100
     assert signal.sma_200 is None  # 该组不需要200周历史
-    assert signal.signal == "DCA"
+    assert signal.signal == "NONE"
+    assert signal.last_close == 350  # daily Close, never live_price=200
     assert [line["value"] for line in signal.buy_lines] == [225.5, 100]
 
 
@@ -177,15 +179,15 @@ def test_growth_daily_both_fail_returns_error_not_weekly_signal(monkeypatch):
     monkeypatch.setattr(stocks, "_yf_daily_history", fail)
     monkeypatch.setattr(stocks, "_yahoo_chart_daily", fail)
     signal = stocks.fetch_one(next(h for h in HOLDINGS if h.ticker == "TSM"))
-    assert signal.error and "250 日线" in signal.error
+    assert signal.error and "收盘日线" in signal.error
     assert signal.signal == "NONE"
 
 
-def test_single_line_group_does_not_fetch_daily(monkeypatch):
+def test_single_line_group_uses_daily_close_without_daily_sma(monkeypatch):
     ticker = _ticker(130)
     monkeypatch.setattr(stocks.yf, "Ticker", lambda _: ticker)
     monkeypatch.setattr(stocks, "_yf_history", lambda _: _history([100.0] * 220))
-    monkeypatch.setattr(stocks, "_yf_daily_history", lambda _: pytest.fail("unexpected daily fetch"))
+    monkeypatch.setattr(stocks, "_yf_verified_daily", lambda _: stocks.PriceHistory([130], observed_at="2026-09-03"))
     signal = stocks.fetch_one(next(h for h in HOLDINGS if h.ticker == "COST"))
     assert signal.error is None
     assert signal.signal == "NONE"

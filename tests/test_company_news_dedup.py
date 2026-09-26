@@ -37,7 +37,7 @@ def _holding(ticker: str):
 
 def test_content_hash_normalizes_media_suffix() -> None:
     a = _item("Apple App Store ruling - Reuters")
-    b = _item("Apple App Store ruling - MSN")
+    b = _item("Apple App Store ruling - MSN", source="MSN")
     assert company_news._content_hash("AAPL", a) == company_news._content_hash("AAPL", b)
 
 
@@ -243,7 +243,7 @@ def test_malformed_state_degrades_to_empty(tmp_path, monkeypatch) -> None:
 
 
 def test_similar_merges_near_identical() -> None:
-    assert company_news._similar(
+    assert not company_news._similar(
         "Apple App Store ruling overturned",
         "Apple App Store ruling overturned by court",
     )
@@ -263,7 +263,7 @@ def test_similar_respects_threshold() -> None:
 
 def test_dedupe_fuzzy_keeps_most_recent() -> None:
     items = [
-        _item(f"NVDA GPU supply chain update — variant {i}", published_at=_NOW - timedelta(hours=i))
+        _item("NVDA GPU supply chain update", published_at=_NOW - timedelta(hours=i))
         for i in range(3)
     ]
     kept = company_news._dedupe_fuzzy(items)
@@ -292,13 +292,7 @@ def test_dedupe_fuzzy_mixed_scenario() -> None:
         _item("Apple Vision Pro sales disappoint analysts", published_at=_NOW - timedelta(hours=4)),
     ]
     kept = company_news._dedupe_fuzzy(items)
-    assert len(kept) == 2
-    titles = {k.title for k in kept}
-    assert titles == {
-        "NVDA Blackwell GPU demand surges",
-        "Apple Vision Pro sales disappoint",
-    }
-
+    assert len(kept) == 5  # Additional object/attribution cannot be proven equivalent.
 
 def test_dedupe_fuzzy_in_finnhub_collect(monkeypatch, caplog) -> None:
     import logging
@@ -307,7 +301,7 @@ def test_dedupe_fuzzy_in_finnhub_collect(monkeypatch, caplog) -> None:
     nvda = _holding("NVDA")
     items = [
         _item("NVDA announces Rubin platform", published_at=_NOW - timedelta(hours=1)),
-        _item("NVDA announces Rubin platform at GTC", published_at=_NOW - timedelta(hours=2)),
+        _item("NVDA announces Rubin platform", published_at=_NOW - timedelta(hours=2)),
     ]
 
     monkeypatch.setattr(

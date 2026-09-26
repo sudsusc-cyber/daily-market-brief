@@ -1,47 +1,30 @@
-"""跨日已刊内容记录：语义提示 + 确定性近似去重，成功投递后才提交。"""
+"""跨日已刊内容记录：语义提示 + 保守事实等价去重，成功投递后才提交。"""
 from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import date, timedelta
-from difflib import SequenceMatcher
 from pathlib import Path
 
 from bs4 import BeautifulSoup
+
+from src.utils.news_facts import equivalent
 
 logger = logging.getLogger(__name__)
 _DAYS = 30
 _MAX_ROWS = 600
 
 
-def _plain(text: str) -> str:
-    text = re.sub(r"\[\d+\]", "", text)
-    return re.sub(r"[^\w\u4e00-\u9fff]", "", text).lower()
+def _published_text(row) -> str:
+    # Remove only actual rendered citation nodes, never bracketed source facts.
+    clone = BeautifulSoup(str(row), "html.parser")
+    for anchor in clone.select("sup a[href]"):
+        anchor.decompose()
+    return clone.get_text()
 
 
 def similar(a: str, b: str) -> bool:
-    """保守拦截近似改写。数字或关键事实状态变化交给语义层判断，不强删。"""
-    numbers_a = re.findall(r"\d+(?:\.\d+)?", re.sub(r"\[\d+\]", "", a))
-    numbers_b = re.findall(r"\d+(?:\.\d+)?", re.sub(r"\[\d+\]", "", b))
-    if numbers_a != numbers_b:
-        return False
-    # Same nouns and numbers can describe opposite facts (已获批准/未获批准).
-    negative_fact = r"(?:尚未|并未|没有|不再|未|不)(?:能|会|曾|予|获|被)?(?:批准|通过|完成|增长|盈利|收购|合作|达成|推出|支付|偿还)"
-    if set(re.findall(negative_fact, a)) != set(re.findall(negative_fact, b)):
-        return False
-    a, b = _plain(a), _plain(b)
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    if min(len(a), len(b)) < 18:
-        return False
-    transitions = ("否认", "批准", "终止", "取消", "完成", "尚未", "不再", "上调", "下调",
-                   "计划", "拟", "已经", "正式", "未能", "拒绝", "亏损", "盈利")
-    if any((word in a) != (word in b) for word in transitions):
-        return False
-    return SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.78
+    return equivalent(a, b)
 
 
 class EditorialHistory:
@@ -110,12 +93,13 @@ class EditorialHistory:
         for row in list(soup.find_all("div", recursive=False)):
             entity = row.find("span")
             entity = entity.get_text(strip=True) if entity else ""
-            if self.duplicate("company", entity, row.get_text()):
+            if self.duplicate("company", entity, _published_text(row)):
                 logger.info("editorial_history.duplicate section=company entity=%s", entity)
                 row.decompose()
         summary.summary_html = str(soup)
         urls = {a.get("href") for a in soup.select("sup a")}
         summary.footnotes = [f for f in summary.footnotes if f.url in urls]
+        summary.evidence = [row for row in summary.evidence if row.get("url") in urls]
         if not soup.get_text(strip=True):
             summary.is_silence = True
         return summary
@@ -135,7 +119,7 @@ class EditorialHistory:
             soup = BeautifulSoup(company.summary_html, "html.parser")
             for row in soup.find_all("div", recursive=False):
                 name = row.find("span")
-                self.remember("company", name.get_text(strip=True) if name else "", row.get_text())
+                self.remember("company", name.get_text(strip=True) if name else "", _published_text(row))
         for summary in figures:
             for item in summary.items:
                 self.remember("figures", summary.person, item.text)

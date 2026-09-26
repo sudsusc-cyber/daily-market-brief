@@ -425,7 +425,7 @@
                 <tr>
                   <td valign="middle" style="padding:14px 0 14px 0; border-bottom:1px solid {{ color_hairline }};">
                     <div style="font-family:{{ serif_display }}; font-size:14px; color:{{ color_ink }}; letter-spacing:0.02em;">
-                      {{ m.name }}{% if m.unit %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:4px;">({{ m.unit }})</span>{% endif %}{% if m.stale_from %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:6px; font-style:italic;">(沿用 {{ m.stale_from | iso_date_md }})</span>{% endif %}
+                      {% if m.observed_at and not m.stale_from %}<small>{{ m.observed_at }} · </small>{% endif %}{{ m.name }}{% if m.unit %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:4px;">({{ m.unit }})</span>{% endif %}{% if m.stale_from %}<span style="font-family:{{ serif_body }}; font-size:11px; color:{{ color_muted }}; margin-left:6px; font-style:italic;">(沿用 {{ m.stale_from }})</span>{% endif %}
                     </div>
                     {# m.rating(如 CNN F&G 的 "greed" 英文标签)不再显示:数字本身已传达情绪 #}
                   </td>
@@ -688,7 +688,11 @@
               <br/>
               预计 {{ jiangsu_fuel_alert.adjustment_date.month }} 月 {{ jiangsu_fuel_alert.adjustment_date.day }} 日 24 时{% if jiangsu_fuel_alert.direction == "待定" %}开启调价窗口{% else %}{{ jiangsu_fuel_alert.direction | e }}{% endif %}
               <br/>
-              <span style="font-size:12.5px; color:{{ color_ink_soft }};">{{ jiangsu_fuel_alert.detail | e }}</span>
+              <span style="font-size:12.5px; color:{{ color_ink_soft }};">{{ jiangsu_fuel_alert.detail | e }}</span><br>
+              {% if jiangsu_fuel_alert.forecast_method == "news" %}媒体预测 · {{ jiangsu_fuel_alert.observed_at or "日期未明" }} · <a href="{{ jiangsu_fuel_alert.forecast_url | safe_url }}">{{ jiangsu_fuel_alert.forecast_source }}</a>
+              {% elif jiangsu_fuel_alert.forecast_method == "crude_proxy" %}模型代理 · Brent/WTI 原油均价推算（非官方调价） · 观测 {{ jiangsu_fuel_alert.observed_at or "日期未明" }} · {{ jiangsu_fuel_alert.forecast_source }}
+              {% else %}仅调价窗口提醒，方向待确认{% endif %}<br>
+              实际调价以<a href="{{ jiangsu_fuel_alert.official_url | safe_url }}">江苏发改委公告</a>为准
             </div>
             {% endif %}
           </td>

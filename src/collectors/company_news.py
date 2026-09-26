@@ -29,7 +29,6 @@ import re
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from difflib import SequenceMatcher
 from pathlib import Path
 
 import finnhub  # type: ignore[import-untyped]
@@ -37,6 +36,7 @@ import finnhub  # type: ignore[import-untyped]
 from src.config import Holding
 from src.utils.dates import last_24h_window, to_beijing
 from src.utils.fetch_rss import fetch_rss
+from src.utils.news_facts import content_key, equivalent
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -53,6 +53,8 @@ class NewsItem:
     summary: str = ""  # 摘要 / 描述,Finnhub 提供;用于相关性过滤
     holding_ticker: str | None = None
     related_holding_tickers: tuple[str, ...] = ()
+
+    translated_title: str = ""
 
 
 @dataclass
@@ -179,6 +181,7 @@ def _fetch_google_news(query: str, *, lang: str) -> list[NewsItem]:
         pub = datetime(*pp[:6], tzinfo=UTC)
         items.append(NewsItem(
             title=str(getattr(e, "title", "") or "").strip(),
+            summary=str(getattr(e, "summary", "") or "").strip(),
             published_at=pub,
             url=str(getattr(e, "link", "") or ""),
             source=str(getattr(getattr(e, "source", None), "title", "") or "Google News"),
@@ -206,15 +209,7 @@ def _normalize_for_similarity(text: str) -> str:
 
 
 def _similar(a: str, b: str, threshold: float = 0.72) -> bool:
-    """SequenceMatcher 相似度 ≥ threshold 视为同一事件。
-
-    阈值 0.72 比 figure_filter 的 0.6 更严:
-    - figure_filter 比的是 LLM 已提炼的中文观点(短而密),0.6 合理
-    - 新闻标题更长、含模板化前缀,0.6 有误合并风险
-    """
-    return SequenceMatcher(
-        None, _normalize_for_similarity(a), _normalize_for_similarity(b),
-    ).ratio() >= threshold
+    return equivalent(a, b)
 
 
 def _dedupe_fuzzy(items: list[NewsItem]) -> list[NewsItem]:
@@ -224,7 +219,7 @@ def _dedupe_fuzzy(items: list[NewsItem]) -> list[NewsItem]:
     """
     kept: list[NewsItem] = []
     for it in items:
-        if any(_similar(it.title, k.title) for k in kept):
+        if any(_similar(content_key(it), content_key(k)) for k in kept):
             continue
         kept.append(it)
     return kept
@@ -275,10 +270,7 @@ def _content_hash(ticker: str, item: NewsItem) -> str:
     不包含 URL —— 通讯社 syndication 的 URL 各家不同,但内容是同一条。
     包含 ticker 前缀 —— 同一标题打不同股票算两条 hash,避免误合并。
     """
-    title = (item.title or "").lower()
-    title = re.sub(r"\s*[-—–]\s*[^-—–]+$", "", title).strip()
-    title = re.sub(r"[^\w一-鿿]+", "", title, flags=re.UNICODE)
-    title = title[:80]
+    title = content_key(item)
     h = hashlib.sha1(
         f"{ticker}|{title}".encode(), usedforsecurity=False,
     ).hexdigest()
