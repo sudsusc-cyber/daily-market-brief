@@ -54,7 +54,12 @@ from src.processors import (
 )
 from src.processors.editorial_history import EditorialHistory
 from src.processors.llm_client import LLMClient
-from src.processors.news_selection import company_candidate, frontier_candidate, meaningful_quote
+from src.processors.news_selection import (
+    company_candidate,
+    frontier_candidate,
+    macro_candidate,
+    meaningful_quote,
+)
 from src.processors.thesis import consolidation as thesis_consolidation
 from src.processors.thesis import extractor as thesis_extractor
 from src.processors.thesis import renderer as thesis_renderer
@@ -182,7 +187,7 @@ def _translate_all_bundles(
     for f in fig_bundles:
         titles_to_translate.extend([item for item in f.items if meaningful_quote(item)][:5])
     for m in macro_bundles:
-        titles_to_translate.extend(m.items[:8])
+        titles_to_translate.extend([item for item in m.items if macro_candidate(item)][:8])
     for bundle in frontier_bundles or []:
         titles_to_translate.extend([item for item in bundle.items if frontier_candidate(item)][:8])
     if titles_to_translate:

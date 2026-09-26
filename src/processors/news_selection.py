@@ -51,7 +51,12 @@ def factual_excerpt(item) -> str:
     for sentence in eligible:
         if re.search(r"earnings|revenue|sales|每股|营收|利润", sentence, re.I) and re.search(r"[$%]|美元|%", sentence):
             return sentence
-    return eligible[0] if eligible else title
+    if eligible:
+        return eligible[0]
+    title_sentences = sentences(title)
+    if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s why|What.s next", title_sentences[1], re.I):
+        return title_sentences[0]
+    return title
 
 
 def company_candidate(item, ticker: str) -> bool:
@@ -85,3 +90,8 @@ def neutral_macro_topic(items) -> str:
         if re.search(pattern, text, re.I):
             return topic
     return "宏观动态"
+
+
+def macro_candidate(item) -> bool:
+    # Symbolic summit colour is not a market/policy development on its own.
+    return not re.search(r"panda diplomacy|熊猫外交", plain_source(item.title), re.I)
