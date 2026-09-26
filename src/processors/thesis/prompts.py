@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.processors.html_safe import strip_all_tags
+from src.processors.news_selection import plain_source
 
 MAX_ACTIVE_THEMES_IN_PROMPT = 120
 MAX_EVIDENCE_ITEMS = 8
@@ -220,7 +220,7 @@ def _html_to_text(html: str | None) -> str:
         return ""
     text = re.sub(r"</(?:p|div|li|tr)\s*>", "\n", str(html), flags=re.IGNORECASE)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
-    text = strip_all_tags(text)
+    text = plain_source(text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n", text)
     return text.strip()
@@ -242,4 +242,10 @@ def _format_summary_block(summary: Any) -> list[str]:
             source = getattr(f, "source", "")
             url = getattr(f, "url", "")
             lines.append(f"- [{idx}] {source} {url}".strip())
+    bound = getattr(summary, "evidence", []) or []
+    if bound:
+        lines.append("可引用的完整事实原句（text 逐字复制，不含公司名前缀、分隔符或脚注编号；不能改写）：")
+        for row in bound:
+            if row.get("output_text") and row.get("url"):
+                lines.append(f"- text={row['output_text']} | url={row['url']}")
     return lines

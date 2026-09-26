@@ -12,6 +12,7 @@ import re
 from collections.abc import Iterable
 
 from src.processors.llm_client import LLMClient
+from src.processors.news_selection import factual_excerpt, plain_source
 from src.processors.translation_guard import translation_errors
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,8 @@ _TASK_INSTRUCTION = """\
 任务:把下面以 "▦ N:" 编号的英文财经新闻标题逐条翻译为简体中文。
 约束:
 - 严格保留 "▦ N: <译文>" 格式,每条独占一行
-- 公司 / 人名 / 产品名(Microsoft / Buffett / iPhone)保留英文原写
+- 公司 / 人名 / 地名 / 产品名(Microsoft / Buffett / iPhone)保留英文原写
+- 原文所有 ticker 和缩写（AI、TPU、NASDAQ 等）保留，英文可紧邻中文
 - 数字、日期、百分号保持原样；金额单位可转为中文但金额、币种不得变化
 - 完整翻译，不概括、不补充判断；严格保留否定、可能/计划/待批等限定和事件状态
 - 输出仅这些行,不要任何前言、解释、Markdown
@@ -54,6 +56,7 @@ def translate_titles(
     *,
     client: LLMClient,
     batch_size: int = 30,
+    diagnostics: dict | None = None,
 ) -> list[str]:
     """翻译一批标题。已是中文的跳过,失败的位置回退原文。"""
     if not titles:
@@ -71,10 +74,11 @@ def translate_titles(
         }
         pending = set(indexed_chunk)
         translated: dict[int, str] = {}
+        rejected: dict[int, list[str]] = {}
 
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             numbered = "\n".join(
-                f"▦ {position}: {indexed_chunk[position][1]}"
+                f"▦ {position}: {indexed_chunk[position][1]}" + (f"\n上次译文未保留: {rejected[position]}；保留原始缩写、数字/日期、主体顺序及限定语。" if position in rejected else "")
                 for position in sorted(pending)
             )
             resp = client.chat(
@@ -96,7 +100,12 @@ def translate_titles(
                     errors = translation_errors(indexed_chunk[position][1], text) if text else ["empty"]
                     if text and not errors:
                         translated[position] = text
+                        if diagnostics is not None:
+                            diagnostics.pop(indexed_chunk[position][0], None)
                     elif text:
+                        rejected[position] = errors
+                        if diagnostics is not None:
+                            diagnostics[indexed_chunk[position][0]] = {"errors": errors, "candidate": text[:600]}
                         logger.warning("translate.rejected index=%d reasons=%s", position, errors)
                 pending.difference_update(translated)
 
@@ -128,7 +137,11 @@ def translate_titles(
 def translate_in_place_news(items: Iterable, *, client: LLMClient) -> None:
     """原始标题保持不变；译文仅存于 translated_title，不能充当原始证据。"""
     items_list = list(items)
-    titles = [getattr(it, "title", "") for it in items_list]
-    translated = translate_titles(titles, client=client)
-    for it, t in zip(items_list, translated, strict=True):
-        it.translated_title = t
+    excerpts = [factual_excerpt(it) for it in items_list]
+    diagnostics = {}
+    translated = translate_titles(excerpts, client=client, diagnostics=diagnostics)
+    for index, (it, original, text) in enumerate(zip(items_list, excerpts, translated, strict=True)):
+        it.translation_diagnostic = diagnostics.get(index, {})
+        it.source_excerpt = original
+        it.translated_excerpt = text
+        it.translated_title = text if original == plain_source(it.title) else ""

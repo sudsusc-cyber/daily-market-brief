@@ -23,6 +23,7 @@ from datetime import datetime
 from src.collectors.figures import FigureBundle, FigureMention
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
+from src.processors.news_selection import meaningful_quote
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
 
@@ -286,7 +287,7 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
         # A model merging indexes does not prove that their facts are equal.
         for source_index in valid_indexes:
             src_item = items[source_index - 1]
-            if not is_safe_url(src_item.url):
+            if not is_safe_url(src_item.url) or not meaningful_quote(src_item):
                 continue
             key = content_key(src_item)
             if key in seen_source_facts:
@@ -324,7 +325,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
     """
     if not bundle.items:
         return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error)
-    feed_items = bundle.items[:max_items]
+    feed_items = [item for item in bundle.items if meaningful_quote(item)][:max_items]
     qualified = [it for it in feed_items if _has_quote_marker(it)]
     logger.info(
         "figure_filter.rule_pass person=%s in=%d qualified=%d",
