@@ -30,7 +30,7 @@ _BUSINESS_FACT = re.compile(
     r'|settlement|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
 _RATING_SERVICE = re.compile(
-    r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级)", re.I)
+    r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级|outlook|展望)", re.I)
 
 
 def factual_excerpt(item) -> str:
@@ -51,12 +51,18 @@ def factual_excerpt(item) -> str:
     for sentence in eligible:
         if re.search(r"earnings|revenue|sales|每股|营收|利润", sentence, re.I) and re.search(r"[$%]|美元|%", sentence):
             return sentence
-    return eligible[0] if eligible else title
+    if eligible:
+        return eligible[0]
+    title_sentences = sentences(title)
+    if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s why|What.s next", title_sentences[1], re.I):
+        return title_sentences[0]
+    return title
 
 
 def company_candidate(item, ticker: str) -> bool:
     title = plain_source(getattr(item, 'title', ''))
-    if ticker == 'MCO' and _RATING_SERVICE.search(title):
+    if (ticker == 'MCO' and _RATING_SERVICE.search(title)
+            and not re.search(r'earnings|revenue|profit|营收|盈利|利润|业绩', title, re.I)):
         return False
     return not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title
 
@@ -84,3 +90,8 @@ def neutral_macro_topic(items) -> str:
         if re.search(pattern, text, re.I):
             return topic
     return "宏观动态"
+
+
+def macro_candidate(item) -> bool:
+    # Symbolic summit colour is not a market/policy development on its own.
+    return not re.search(r"panda diplomacy|熊猫外交", plain_source(item.title), re.I)

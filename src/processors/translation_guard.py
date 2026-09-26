@@ -28,7 +28,7 @@ _EVENTS = {
     "revenue": r"\b(?:revenues?|sales)\b|营收|收入|销售",
     "investment": r"\b(?:invest\w*|capex|capital spending)\b|投资|资本开支|资本支出",
     "acquisition": r"\b(?:acqui\w*|merger|takeover|buyout)\b|收购|并购|合并",
-    "launch": r"\b(?:launch\w*|rolls? out|rollout|switched on|starts?|releases?|released|unveils?|unveiled)\b|发布|推出|亮相|发射|启用|启动",
+    "launch": r"\b(?:launch\w*|rolls? out|rollout|switched on|starts?|releases?|released|unveils?|unveiled)\b|发布|推出|亮相|发射|启用|启动|开通",
 }
 _ENTITIES = {
     "Microsoft": ("Microsoft", "微软"), "Google": ("Google", "谷歌"),
@@ -60,7 +60,7 @@ def _quantities(text: str) -> Counter:
         result[("date", int(match[2]), int(match[3]), match[1] or "")] += 1
         return " "
     text = re.sub(r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\b", english_date, text, flags=re.I)
-    text = re.sub(r"(?:(\d{4})年)?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]", chinese_date, text)
+    text = re.sub(r"(?:(\d{4})\s*年)?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]", chinese_date, text)
     for match in _NUMBER.finditer(text):
         value = Decimal(match['n'].replace(',', '')) * _SCALE.get((match['scale'] or '').lower(), 1)
         unit = (match['unit'] or '').lower()

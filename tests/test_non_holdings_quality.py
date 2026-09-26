@@ -195,9 +195,11 @@ def test_question_headline_uses_complete_operating_fact_without_mutating_source(
 def test_routine_sovereign_ratings_are_not_moodys_company_news():
     from src.processors.news_selection import company_candidate
     for title in ('Moody’s Ratings affirms Iceland’s A1 ratings, maintains stable outlook',
-                  'Moody’s cuts Botswana credit rating to Baa2', 'Moody’s lifts Montenegro’s credit rating to Ba2'):
+                  'Moody’s cuts Botswana credit rating to Baa2', 'Moody’s lifts Montenegro’s credit rating to Ba2',
+                  'Moody’s affirms Fiji at B1 with stable outlook as savings cushion debt'):
         assert not company_candidate(SimpleNamespace(title=title, summary=''), 'MCO')
     assert company_candidate(SimpleNamespace(title='Moody’s reports record quarterly revenue', summary=''), 'MCO')
+    assert company_candidate(SimpleNamespace(title='Moody’s affirms its earnings outlook', summary=''), 'MCO')
 
 
 def test_price_commentary_and_generic_praise_do_not_fill_sections():
@@ -242,3 +244,21 @@ def test_thesis_receives_exact_published_translation_without_company_wrapper():
         evidence=[{'output_text': 'Microsoft 尚未获批', 'url': 'https://example.com/msft'}])
     payload = '\n'.join(_format_summary_block(summary))
     assert 'text=Microsoft 尚未获批 | url=https://example.com/msft' in payload
+
+
+@pytest.mark.parametrize('original,translated', [
+    ('ATLANTA, September 25, 2026--The Coca-Cola Company will appoint Rob Gehring effective Dec. 1, 2026.',
+     'ATLANTA，2026 年 9 月 25 日——The Coca-Cola Company 将任命 Rob Gehring，自2026 年 12 月 1 日生效。'),
+    ('Mastercard just switched on stablecoin settlement for SoFi Bank.',
+     'Mastercard 刚刚为 SoFi Bank 开通稳定币结算。'),
+])
+def test_second_live_preview_false_positives(original, translated):
+    assert not translation_errors(original, translated)
+
+
+def test_macro_filters_colour_and_keeps_factual_half_of_explainer_title():
+    from src.processors.news_selection import factual_excerpt, macro_candidate
+    assert not macro_candidate(SimpleNamespace(title='China’s Panda Diplomacy Is Losing Its Clout With the U.S.'))
+    assert macro_candidate(SimpleNamespace(title='U.S., China Agree to Trim Tariffs'))
+    title = 'The 10-year Treasury yield is at its highest in nearly two decades. How we got here'
+    assert factual_excerpt(SimpleNamespace(title=title)) == title.split('. ')[0] + '.'
