@@ -1,6 +1,7 @@
 """Offline whole-entrypoint checks: no real credentials, network or delivery."""
 
 import importlib
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -133,8 +134,18 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         assert not (tmp_path / "pushed_company_news.json").exists()
         return
     assert main.main() == 0
+    manifest = json.loads(next((tmp_path / "audit").glob("*/manifest.json")).read_text())
+    assert manifest["content"]["status"] == "degraded"
+    health = manifest["content"]["section_health"]
+    assert health["sentiment"]["fallback"] is True
+    assert health["holdings_intro"]["fallback"] is True
+    if not exhausted and not publication_scenario:
+        assert health["company"]["processing_failures"] == 1
+    if exhausted:
+        assert health["collection"]["timeout_count"] > 0
+        assert health["company"]["source_failures"] > 0
+        assert health["macro"]["source_failures"] > 0
     if scenario == "preview":
-        import json
         assert not sent
         assert not main.thesis_renderer.load_publications(tmp_path)
         assert not (tmp_path / "receipt.json").exists()
@@ -154,7 +165,6 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     if publication_scenario:
         assert len(main.thesis_renderer.load_publications(tmp_path)) == 1
         assert "基础设施投入的长期价值取决于资本回报" in sent[0]["html_body"]
-        import json
         manifest = json.loads(next((tmp_path / "audit").glob("*/manifest.json")).read_text())
         assert len(manifest["content"]["judgment_mapping"]) == 1
         assert manifest["content"]["judgment_mapping"][0]["evidence"]["excerpt"] == fact

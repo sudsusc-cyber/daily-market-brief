@@ -229,8 +229,10 @@ def main() -> int:
     settings = load_settings()
     now_bj = now_beijing()
     budget = RuntimeBudget()
+    stage_timeouts = []
 
     def timed_out(label, value):
+        stage_timeouts.append(label)
         _record_quality_alert(f"{label}取数超时：已停止等待并降级，保留发送时间。")
         return value
 
@@ -559,11 +561,13 @@ def main() -> int:
 
     logger.info("processors.thesis")
     judgment_audit = {}
+    judgment_error = None
     try:
         judgment_sources = thesis_renderer.publication_sources(
             company_news=None if company_news_fallback_note or company_news_silence_note else company_news_summary,
             macro_news=None if macro_news_fallback_note or macro_news_silence_note else macro_news_summary,
-            figure_summaries=figure_summaries if fig_bundles else [], frontier_labs_events=frontier_labs_items[:2],
+            figure_summaries=figure_summaries if fig_bundles else [],
+            frontier_labs_events=[] if frontier_labs_fallback_note else frontier_labs_items[:2],
         )
         judgment_section = thesis_renderer.build_judgment_section(
             sources=judgment_sources, today=now_bj.date(),
@@ -581,6 +585,7 @@ def main() -> int:
             str(exc)[:200],
         )
         _record_quality_alert("长期判断管线失败：已跳过本次判断更新。")
+        judgment_error = type(exc).__name__
         judgment_section = None
 
     logger.info("processors.holdings_intro")
@@ -723,6 +728,29 @@ def main() -> int:
         signals=signals, valuations=valuation_displays, sentiment=sentiment_bundle,
         diagnostics={"QQQM": qqqm_diagnostics},
         expected_tickers=[holding.ticker for holding in HOLDINGS] if settings.valuation_enabled else [],
+        expected_prices=[holding.ticker for holding in HOLDINGS],
+        expected_metrics=sentiment.METRIC_NAMES,
+        section_health={
+            "company": {"source_failures": company_source_failures,
+                        "processing_failures": int(bool(getattr(company_news_summary, "error", None))
+                                                   or bool(company_news_fallback_note and any(b.items for b in cn_bundles))),
+                        "fallback": bool(company_news_fallback_note), "silence": bool(company_news_silence_note)},
+            "macro": {"source_failures": macro_source_failures,
+                      "processing_failures": int(bool(getattr(macro_news_summary, "error", None))
+                                                 or bool(macro_news_fallback_note and any(b.items for b in macro_bundles))),
+                      "fallback": bool(macro_news_fallback_note), "silence": bool(macro_news_silence_note)},
+            "figures": {"source_failures": sum(bool(b.error) for b in fig_bundles),
+                        "processing_failures": len(figure_failures), "fallback": bool(figure_fallback_note),
+                        "silence": not figure_summaries and not figure_failures},
+            "frontier": {"source_failures": sum(bool(b.errors) for b in frontier_labs_bundles),
+                         "processing_failures": len(frontier_labs_failures), "fallback": bool(frontier_labs_fallback_note),
+                         "silence": not frontier_labs_items and not frontier_labs_failures},
+            "sentiment": {"fallback": sentiment_verdict is None or bool(sentiment_verdict.get("argument_fallback"))},
+            "judgment": {"processing_failures": int(judgment_error is not None)},
+            "holdings_intro": {"fallback": bool(signals) and holdings_intro_text is None},
+            "fuel": {"fallback": jiangsu_fuel_alert is not None and jiangsu_fuel_alert.forecast_method == "schedule_only"},
+            "collection": {"timeout_count": len(stage_timeouts)},
+        },
         news={
             "company": (sum(len(b.items) for b in cn_bundles), [company_news_summary]),
             "macro": (sum(len(b.items) for b in macro_bundles), [macro_news_summary]),
@@ -734,6 +762,8 @@ def main() -> int:
         "sentiment": sentiment_verdict,
         "company_error": getattr(company_news_summary, "error", None),
         "macro_error": getattr(macro_news_summary, "error", None),
+        "judgment_error": judgment_error,
+        "stage_timeouts": stage_timeouts,
     }
     report["judgment_mapping"] = judgment_section.items if judgment_section else []
     report["judgment_selection"] = judgment_audit

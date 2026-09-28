@@ -83,6 +83,7 @@ class SentimentBundle:
 # Frequency rules concern observations, not HTTP success. FRED daily credit
 # series has a publication lag; Shiller's underlying earnings are monthly.
 _MAX_OBSERVATION_AGE = {"FREDHY": 7, "ShillerPE": 45, "DXY": 4}
+METRIC_NAMES = ("CNN Fear & Greed", "VIX", "DXY", "Shiller PE", "高收益债利差")
 
 
 def _observation_day(raw) -> str:

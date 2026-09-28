@@ -20,10 +20,9 @@ from src.processors.html_safe import is_safe_url
 from src.utils.news_facts import canonical_fact
 
 from .extractor import (
-    _grounding_material,
-    _normalize_grounding_text,
     _normalize_grounding_url,
     _value,
+    _verified_grounding_row,
 )
 
 logger = logging.getLogger(__name__)
@@ -135,28 +134,15 @@ def _verified_rows(sources: dict):
         if section not in _SECTION_NAMES:
             continue
         for obj in objects:
-            kwargs = dict(
-                company_news=None, macro_news=None, figure_summaries=None, frontier_labs_events=None
-            )
             if section in ("company_news", "macro"):
-                kwargs["company_news" if section == "company_news" else "macro_news"] = obj
                 urls = {
                     _normalize_grounding_url(_value(f, "url")) for f in _value(obj, "footnotes", [])
                 }
-            elif section == "voices":
-                kwargs["figure_summaries"] = [{"items": [obj]}]
-                urls = {_normalize_grounding_url(_value(obj, "source_url"))}
             else:
-                kwargs["frontier_labs_events"] = [obj]
                 urls = {_normalize_grounding_url(_value(obj, "source_url"))}
-            material = _grounding_material(**kwargs).get(section, {}).get("by_url", {})
             for row in _value(obj, "evidence", []) or []:
-                if not isinstance(row, dict):
-                    continue
-                url = _normalize_grounding_url(row.get("url"))
-                if url in urls and _normalize_grounding_text(
-                    row.get("output_text")
-                ) in material.get(url, []):
+                verified = _verified_grounding_row(obj, row)
+                if verified is not None and verified[0] in urls:
                     yield section, row
 
 

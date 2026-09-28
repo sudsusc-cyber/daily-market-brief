@@ -7,6 +7,7 @@ Delivery and content quality have independent lifecycles.
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 from collections import Counter
@@ -27,7 +28,8 @@ def _atomic_json(path: Path, value: dict) -> None:
 
 
 def content_report(
-    *, signals, valuations, sentiment, news: dict, expected_tickers, diagnostics=None
+    *, signals, valuations, sentiment, news: dict, expected_tickers, diagnostics=None,
+    section_health=None, expected_prices=(), expected_metrics=(),
 ) -> dict:
     rows = []
     for ticker in expected_tickers:
@@ -64,7 +66,8 @@ def content_report(
                 "section": "prices",
                 "key": signal.holding.ticker,
                 "status": (
-                    "missing" if signal.error or not signal.observed_at else "current_verified"
+                    "missing" if signal.error or not signal.observed_at or not _finite(signal.last_close)
+                    else "current_verified"
                 ),
                 "observed_at": signal.observed_at,
                 "source": signal.data_source,
@@ -77,17 +80,24 @@ def content_report(
                 "key": metric.name,
                 "status": (
                     "missing"
-                    if metric.error or metric.current is None or not metric.observed_at
+                    if metric.error or not _finite(metric.current) or not metric.observed_at
                     else "carried" if metric.stale_from else "current_verified"
                 ),
                 "observed_at": metric.observed_at,
                 "fetched_at": metric.fetched_at,
-                "current": metric.current,
-                "prior": metric.prior,
+                "current": metric.current if _finite(metric.current) else None,
+                "prior": metric.prior if _finite(metric.prior) else None,
                 "unit": metric.unit,
                 "source": metric.source,
             }
         )
+    # A collector timeout can return an empty bundle. Absence must not erase the
+    # denominator and make the entire section look verified.
+    for section, expected in (("prices", expected_prices), ("sentiment", expected_metrics)):
+        present = {row["key"] for row in rows if row["section"] == section}
+        rows.extend({"section": section, "key": key, "status": "missing",
+                     "observed_at": None, "source": None}
+                    for key in expected if key not in present)
     coverage, mappings = {}, {}
     for section, pair in news.items():
         candidates, published = pair
@@ -108,9 +118,15 @@ def content_report(
     counts = {
         key: raw_counts[key] for key in ("current_verified", "carried", "missing", "conflict")
     }
+    section_health = section_health or {}
     degraded = any(counts.get(key, 0) for key in ("carried", "missing", "conflict")) or any(
-        row["candidates"] and (not row["published_sources"] or row["extractive_fallbacks"] or row["non_chinese_outputs"])
-        for row in coverage.values()
+        row["candidates"] and (
+            (not row["published_sources"] and not section_health.get(section, {}).get("silence"))
+            or row["extractive_fallbacks"] or row["non_chinese_outputs"])
+        for section, row in coverage.items()
+    ) or (sentiment is not None and not sentiment.metrics) or any(
+        any(health.get(key) for key in ("source_failures", "processing_failures", "fallback", "timeout_count"))
+        for health in section_health.values()
     )
     return {
         "status": "degraded" if degraded else "verified",
@@ -119,7 +135,12 @@ def content_report(
         "news_coverage": coverage,
         "summary_mapping": mappings,
         "diagnostics": diagnostics or {},
+        "section_health": section_health,
     }
+
+
+def _finite(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def archive_publication(html: str, *, generated_at, report: dict, inline_images=()) -> Path:
