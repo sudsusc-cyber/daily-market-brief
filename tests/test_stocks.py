@@ -28,8 +28,10 @@ def _history(values):
                         index=pd.date_range(end="2026-08-31", periods=len(values), freq="W-MON"))
 
 
-def _ticker(price):
+def _ticker(price, symbol="MSFT"):
     return SimpleNamespace(fast_info=SimpleNamespace(last_price=price),
+                           _price_history=SimpleNamespace(_history_metadata={
+                               "symbol": symbol, "currency": "USD", "exchangeName": "NMS"}),
                            history_metadata={"regularMarketTime": datetime(2026, 9, 3, 20, tzinfo=UTC).timestamp()})
 
 
@@ -160,7 +162,7 @@ def test_daily_history_request_is_daily_and_unadjusted():
 
 
 def test_growth_daily_primary_failure_uses_daily_backup(monkeypatch):
-    ticker = _ticker(130)
+    ticker = _ticker(130, "NVDA")
     monkeypatch.setattr(stocks.yf, "Ticker", lambda _: ticker)
     monkeypatch.setattr(stocks, "_yf_history", lambda _: _history([100.0] * 220))
     monkeypatch.setattr(stocks, "_yf_daily_history", lambda _: (_ for _ in ()).throw(RuntimeError("daily failed")))
@@ -184,7 +186,7 @@ def test_growth_daily_both_fail_returns_error_not_weekly_signal(monkeypatch):
 
 
 def test_single_line_group_uses_daily_close_without_daily_sma(monkeypatch):
-    ticker = _ticker(130)
+    ticker = _ticker(130, "COST")
     monkeypatch.setattr(stocks.yf, "Ticker", lambda _: ticker)
     monkeypatch.setattr(stocks, "_yf_history", lambda _: _history([100.0] * 220))
     monkeypatch.setattr(stocks, "_yf_verified_daily", lambda _: stocks.PriceHistory([130], observed_at="2026-09-03"))

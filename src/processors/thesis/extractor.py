@@ -83,27 +83,11 @@ def _grounding_material(
     material: dict[str, dict[str, Any]] = {}
     def add(section, obj):
         for row in _value(obj, "evidence", []) or []:
-            if not isinstance(row, dict):
+            verified = _verified_grounding_row(obj, row)
+            if verified is None:
                 continue
-            excerpt = plain_source(str(row.get("excerpt", "")))
-            raw = plain_source(str(row.get("original_title", "")) + "\n" + str(row.get("original_summary", "")))
-            output = str(row.get("output_text", ""))
-            url = _normalize_grounding_url(row.get("url"))
-            published = plain_source(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
-            source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""))
-            complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
-            validated = str(row.get("validated_text", output))
-            display_supported = output == (publication_text(validated, source_name=str(row.get("source_name", "")))
-                                          if row.get("presentation_version") == 1 else validated)
-            output_supported = display_supported and (canonical_fact(validated) == canonical_fact(excerpt) or (
-                row.get("mode") == "checked_translation"
-                and not translation_errors(excerpt, validated)
-            ))
-            if (not excerpt or excerpt not in raw or not url or not output or not complete
-                    or not output_supported or output not in published):
-                continue
+            url, normalized = verified
             bucket = material.setdefault(section, {"text": "", "urls": set(), "by_url": {}})
-            normalized = _normalize_grounding_text(output)
             bucket["text"] += f"|{normalized}|"
             bucket["urls"].add(url)
             bucket["by_url"].setdefault(url, []).append(normalized)
@@ -115,6 +99,29 @@ def _grounding_material(
     for item in frontier_labs_events or []:
         add("frontier_labs", item)
     return material
+
+
+def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
+    """Validate this exact row; a sibling with the same URL/text grants no authority."""
+    if not isinstance(row, dict):
+        return None
+    excerpt = plain_source(str(row.get("excerpt", "")))
+    raw = plain_source(str(row.get("original_title", "")) + "\n" + str(row.get("original_summary", "")))
+    output = str(row.get("output_text", ""))
+    url = _normalize_grounding_url(row.get("url"))
+    published = plain_source(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
+    source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""))
+    complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
+    validated = str(row.get("validated_text", output))
+    display_supported = output == (publication_text(validated, source_name=str(row.get("source_name", "")))
+                                  if row.get("presentation_version") == 1 else validated)
+    output_supported = display_supported and (canonical_fact(validated) == canonical_fact(excerpt) or (
+        row.get("mode") == "checked_translation" and not translation_errors(excerpt, validated)
+    ))
+    if (not excerpt or excerpt not in raw or not url or not output or not complete
+            or not output_supported or output not in published):
+        return None
+    return url, _normalize_grounding_text(output)
 
 
 def _filter_grounded_evidence(

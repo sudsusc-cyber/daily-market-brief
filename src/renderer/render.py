@@ -476,7 +476,8 @@ def render_email(
         sources=publication_sources(
             company_news=None if company_news_fallback_note or company_news_silence_note else company_news_summary,
             macro_news=None if macro_news_fallback_note or macro_news_silence_note else macro_news_summary,
-            figure_summaries=figure_summaries if figures else [], frontier_labs_events=frontier_labs_items,
+            figure_summaries=figure_summaries if figures else [],
+            frontier_labs_events=[] if frontier_labs_fallback_note else frontier_labs_items,
         ),
     )
     html = template.render(

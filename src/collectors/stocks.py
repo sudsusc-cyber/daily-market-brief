@@ -211,15 +211,19 @@ def _validate_identity(metadata: dict, symbol: str) -> None:
         raise ValueError("行情上市标识/交易所/币种不匹配")
 
 
-def _yf_verified_daily(symbol: str) -> list[float]:
-    ticker = yf.Ticker(symbol)
-    hist = _yf_daily_history(ticker)
+def _validate_yf_identity(ticker, symbol: str) -> None:
     # Read metadata captured by history itself. The public history_metadata
     # property may fetch a NEW intraday response and must not be used here.
     metadata = getattr(getattr(ticker, "_price_history", None), "_history_metadata", None)
     if not isinstance(metadata, dict):
-        raise ValueError("日线响应缺少元数据")
+        raise ValueError("行情响应缺少元数据")
     _validate_identity(metadata, symbol)
+
+
+def _yf_verified_daily(symbol: str) -> list[float]:
+    ticker = yf.Ticker(symbol)
+    hist = _yf_daily_history(ticker)
+    _validate_yf_identity(ticker, symbol)
     return _history_closes(hist, symbol=symbol, interval="1d")
 
 
@@ -316,6 +320,7 @@ def fetch_one(holding: Holding) -> StockSignal:
     try:
         ticker = yf.Ticker(symbol)
         hist = _yf_history(ticker)
+        _validate_yf_identity(ticker, symbol)
         closes = _history_closes(hist, symbol=symbol)
         return _build_signal(
             holding,
