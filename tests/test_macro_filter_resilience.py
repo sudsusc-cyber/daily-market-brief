@@ -23,7 +23,7 @@ def _bundle() -> MacroFeedBundle:
     return MacroFeedBundle(
         source="WSJ",
         items=[MacroNewsItem(
-            title="Fed holds rates",
+            title="美联储维持利率不变",
             published_at=datetime(2026, 8, 4, tzinfo=UTC),
             url="https://example.com/fed",
             source="WSJ",

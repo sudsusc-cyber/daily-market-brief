@@ -1,8 +1,9 @@
-"""Deterministic source-to-publication binding, with an extractive fallback.
+"""Deterministic source-to-publication binding for Chinese publication.
 
 Unrestricted multilingual paraphrases cannot be strictly proven with regexes.
 Only complete source sentences or separately checked complete-sentence translations
-are eligible. Unsupported free-form rewrites fall back to a complete source excerpt.
+are eligible. Unsupported rewrites fall back to a checked translation or a complete
+Chinese source excerpt. Untranslated English is retained for audit, not publication.
 Translation checks are bounded lexical checks, not complete semantic proof.
 An exact substring alone is insufficient (it can omit 'not' or change scope).
 """
@@ -15,7 +16,13 @@ from dataclasses import asdict, dataclass
 
 from src.processors.html_safe import is_safe_url
 from src.processors.news_presentation import publication_text
-from src.processors.news_selection import factual_excerpt, plain_source, sentences
+from src.processors.news_selection import (
+    chinese_prose,
+    complete_excerpt,
+    factual_excerpt,
+    plain_source,
+    sentences,
+)
 from src.processors.translation_guard import translation_errors
 from src.utils.news_facts import canonical_fact, source_text
 
@@ -45,8 +52,8 @@ def source_sentences(item) -> list[str]:
         if not raw:
             continue
         # No splitting on semicolon/colon: their clauses often qualify a claim.
-        result.append(raw)
-        result.extend(sentences(raw))
+        result.extend(s for s in [raw, *sentences(raw)]
+                      if complete_excerpt(s, getattr(item, 'source', '')))
     return list(dict.fromkeys(result))
 
 
@@ -54,7 +61,8 @@ def checked_excerpt(item) -> tuple[str, str]:
     """A translated excerpt must be an entire sentence in immutable source fields."""
     excerpt = plain_source(str(getattr(item, "source_excerpt", "") or getattr(item, "title", "")))
     translated = plain_source(str(getattr(item, "translated_excerpt", "") or getattr(item, "translated_title", "")))
-    if (excerpt in source_sentences(item) and translated and translated != excerpt
+    if (excerpt in source_sentences(item) and chinese_prose(translated) and complete_excerpt(translated, getattr(item, 'source', ''))
+            and translated != excerpt
             and not translation_errors(excerpt, translated)):
         return excerpt, translated
     return "", ""
@@ -63,7 +71,7 @@ def checked_excerpt(item) -> tuple[str, str]:
 def source_prompt(item) -> str:
     excerpt, translated = checked_excerpt(item)
     raw = excerpt or factual_excerpt(item)
-    return f"完整证据片段={raw} / 可刊发译文={translated or '无（保留完整原文，不得编造）'}"
+    return f"完整证据片段={raw} / 可刊发译文={translated or '无（仅完整中文原文可刊；英文不可直接刊出，不得编造）'}"
 
 
 def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
@@ -107,9 +115,12 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
         validated = checked_excerpt(item)[1] if mode == "checked_translation" else excerpt
         source_name = str(getattr(item, "source", "") or "")
         displayed = publication_text(validated, source_name=source_name)
-        if not displayed:
+        if not chinese_prose(displayed) or not complete_excerpt(displayed):
+            logger.warning("news.publication_rejected reason=not_complete_chinese")
             continue
-        outputs.append(("原文摘录：" if mode == "source_extract" else "") + displayed)
+        if mode == "source_extract":
+            mode = "verified_extract"
+        outputs.append(displayed)
         evidence.append(
             asdict(
                 SourceEvidence(
@@ -128,7 +139,5 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
                 )
             )
         )
-        if mode == "source_extract":
-            evidence[-1]["translation_diagnostic"] = getattr(item, "translation_diagnostic", {})
     output = "；".join(dict.fromkeys(outputs))
     return (output, evidence) if evidence else ("", [])

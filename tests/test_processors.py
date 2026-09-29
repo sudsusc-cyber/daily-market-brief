@@ -110,20 +110,20 @@ class TestFigureFilter:
 
     def test_parse_output_keeps_yes_drops_no(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
-            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
+            FigureMention(title="事实乙", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
         ]
         out = fig_parse(
             "▦ 1: yes | score=4 | 黄仁勋说算力是未来\n▦ 2: no | score=2 | 是他人转述",
             items,
         )
         assert len(out) == 1
-        assert out[0].text == "原文摘录：A"
+        assert out[0].text == "事实甲"
         assert out[0].source_url == "https://a"
 
     def test_parse_output_skips_invalid_index(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
         ]
         out = fig_parse("▦ 1: yes | score=4 | ok\n▦ 99: yes | score=4 | out_of_range", items)
         assert len(out) == 1
@@ -131,11 +131,11 @@ class TestFigureFilter:
     def test_parse_output_merges_indices(self) -> None:
         # LLM 把 1, 2, 3 合并为同一观点(同一场演讲不同媒体报道)
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://reuters/a", source="Reuters"),
-            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实乙", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://bbg/b", source="Bloomberg"),
-            FigureMention(title="C", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实丙", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://cnbc/c", source="CNBC"),
         ]
         out = fig_parse("▦ 1,2,3: yes | score=5 | AI 推理需求增长远超预期", items)
@@ -143,7 +143,7 @@ class TestFigureFilter:
         # 主索引 1 应作为代表来源
         assert out[0].source_url == "https://reuters/a"
         assert out[0].source_name == "Reuters"
-        assert out[0].text == "原文摘录：A"
+        assert out[0].text == "事实甲"
 
     def test_parse_output_dedupe_same_text(self) -> None:
         # 二重保险:LLM 误输出两条同样观点(空格差异),仍只保留一条
@@ -160,8 +160,8 @@ class TestFigureFilter:
     def test_parse_output_merge_takes_first_valid_idx(self) -> None:
         # 合并索引 "5,2" 中第一个 5 越界,应回退到第二个 2
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
-            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30), url="https://a", source="X"),
+            FigureMention(title="事实乙", snippet="", published_at=_utc(2026, 4, 30), url="https://b", source="Y"),
         ]
         out = fig_parse("▦ 5,2: yes | score=4 | 观点", items)
         assert len(out) == 1
@@ -368,9 +368,9 @@ class TestFigureFilterUrlSafety:
 
     def test_parse_output_drops_javascript_url(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="javascript:alert(1)", source="X"),
-            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实乙", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://safe.example.com/b", source="Y"),
         ]
         out = fig_parse(
@@ -382,7 +382,7 @@ class TestFigureFilterUrlSafety:
 
     def test_parse_output_drops_data_url(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="data:text/html,<script>alert(1)</script>", source="X"),
         ]
         out = fig_parse("▦ 1: yes | score=4 | unused", items)
@@ -390,7 +390,7 @@ class TestFigureFilterUrlSafety:
 
     def test_parse_output_drops_empty_url(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="", source="X"),
         ]
         out = fig_parse("▦ 1: yes | score=4 | unused", items)
@@ -402,17 +402,17 @@ class TestFigureFilterScore:
 
     def test_parse_score_4_keeps(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="Reuters"),
         ]
         out = fig_parse("▦ 1: yes | score=4 | AI 推理需求增长远超预期", items)
         assert len(out) == 1
         assert out[0].score == 4
-        assert out[0].text == "原文摘录：A"
+        assert out[0].text == "事实甲"
 
     def test_parse_score_5_keeps(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="Bloomberg"),
         ]
         out = fig_parse("▦ 1: yes | score=5 | 重大资本配置转向", items)
@@ -421,7 +421,7 @@ class TestFigureFilterScore:
 
     def test_parse_score_3_discards(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="X"),
         ]
         out = fig_parse("▦ 1: yes | score=3 | 一般性行业评论", items)
@@ -429,7 +429,7 @@ class TestFigureFilterScore:
 
     def test_parse_score_2_discards(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="X"),
         ]
         out = fig_parse("▦ 1: yes | score=2 | 客户需求强劲", items)
@@ -438,7 +438,7 @@ class TestFigureFilterScore:
     def test_parse_score_missing_discards(self) -> None:
         """score 缺失 → 丢弃,不再默认放行。"""
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="Reuters"),
         ]
         out = fig_parse("▦ 1: yes | 没有 score 字段应被丢弃", items)
@@ -446,7 +446,7 @@ class TestFigureFilterScore:
 
     def test_parse_score_zero_discards(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="X"),
         ]
         out = fig_parse("▦ 1: yes | score=0 | score 越界", items)
@@ -454,7 +454,7 @@ class TestFigureFilterScore:
 
     def test_parse_score_six_discards(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="X"),
         ]
         out = fig_parse("▦ 1: yes | score=6 | score 越界", items)
@@ -462,9 +462,9 @@ class TestFigureFilterScore:
 
     def test_merge_with_scores(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="Reuters"),
-            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实乙", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://b", source="Bloomberg"),
         ]
         out = fig_parse("▦ 1,2: yes | score=5 | 合并后的重大判断", items)
@@ -474,11 +474,11 @@ class TestFigureFilterScore:
 
     def test_mixed_scores_only_keeps_high(self) -> None:
         items = [
-            FigureMention(title="A", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实甲", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://a", source="Reuters"),
-            FigureMention(title="B", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实乙", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://b", source="CNBC"),
-            FigureMention(title="C", snippet="", published_at=_utc(2026, 4, 30),
+            FigureMention(title="事实丙", snippet="", published_at=_utc(2026, 4, 30),
                          url="https://c", source="WSJ"),
         ]
         out = fig_parse(
@@ -494,7 +494,7 @@ class TestFigureFilterScore:
     def test_published_at_stored(self) -> None:
         dt = _utc(2026, 4, 30)
         items = [
-            FigureMention(title="A", snippet="", published_at=dt,
+            FigureMention(title="事实甲", snippet="", published_at=dt,
                          url="https://a", source="Reuters"),
         ]
         out = fig_parse("▦ 1: yes | score=4 | 观点", items)

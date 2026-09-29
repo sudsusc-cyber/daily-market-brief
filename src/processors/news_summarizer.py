@@ -341,7 +341,10 @@ def _rebuild_safe_summary(
         if not supported:
             continue
         evidence.extend(mapping)
-        citations = "".join(match.group(0) for match in FOOTNOTE_RE.finditer(summary))
+        published_urls = {row["url"] for row in mapping}
+        citations = "".join(match.group(0) for match in FOOTNOTE_RE.finditer(summary)
+                            if 1 <= (index := footnote_idx(match)) <= len(flat_items)
+                            and flat_items[index - 1].url in published_urls)
         verified_rows.append((cn, supported + citations))
     raw_rows = verified_rows
     combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)

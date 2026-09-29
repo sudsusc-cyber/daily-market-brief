@@ -308,7 +308,8 @@ def _deterministic_argument(bundle: SentimentBundle, verdict: str) -> str:
             continue
         label = "CNN 恐惧贪婪指数" if metric.name == "CNN Fear & Greed" else metric.name
         stamp = f"（沿用 {metric.stale_from}）" if metric.stale_from else ""
-        parts.append(f"{label} {metric.current:g}{metric.unit}{stamp}")
+        number = f"{metric.current:.2f}".rstrip("0").rstrip(".")
+        parts.append(f"{label} {number}{metric.unit}{stamp}")
     return "、".join(parts) + f"，按确定性规则综合为{verdict}；留意指标分歧，按既定纪律执行。"
 
 

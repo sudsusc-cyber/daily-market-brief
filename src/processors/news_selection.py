@@ -20,6 +20,27 @@ def sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r'(?<=[。！？])|(?<=[.!?])\s+(?=[A-Z])', text) if s.strip()]
 
 
+def complete_excerpt(text: str, source_name: str = '') -> bool:
+    """Reject observable RSS truncation; source-field boundaries are not sentences."""
+    text = plain_source(text).strip()
+    if source_name:
+        text = re.sub(r'\s+[-–—|]\s*' + re.escape(source_name) + r'\s*$', '', text, flags=re.I)
+    if re.search(r'(?:\.{3}|…|\[\s*…\s*\])\s*[。.!！?？”’"\']*$', text):
+        return False
+    text = text.rstrip('。.!！?？ ”’"\'')
+    return bool(text) and not bool(re.search(
+        r'(?:\.{3}|…|\[\s*…\s*\]|read more)$|以.{1,80}为$|(?:用于|包括|以及|基于|关于)$'
+        r'|\b(?:is expected to|plans to|according to|including|such as)$', text, re.I))
+
+
+def chinese_prose(text: str) -> bool:
+    # Company names/acronyms may remain Latin. A token "原文" attached to a full
+    # English sentence must not qualify it as a Chinese article.
+    chinese = len(re.findall(r'[一-鿿]', text))
+    latin_words = len(re.findall(r'\b[A-Za-z]{2,}\b', text))
+    return chinese >= 2 and chinese >= latin_words
+
+
 _PRICE_EDITORIAL = re.compile(
     r'which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
     r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rallies|surges|jumps|slumps)'
@@ -43,7 +64,7 @@ def factual_excerpt(item) -> str:
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '')
     eligible = []
     for sentence in sentences(summary):
-        if (len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)
+        if (complete_excerpt(sentence) and len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)
                 and sentence not in title and title not in sentence):
             eligible.append(sentence)
     # Prefer the reported financial result over a sentence merely announcing
@@ -54,17 +75,27 @@ def factual_excerpt(item) -> str:
     if eligible:
         return eligible[0]
     title_sentences = sentences(title)
-    if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s why|What.s next", title_sentences[1], re.I):
+    if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s why|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
         return title_sentences[0]
+    # A rolling news-page title is navigation, not a fact. Prefer its actual
+    # complete summary sentence even if it is not a company earnings item.
+    if re.match(r'Latest .*News and Analysis|.*: Markets Wrap$', title, re.I):
+        return next((s for s in sentences(summary) if complete_excerpt(s) and len(s) >= 30), '')
+    if re.search(r'\b(?:Can|Should|Could|Will) .*\?|\b(?:Opportunity|Returns)\?', title, re.I):
+        # Do not fill a company slot with a question about investment returns.
+        return ''
     return title
 
 
 def company_candidate(item, ticker: str) -> bool:
     title = plain_source(getattr(item, 'title', ''))
-    if (ticker == 'MCO' and _RATING_SERVICE.search(title)
+    text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
+    if (ticker == 'MCO' and (_RATING_SERVICE.search(text) or re.search(
+            r'(?:upgrad\w*|ratings?|outlook).*\bfrom\s+Moody[’\']?s', title, re.I))
             and not re.search(r'earnings|revenue|profit|营收|盈利|利润|业绩', title, re.I)):
         return False
-    return not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title
+    return complete_excerpt(factual_excerpt(item), getattr(item, 'source', '')) and (
+        not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title)
 
 
 def frontier_candidate(item) -> bool:
@@ -81,8 +112,10 @@ def meaningful_quote(item) -> bool:
 def neutral_macro_topic(items) -> str:
     text = " ".join(plain_source(item.title) for item in items)
     for topic, pattern in (
+        ("能源市场", r'\boil\b|\bcrude\b|\benergy\b|油价|原油|能源'),
+        ("财政政策", r'tax|Treasury threatens|避税|财政|税收'),
         ("国际贸易", r"tariff|trade|关税|贸易"),
-        ("地缘政治", r"Russia|Ukraine|Iran|ceasefire|战争|停火|俄乌"),
+        ("地缘政治", r"Russia|Ukraine|Iran|ceasefire|terror|suspects|战争|停火|俄乌|嫌疑人"),
         ("资本流动", r"capital flows|fund flows|foreign capital|资金流|外资"),
         ("货币政策", r"\bFed\b|FOMC|美联储|降息|加息"),
         ("通胀数据", r"inflation|\bCPI\b|通胀"),

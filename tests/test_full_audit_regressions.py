@@ -231,7 +231,7 @@ def test_recovered_official_figure_is_processed_despite_prior_source_error():
 
 
 def test_company_source_mismatch_is_rejected_but_real_same_company_source_passes():
-    item = company_news.NewsItem("Microsoft expands Azure", NOW, "https://example.com/msft", "source")
+    item = company_news.NewsItem("Microsoft 扩建 Azure", NOW, "https://example.com/msft", "source")
     _, sources = news_summarizer._format_input([company_news.CompanyNewsBundle(HOLDINGS[0], [item])])
     wrong = news_summarizer._rebuild_safe_summary("<strong>苹果</strong> —— 微软扩建数据中心[1]", sources)
     right = news_summarizer._rebuild_safe_summary("<strong>微软</strong> —— 微软扩建数据中心[1]", sources)
@@ -240,7 +240,7 @@ def test_company_source_mismatch_is_rejected_but_real_same_company_source_passes
 
 
 def test_explicit_cross_company_source_and_company_alias_remain_valid():
-    article = company_news.NewsItem("Microsoft and Apple partnership", NOW, "https://example.com/partnership", "source")
+    article = company_news.NewsItem("Microsoft 与 Apple 合作", NOW, "https://example.com/partnership", "source")
     holdings = {holding.ticker: holding for holding in HOLDINGS}
     bundles = [company_news.CompanyNewsBundle(holdings[ticker], [replace(article)]) for ticker in ("MSFT", "AAPL")]
     _, sources = news_summarizer._format_input(bundles)
