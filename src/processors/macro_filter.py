@@ -1,7 +1,7 @@
 """
 宏观新闻头条 → 主题分段叙述(模块 4 加工,M4 内修复后版本)。
 
-同主题的独立事实同段展示,每条事实紧跟自己的 <sup>[N]</sup>。
+同主题的独立事实同段展示,段末汇集来源 <sup>[N]</sup>，逐事实映射保留在证据记录中。
 返回 dict { summary_html, footnotes } 或 None。
 """
 
@@ -22,7 +22,8 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
-from src.processors.news_selection import macro_candidate, neutral_macro_topic
+from src.processors.macro_topics import macro_topics
+from src.processors.news_selection import macro_candidate
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 from src.utils.news_facts import canonical_fact
@@ -48,7 +49,7 @@ class MacroNewsSummary:
 
 _TASK_INSTRUCTION = """\
 任务:从下列过去 24 小时各财经媒体头条中,筛选出**真正影响全球市场或重大经济**的
-头版级新闻,然后按主题归类成 2-3 段中文叙述。
+头版级新闻,然后按具体主题合并成中文段落。
 
 【筛选标准】
 
@@ -63,14 +64,18 @@ _TASK_INSTRUCTION = """\
 
 【输出结构】
 
-把筛选后的 3-5 条新闻,按主题归类成 **2-3 段**,每段聚焦一个主题。
+把筛选后的新闻按具体主题归类，每个主题只能出现一段。
+同类项必须合并，不能按媒体、输入顺序、原始段落或来源数量拆开。
+段落数由实际主题数量决定，不为凑两三段拆散或丢弃同类事实。
 
 每段格式严格为:
-  <p><strong>主题词。</strong>主题陈述 80-120 字,段末用 <sup>[N]</sup> 标注脚注。</p>
+  <p><strong>主题词。</strong>完整事实叙述,段末用 <sup>[N]</sup> 标注脚注。</p>
+  按事实多少自然成段，不以字数强行拆段、截句或合并不同事实。
 
-- 主题词:3-4 字(能源市场 / 中国经济 / 地缘政治 / 美联储 / 通胀数据 等)
+- 使用具体主题词，如中美关系 / 美债市场 / 中东局势 / 国防开支；避免重复“宏观动态”
 - 主题词后用句号分隔正文(不是冒号)
-- 一段可引用 1-2 个 <sup>[N]</sup>;多源同主题在一段
+- 同主题的所有来源放在同一段，段末汇集脚注，不限制每段只能有 1-2 个来源
+- 同主题不代表同一事实：数字、日期、对象或状态不同的更新必须保留，不能合成新事实
 - <sup>[N]</sup> 中的 N 是阿拉伯数字(如 [1]、[2]),**不要**写成 [#1] 或 [#N];
   N 必须等于下面"输入数据"里这条新闻的"#" 编号(我已预编号)
 
@@ -80,8 +85,7 @@ _TASK_INSTRUCTION = """\
 - 数字用阿拉伯数字
 - 不写"今日宏观主要看点"等导语
 - 不要前言、总结
-- 输出**只有** 2-3 个 <p> 标签
-- 最少 2 段,最多 3 段
+- 输出只有 <p> 标签；一个主题一段，相同主题不得重复出现
 """
 
 
@@ -212,31 +216,31 @@ def _rebuild_safe_html(
             group["evidence"].extend(mapping)
 
     themes = {}
-    for group in groups.values():
-        topic = neutral_macro_topic(group["items"], supported_text=group["text"])
-        # Unknown topics are not a relationship: do not lump unrelated facts
-        # together merely because both received the fallback label.
-        key = (topic, canonical_fact(group["text"]) if topic == "宏观动态" else "")
-        themes.setdefault(key, []).append(group)
+    topics = macro_topics([group["text"] for group in groups.values()])
+    for group, topic in zip(groups.values(), topics, strict=True):
+        # Every publication path goes through this one canonical-topic map.
+        # There is no per-source, original-paragraph or catch-all exception.
+        themes.setdefault(topic, []).append(group)
 
     parts, footnotes = [], []
-    for (topic, _), related in themes.items():
-        facts = []
+    for topic, related in themes.items():
+        facts, paragraph_citations = [], []
         for group in related:
             citations = []
             for item in group["items"]:
                 index = len(footnotes) + 1
                 footnotes.append(Footnote(index=index, url=item.url, source=item.source or ""))
                 citations.append("<sup>" + safe_anchor(item.url, f"[{index}]", style=FOOTNOTE_ANCHOR_STYLE) + "</sup>")
+            paragraph_citations.extend(citations)
             if evidence is not None:
-                evidence.extend(group["evidence"])
+                evidence.extend({**row, "macro_topic": topic} for row in group["evidence"])
             text = group["text"].rstrip()
             if text[-1:] not in '。！？!?':
                 text = text.rstrip('.') + '。'
-            facts.append(f'<span data-macro-fact="true">{escape_text(text)}{"".join(citations)}</span>')
+            facts.append(f'<span data-macro-fact="true">{escape_text(text)}</span>')
         parts.append(f'<p style="{_PARAGRAPH_STYLE}">'
                      f'<span style="{_THEME_STYLE}">{escape_text(topic)}。</span>'
-                     f'{" ".join(facts)}</p>')
+                     f'{" ".join(facts)}{"".join(paragraph_citations)}</p>')
     return "".join(parts), footnotes
 
 
@@ -257,7 +261,7 @@ def summarize(
             task_instruction += """
 
 【重试修正】上一次输出为空或没有带有效来源脚注。这次必须直接输出
-2-3 个 <p> 段落，且每段至少包含一个来自输入编号的 <sup>[N]</sup>。
+按具体主题合并的 <p> 段落，同主题只能一段，每段至少包含一个来自输入编号的 <sup>[N]</sup>。
 """
         resp = client.chat(
             payload,

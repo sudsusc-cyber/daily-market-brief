@@ -87,24 +87,23 @@ def test_actual_macro_groups_related_topics_with_each_facts_own_citation():
     html, notes = _rebuild_safe_html('<p>宏观动态。错误的模型主题和拼接[1][2][3][4]</p>', items, evidence)
     soup = BeautifulSoup(news_paragraphs(html), 'html.parser')
     paragraphs = soup.select('p')
-    assert len(paragraphs) == 3
-    assert [p.select_one('span').get_text() for p in paragraphs] == ['能源市场。','国防开支。','地缘政治。']
-    energy = paragraphs[0].select('[data-macro-fact]')
-    assert len(energy) == 2
-    assert '石油出口' in energy[0].get_text() and '亚洲债券' in energy[1].get_text()
-    assert '美国国债' in energy[1].get_text() and '美联储' in energy[1].get_text()
+    assert len(paragraphs) == 4
+    assert [p.select_one('span').get_text() for p in paragraphs] == ['中东局势。','美债市场。','国防开支。','地缘政治。']
+    assert '石油出口' in paragraphs[0].get_text() and '亚洲债券' in paragraphs[1].get_text()
+    assert '美国国债' in paragraphs[1].get_text() and '美联储' in paragraphs[1].get_text()
     assert 'Treasuries' not in soup.get_text() and 'Federal Reserve' not in soup.get_text()
     assert [a['href'] for p in paragraphs for a in p.select('a')] == [i.url for i in items]
-    assert all(len(f.select('a')) == 1 for f in soup.select('[data-macro-fact]'))
+    assert all(len(p.select('a')) == 1 for p in paragraphs)
     assert len(notes) == len(evidence) == 4
-    assert '207 亿美元' in paragraphs[1].get_text()
+    assert '207 亿美元' in paragraphs[2].get_text()
 
 
 def test_unknown_topics_do_not_create_a_false_connection():
     items = [SimpleNamespace(title=t, source='Source', summary='', url=f'https://example.com/{i}')
              for i,t in enumerate(['甲国公布统计结果。', '乙国宣布会议日程。'])]
     html, _ = _rebuild_safe_html('<p>全球增长。凭空合并[1][2]</p>', items)
-    assert len(BeautifulSoup(html, 'html.parser').select('p')) == 2
+    assert len(BeautifulSoup(html, 'html.parser').select('p')) == 1
+    assert '其他宏观。' in html and '凭空合并' not in html
 
 
 def test_business_date_and_negation_are_not_mistaken_for_a_dateline():
