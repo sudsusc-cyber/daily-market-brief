@@ -123,3 +123,23 @@ HTML bytes, preserves all 15 price/reference-line rows and four dated retained
 valuations, and passes original-excerpt/body/source mapping checks. Browser review
 confirmed separated macro topics, grouped same-topic facts and readable source
 footers. This remains an explicitly marked offline artifact with zero SMTP calls.
+
+## Requested three-theme edition and clean source footers
+
+The user requested at most the three most important macro paragraphs and removal
+of decorative dots between source links. Remove only the four source-list
+separator spans; retain spacing and sentence punctuation. Rank/select themes
+before assigning evidence and citation numbers; keep all supported facts within
+selected themes and never pad sparse editions. The model receives explicit
+importance instructions; excess output uses bounded editorial category priorities,
+systemic-risk escalation and commentary/local-story demotion. Final rendering
+caps oversized legacy summaries before validating long-term judgments.
+
+Replay of actual send 36511019697 also exposed “scraps rollout” missing from the
+release-cancellation rule. The bilingual regression and explicit denial case now
+select the correct monitoring question. No extra SMTP send was made.
+
+Verification: 1,813 tests on each Python 3.11/3.12, Ruff and diff checks passed.
+The changed-block offline replay has three macro paragraphs, no source separator
+dots, preserves selected source mappings, and is 63,595 HTML bytes. Browser review
+confirmed the source links remain separated and the existing visual style stays.

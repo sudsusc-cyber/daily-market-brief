@@ -496,7 +496,7 @@
           <td style="padding:18px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in company_news_summary.footnotes %}
-              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>{% if not loop.last %}<span aria-hidden="true" style="color:{{ color_faint }};white-space:nowrap">&ensp;·&ensp;</span>{% endif %}
+              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -529,7 +529,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for item in frontier_labs_items[:2] %}
-              <a class="source-link" href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ loop.index }}] {{ item.source_name }}</a>{% if not loop.last %}<span aria-hidden="true" style="color:{{ color_faint }};white-space:nowrap">&ensp;·&ensp;</span>{% endif %}
+              <a class="source-link" href="{{ item.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ loop.index }}] {{ item.source_name }}</a>
               {% endfor %}
             </div>
           </td>
@@ -596,7 +596,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for fn in figure_footnotes %}
-              <a class="source-link" href="{{ fn.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ fn.index }}] {{ fn.source }}</a>{% if not loop.last %}<span aria-hidden="true" style="color:{{ color_faint }};white-space:nowrap">&ensp;·&ensp;</span>{% endif %}
+              <a class="source-link" href="{{ fn.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ fn.index }}] {{ fn.source }}</a>
               {% endfor %}
             </div>
           </td>
@@ -648,7 +648,7 @@
           <td style="padding:8px 24px 0 24px;">
             <div style="padding-top:12px; border-top:0.5px solid {{ color_hairline }}; line-height:2.0;">
               {% for f in macro_news_summary.footnotes %}
-              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>{% if not loop.last %}<span aria-hidden="true" style="color:{{ color_faint }};white-space:nowrap">&ensp;·&ensp;</span>{% endif %}
+              <a class="source-link" href="{{ f.url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important; text-decoration:none!important; font-family:{{ serif_body }}; font-size:11.5px; letter-spacing:0.02em; display:inline-block;max-width:100%;margin:0 8px 4px 0; white-space:normal; overflow-wrap:anywhere; word-break:break-word;">[{{ f.index }}] {{ f.source }}</a>
               {% endfor %}
             </div>
           </td>

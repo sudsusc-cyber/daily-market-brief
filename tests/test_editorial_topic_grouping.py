@@ -87,14 +87,14 @@ def test_actual_macro_groups_related_topics_with_each_facts_own_citation():
     html, notes = _rebuild_safe_html('<p>宏观动态。错误的模型主题和拼接[1][2][3][4]</p>', items, evidence)
     soup = BeautifulSoup(news_paragraphs(html), 'html.parser')
     paragraphs = soup.select('p')
-    assert len(paragraphs) == 4
-    assert [p.select_one('span').get_text() for p in paragraphs] == ['中东局势。','美债市场。','国防开支。','地缘政治。']
+    assert len(paragraphs) == 3
+    assert [p.select_one('span').get_text() for p in paragraphs] == ['中东局势。','美债市场。','国防开支。']
     assert '石油出口' in paragraphs[0].get_text() and '亚洲债券' in paragraphs[1].get_text()
     assert '美国国债' in paragraphs[1].get_text() and '美联储' in paragraphs[1].get_text()
     assert 'Treasuries' not in soup.get_text() and 'Federal Reserve' not in soup.get_text()
-    assert [a['href'] for p in paragraphs for a in p.select('a')] == [i.url for i in items]
+    assert [a['href'] for p in paragraphs for a in p.select('a')] == [i.url for i in items[:3]]
     assert all(len(p.select('a')) == 1 for p in paragraphs)
-    assert len(notes) == len(evidence) == 4
+    assert len(notes) == len(evidence) == 3
     assert '207 亿美元' in paragraphs[2].get_text()
 
 
@@ -121,5 +121,5 @@ def test_grouped_macro_still_binds_every_fact_to_original_sources_for_judgment()
     html, notes = _rebuild_safe_html('<p>宏观动态。组合[1][2][3][4]</p>', items, evidence)
     summary = MacroNewsSummary(html, notes, evidence)
     material = _grounding_material(company_news=None, macro_news=summary, figure_summaries=[], frontier_labs_events=[])
-    assert material['macro']['urls'] == {item.url for item in items}
+    assert material['macro']['urls'] == {item.url for item in items[:3]}
     assert all(len(rows) == 1 for rows in material['macro']['by_url'].values())

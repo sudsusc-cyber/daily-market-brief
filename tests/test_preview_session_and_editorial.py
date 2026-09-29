@@ -145,3 +145,13 @@ def test_cross_section_same_subject_or_forged_mapping_cannot_erase_a_candidate()
     macro=SimpleNamespace(summary_html=fact,evidence=[row],footnotes=[SimpleNamespace(url=row['url'])])
     bad=SimpleNamespace(text=fact,evidence=[{**row,'original_title':'原文没有这个事实'}],source_url=row['url'])
     assert merge_frontier_duplicates(macro,[bad])==(macro,[bad],set())
+
+
+@pytest.mark.parametrize('original,text,key', [
+    ('OpenAI scraps rollout of new model over safety concerns',
+     'OpenAI 因安全担忧取消新模型推出', 'product-release-risk'),
+    ('OpenAI does not scrap rollout of new model',
+     'OpenAI 没有取消推出新模型', 'product-commercialization'),
+])
+def test_scraps_rollout_preserves_actual_cancellation_state(original, text, key):
+    assert _rule_for({'excerpt':original,'output_text':text}).key == key
