@@ -313,7 +313,7 @@ def test_same_company_and_valid_citation_cannot_launder_false_fact():
     assert "1000亿" not in summary.summary_html
     assert "尚未获监管批准" in summary.summary_html
     assert summary.evidence[0]["excerpt"] == item.title
-    assert summary.evidence[0]["mode"] == "source_extract"
+    assert summary.evidence[0]["mode"] == "verified_extract"
 
 
 def test_substring_omitting_negation_is_not_verified():
@@ -324,9 +324,9 @@ def test_substring_omitting_negation_is_not_verified():
         published_at=NOW,
     )
     _, mapping = grounded_text("approved the acquisition.", [item])
-    assert mapping[0]["mode"] == "source_extract"
+    assert mapping == []
     _, mapping = grounded_text(item.title, [item])
-    assert mapping[0]["mode"] == "verified_extract"
+    assert mapping == []  # English is an audit source, not publication-ready prose.
 
 
 def _jobs(*steps, attempt=1):

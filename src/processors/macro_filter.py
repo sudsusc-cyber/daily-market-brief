@@ -1,7 +1,7 @@
 """
 宏观新闻头条 → 主题分段叙述(模块 4 加工,M4 内修复后版本)。
 
-输出 2-3 段,每段一个主题词开头,段末 <sup>[N]</sup>。
+每个独立事实单独成段,每段一个主题词开头,段末 <sup>[N]</sup>。
 返回 dict { summary_html, footnotes } 或 None。
 """
 
@@ -18,7 +18,6 @@ from src.processors.html_safe import (
     escape_text,
     footnote_idx,
     is_safe_url,
-    render_text_with_footnotes,
     safe_anchor,
     strip_all_tags,
 )
@@ -26,6 +25,7 @@ from src.processors.llm_client import LLMClient
 from src.processors.news_selection import macro_candidate, neutral_macro_topic
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
+from src.utils.news_facts import canonical_fact
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +166,8 @@ def _rebuild_safe_html(
 
     - LLM 标签全部丢弃(只信任脚注标记 [N] 与段落分隔)
     - 段落识别:按 `<p>...</p>` 拆,失败则按双换行拆
-    - 每段:先 strip 所有标签得纯文本,再尝试拆"主题词。正文",
-      最后用 render_text_with_footnotes 把脚注 [N] 转成安全 <a>,
-      其余文本一律 html.escape
+    - 逐来源核验后按事实拆段,仅相同事实合并来源
+    - 只给实际刊出的事实分配脚注,主题由来源确定,文本转义后构造 HTML
     - URL scheme 白名单:非 http(s) URL 的脚注被丢弃
     """
     # 段落分割:LLM 通常输出 <p>...</p>,先按 </p> 拆,再各自 strip 标签
@@ -187,93 +186,44 @@ def _rebuild_safe_html(
     if not paragraphs_raw:
         paragraphs_raw = [strip_all_tags(raw_text).strip()]
 
-    # 全文扫一遍 [N],按出现顺序确定 rewrite + footnotes(URL 走白名单)
-    combined = "\n".join(paragraphs_raw)
-    used_indexes: list[int] = []
-    for m in FOOTNOTE_RE.finditer(combined):
-        idx = footnote_idx(m)
-        if idx not in used_indexes:
-            used_indexes.append(idx)
-
-    footnotes: list[Footnote] = []
-    rewrite: dict[int, int] = {}
-    skipped: list[int] = []
-    new_idx = 0
-    for old_idx in used_indexes:
-        if not (1 <= old_idx <= len(flat_items)):
-            skipped.append(old_idx)
-            continue
-        it = flat_items[old_idx - 1]
-        if not is_safe_url(it.url):  # 仅 http/https
-            skipped.append(old_idx)
-            continue
-        new_idx += 1
-        footnotes.append(Footnote(index=new_idx, url=it.url, source=it.source or ""))
-        rewrite[old_idx] = new_idx
-    if skipped:
-        logger.warning(
-            "macro_filter.footnote_dropped indexes=%s flat_items=%d "
-            "(越界 / URL scheme 非 http(s) / 缺 url)",
-            skipped, len(flat_items),
-        )
-
-    url_by_new_idx = {f.index: f.url for f in footnotes}
-
-    def _build_anchor(idx: int) -> str:
-        new_i = rewrite.get(idx)
-        if new_i is None:
-            return ""
-        url = url_by_new_idx.get(new_i, "")
-        anchor = safe_anchor(url, f"[{new_i}]", style=FOOTNOTE_ANCHOR_STYLE)
-        return f"<sup>{anchor}</sup>"
-
-    # 重建 HTML:每段一个 <p>,主题词加粗 oxblood
-    parts: list[str] = []
+    # A model grouping/citation is not proof that two articles describe one
+    # event. Rebuild one fact per paragraph; merge only literally equivalent
+    # supported facts, keeping all of their actual source links.
+    groups = {}
+    seen = set()
     for para in paragraphs_raw:
-        cited_indexes = list(
-            dict.fromkeys(footnote_idx(match) for match in FOOTNOTE_RE.finditer(para))
-        )
-        valid_indexes = [index for index in cited_indexes if index in rewrite]
-        if not valid_indexes:
-            logger.warning("macro_filter.paragraph_dropped_without_valid_source")
-            continue
-        # LLM 偶尔把所有脚注堆在段首。脚注位置属于排版规则，不交给模型决定：
-        # 先从正文任意位置移除，再按本段首次出现顺序统一追加到段尾。
-        clean_para = FOOTNOTE_RE.sub("", para).strip()
-        citation_html = "".join(_build_anchor(index) for index in valid_indexes)
-        split = _THEME_SPLIT_RE.match(clean_para)
-        claim = split.group(2).strip() if split else clean_para
-        supported, mapping = grounded_text(claim, [flat_items[index - 1] for index in valid_indexes])
-        if not supported:
-            continue
-        if evidence is not None:
-            evidence.extend(mapping)
-        # Topic labels are model output too. Only non-assertive category names
-        # may survive outside the grounded sentence.
-        topics = {"美联储", "地缘政治", "通胀数据", "货币政策", "财政政策", "经济数据", "国际贸易", "能源", "能源市场", "宏观动态", "资本流动"}
-        topic = split.group(1).strip() if split else ""
-        clean_para = ((topic if topic in topics and topic != "宏观动态" else neutral_macro_topic([flat_items[index - 1] for index in valid_indexes])) + "。" if split else "") + supported
-        m = _THEME_SPLIT_RE.match(clean_para)
-        if m:
-            theme_text = m.group(1).strip()
-            body_text = m.group(2).strip()
-            safe_theme = escape_text(theme_text)
-            safe_body = render_text_with_footnotes(
-                body_text, FOOTNOTE_RE, footnote_idx, _build_anchor,
-            )
-            parts.append(
-                f'<p style="{_PARAGRAPH_STYLE}">'
-                f'<span style="{_THEME_STYLE}">{safe_theme}。</span>'
-                f'{safe_body}{citation_html}'
-                f'</p>'
-            )
-        else:
-            # 无主题词分隔 → 整段当正文
-            safe_body = escape_text(clean_para)
-            parts.append(
-                f'<p style="{_PARAGRAPH_STYLE}">{safe_body}{citation_html}</p>'
-            )
+        claim = FOOTNOTE_RE.sub("", para).strip()
+        split = _THEME_SPLIT_RE.match(claim)
+        claim = split.group(2).strip() if split else claim
+        for match in FOOTNOTE_RE.finditer(para):
+            index = footnote_idx(match)
+            if index in seen or not 1 <= index <= len(flat_items):
+                continue
+            seen.add(index)
+            item = flat_items[index - 1]
+            if not is_safe_url(item.url):
+                continue
+            supported, mapping = grounded_text(claim, [item])
+            if not supported or not mapping:
+                continue
+            key = canonical_fact(supported)
+            group = groups.setdefault(key, {"text": supported, "items": [], "evidence": []})
+            group["items"].append(item)
+            group["evidence"].extend(mapping)
 
+    parts, footnotes = [], []
+    for group in groups.values():
+        citations = []
+        for item in group["items"]:
+            index = len(footnotes) + 1
+            footnotes.append(Footnote(index=index, url=item.url, source=item.source or ""))
+            citations.append("<sup>" + safe_anchor(item.url, f"[{index}]", style=FOOTNOTE_ANCHOR_STYLE) + "</sup>")
+        if evidence is not None:
+            evidence.extend(group["evidence"])
+        topic = neutral_macro_topic(group["items"])
+        parts.append(f'<p style="{_PARAGRAPH_STYLE}">'
+                     f'<span style="{_THEME_STYLE}">{escape_text(topic)}。</span>'
+                     f'{escape_text(group["text"])}{"".join(citations)}</p>')
     return "".join(parts), footnotes
 
 

@@ -53,7 +53,7 @@ def test_false_translation_rejected_before_publication(original, translated):
                            url='https://example.com/source', published_at=NOW)
     text, mapping = grounded_text(translated, [item])
     assert translated not in text
-    assert mapping[0]['mode'] == 'source_extract'
+    assert text == '' and mapping == []  # Never publish the unverified English fallback.
 
 
 def test_bad_translation_is_retried_and_raw_source_never_mutates():
@@ -215,7 +215,7 @@ def test_source_apostrophes_are_escaped_once_and_html_remains_safe():
     from bs4 import BeautifulSoup
 
     from src.collectors.company_news import NewsItem
-    item = NewsItem("Moody's revenue rose", NOW, 'https://example.com/mco', 'Source')
+    item = NewsItem("Moody's 营收增长", NOW, 'https://example.com/mco', 'Source')
     summary = news_summarizer._rebuild_safe_summary("<strong>穆迪</strong>——Moody's revenue rose[1]", [item])
     assert "Moody's" in BeautifulSoup(summary.summary_html, 'html.parser').get_text()
     assert '&amp;#x27;' not in summary.summary_html
@@ -292,3 +292,10 @@ def test_duration_units_keep_bond_tenor_and_decades_consistent():
     assert not translation_errors(original, '10 年期美债收益率处于近二十年来最高水平。')
     assert translation_errors(original, '10 年期美债收益率处于近三十年来最高水平。')
     assert translation_errors(original, '10 个月期美债收益率处于近二十年来最高水平。')
+
+
+def test_sentiment_prose_matches_table_precision():
+    bundle = _bundle()
+    bundle.metrics[1].current = 33.9429
+    text = _deterministic_argument(bundle, '中性')
+    assert '33.94' in text and '33.9429' not in text

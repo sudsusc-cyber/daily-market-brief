@@ -187,8 +187,8 @@ def test_frontier_labs_malformed_state_degrades_to_empty(tmp_path, monkeypatch) 
 
 def test_frontier_labs_parse_keeps_major_item_with_tickers() -> None:
     items = [
-        _item("OpenAI announces data center partnership", url="https://openai.com/news/x", source="OpenAI", source_type="official"),
-        _item("Reuters coverage", url="https://reuters.com/x"),
+        _item("OpenAI 宣布数据中心合作", url="https://openai.com/news/x", source="OpenAI", source_type="official"),
+        _item("合作方确认新增数据中心投资", url="https://reuters.com/x"),
     ]
 
     out = _parse_output(
@@ -205,7 +205,7 @@ def test_frontier_labs_parse_keeps_major_item_with_tickers() -> None:
 
 
 def test_frontier_labs_parse_accepts_common_ticker_aliases_and_separators() -> None:
-    items = [_item("Anthropic expands cloud partnership", lab="Anthropic", url="https://example.com/x")]
+    items = [_item("Anthropic 扩大云合作", lab="Anthropic", url="https://example.com/x")]
 
     out = _parse_output(
         "▦ 1: yes | score=4 | tickers=GOOGL、NVDA/MSFT | 企业采用提速,继续支撑云与 GPU 需求",

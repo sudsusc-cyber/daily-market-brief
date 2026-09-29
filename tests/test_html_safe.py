@@ -156,7 +156,7 @@ def _bundle_with_https_url() -> CompanyNewsBundle:
     return CompanyNewsBundle(
         holding=HOLDINGS[0],  # MSFT
         items=[NewsItem(
-            title="ok",
+            title="微软公布季度业绩",
             published_at=_DUMMY_DT,
             url="https://reuters.com/article/abc",
             source="Reuters",
@@ -196,7 +196,7 @@ def test_news_summarizer_neutralizes_xss_in_summary() -> None:
     assert "<img" not in html.lower()
     assert "onerror" not in html.lower()
     # 文本内容应被 escape 后保留(非字符级删除)— "推出新产品" 应可见
-    assert "原文摘录：ok" in html
+    assert "微软公布季度业绩" in html
     assert "推出新产品" not in html
 
 
@@ -216,7 +216,7 @@ def _macro_bundle_https() -> MacroFeedBundle:
     return MacroFeedBundle(
         source="Reuters",
         items=[MacroNewsItem(
-            title="news",
+            title="油价维持不变",
             published_at=_DUMMY_DT,
             url="https://reuters.com/x",
             source="Reuters",
@@ -278,13 +278,13 @@ def test_macro_filter_always_moves_leading_footnotes_to_paragraph_end() -> None:
         source="Reuters",
         items=[
             MacroNewsItem(
-                title="one",
+                title="油价上涨",
                 published_at=_DUMMY_DT,
                 url="https://reuters.com/one",
                 source="Reuters",
             ),
             MacroNewsItem(
-                title="two",
+                title="油价下跌",
                 published_at=_DUMMY_DT,
                 url="https://reuters.com/two",
                 source="Reuters",
