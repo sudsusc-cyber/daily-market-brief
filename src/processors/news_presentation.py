@@ -72,3 +72,31 @@ def publication_text(text: str, *, source_name: str = '') -> str:
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'(?<=[一-鿿]) +(?=[一-鿿])', '', text)
     return text.strip()
+
+
+def voice_text(text: str, person: str) -> str:
+    """Move only a neutral leading speaker attribution into its visible byline.
+
+    No surname guessing, global name replacement, or removal of denial/warning
+    verbs. Original source and validated translation remain unchanged.
+    """
+    from src.collectors.figures import FIGURES
+
+    extra_names = {
+        '纳德拉': ('萨提亚·纳德拉',), '苏妈': ('苏姿丰',),
+        '皮叉': ('桑达尔·皮查伊',), '奥特曼': ('山姆·奥特曼',),
+        '巴菲特': ('沃伦·巴菲特',),
+    }
+    names = next(({cn, en, *extra_names.get(cn, ())} for cn, _, _, en in FIGURES
+                  if person in {cn, en}), set())
+    if not names:
+        return text
+    prefix = '|'.join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+    match = re.match(r'^(?:' + prefix + r')\s*(?:表示|认为|指出|称|说)\s*[：:，,]?\s*(.+)$', text)
+    if not match:
+        return text
+    body = match[1].strip()
+    # Do not strand an aspect particle or strip a name used as an object.
+    if len(body) < 6 or re.match(r'[了过着的：:，,。]|赞|之为|为|作|呼|号|服|出|到', body):
+        return text
+    return body
