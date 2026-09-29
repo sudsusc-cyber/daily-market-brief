@@ -110,7 +110,8 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
     output = str(row.get("output_text", ""))
     url = _normalize_grounding_url(row.get("url"))
     published = plain_source(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
-    source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""))
+    source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""),
+                             published_at=row.get("published_at"))
     complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
     validated = str(row.get("validated_text", output))
     display_supported = output == (publication_text(validated, source_name=str(row.get("source_name", "")))

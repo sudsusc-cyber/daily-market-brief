@@ -26,6 +26,7 @@ from src.processors.llm_client import LLMClient
 from src.processors.news_selection import meaningful_quote
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,8 @@ class FigureSummary:
     items: list[FigureKeyPoint] = field(default_factory=list)
     fallback_raw: list[FigureMention] = field(default_factory=list)  # LLM 失败时模板用
     error: str | None = None
+    processing_error: str | None = None
+    content_rejections: list[str] = field(default_factory=list)
 
 
 def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
@@ -233,6 +236,7 @@ class _FigureParseResult:
     covered_indexes: set[int]
     duplicate_indexes: set[int]
     invalid_yes: bool = False
+    rejected_indexes: dict[int, str] = field(default_factory=dict)
 
     def is_complete(self, expected_count: int) -> bool:
         return (
@@ -243,10 +247,10 @@ class _FigureParseResult:
 
 
 def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseResult:
-    kept: list[FigureKeyPoint] = []
+    kept: list[tuple[int, FigureKeyPoint]] = []
     index_counts: dict[int, int] = {}
-    seen_source_facts: set[str] = set()
     invalid_yes = False
+    rejected_indexes = {}
     for line in text.splitlines():
         m = _LINE_RE.match(line.strip())
         if not m:
@@ -287,26 +291,34 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
         # A model merging indexes does not prove that their facts are equal.
         for source_index in valid_indexes:
             src_item = items[source_index - 1]
-            if not is_safe_url(src_item.url) or not meaningful_quote(src_item):
+            if not is_safe_url(src_item.url):
+                rejected_indexes[source_index] = "unsafe_source_url"
                 continue
-            key = content_key(src_item)
-            if key in seen_source_facts:
+            if not meaningful_quote(src_item):
                 continue
             supported, mapping = grounded_text(body, [src_item])
             if not supported:
-                invalid_yes = True
+                rejected_indexes[source_index] = "no_verified_chinese_excerpt"
                 continue
-            seen_source_facts.add(key)
-            kept.append(FigureKeyPoint(
+            kept.append((source_index, FigureKeyPoint(
                 text=supported, evidence=mapping,
                 source_url=src_item.url, source_name=src_item.source,
                 score=score, published_at=src_item.published_at,
-            ))
+            )))
+    duplicates = {index for index, count in index_counts.items() if count > 1}
+    unique = []
+    seen_source_facts = set()
+    for index, point in kept:
+        key = content_key(items[index - 1])
+        if index not in duplicates and key not in seen_source_facts:
+            unique.append(point)
+            seen_source_facts.add(key)
     return _FigureParseResult(
-        items=kept,
+        items=unique,
         covered_indexes=set(index_counts),
-        duplicate_indexes={index for index, count in index_counts.items() if count > 1},
+        duplicate_indexes=duplicates,
         invalid_yes=invalid_yes,
+        rejected_indexes=rejected_indexes,
     )
 
 
@@ -332,10 +344,20 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
         bundle.person, len(feed_items), len(qualified),
     )
     if not qualified:
-        return FigureSummary(person=bundle.person, person_en=bundle.person_en)
+        return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error)
 
     payload = _format_input(qualified)
     last_error: str | None = None
+    kept = []
+    rejected = []
+
+    def result(processing_error=None):
+        errors = [redact_secrets(str(error))[:240] for error in [bundle.error, processing_error, *rejected] if error]
+        summary = FigureSummary(person=bundle.person, person_en=bundle.person_en, items=kept,
+                                error="; ".join(errors) or None, processing_error=processing_error,
+                                content_rejections=rejected)
+        return history.filter_figure(summary) if history is not None else summary
+
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
         instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person) + INSTRUCTION
         if history is not None:
@@ -346,16 +368,14 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
 【重试修正】上一次输出为空、格式错误或遗漏了输入编号。这次每个输入编号必须
 恰好出现一次；直接输出 ▦ 行，不要解释或 markdown。
 """
-        resp = client.chat(
-            payload,
-            task_extra=instruction,
-            max_tokens=2000,
-            temperature=0.1,
-            timeout=30,
-            thinking=False,
-        )
+        try:
+            resp = client.chat(payload, task_extra=instruction, max_tokens=2000,
+                               temperature=0.1, timeout=30, thinking=False)
+        except Exception as exc:
+            last_error = f"{type(exc).__name__}: {redact_secrets(str(exc))[:160]}"
+            continue
         if not resp.text:
-            last_error = resp.error or "EmptyOutput"
+            last_error = redact_secrets(str(resp.error or "EmptyOutput"))[:240]
             logger.warning(
                 "figure_filter.attempt_failed person=%s attempt=%d/%d reason=%s",
                 bundle.person, attempt, _MAX_FILTER_ATTEMPTS, last_error,
@@ -363,17 +383,15 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
             continue
 
         parsed = _parse_output_result(resp.text, qualified)
+        if parsed.covered_indexes:
+            kept = parsed.items
+            rejected = [f"index={index} reason={reason}" for index, reason in sorted(parsed.rejected_indexes.items())]
         if parsed.is_complete(len(qualified)):
             logger.info(
                 "figure_filter.ok person=%s qualified=%d kept=%d attempt=%d",
                 bundle.person, len(qualified), len(parsed.items), attempt,
             )
-            summary = FigureSummary(
-                person=bundle.person,
-                person_en=bundle.person_en,
-                items=parsed.items,
-            )
-            return history.filter_figure(summary) if history is not None else summary
+            return result()
 
         last_error = (
             "IncompleteOrInvalidOutput: "
@@ -389,11 +407,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
         "figure_filter.failed person=%s attempts=%d reason=%s",
         bundle.person, _MAX_FILTER_ATTEMPTS, last_error or "unknown",
     )
-    return FigureSummary(
-        person=bundle.person,
-        person_en=bundle.person_en,
-        error=last_error or "UnknownProcessingFailure",
-    )
+    return result(last_error or "UnknownProcessingFailure")
 
 
 def filter_all(

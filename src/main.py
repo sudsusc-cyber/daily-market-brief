@@ -92,7 +92,7 @@ _MACRO_PROCESSING_FALLBACK_NOTE = "宏观信息整理未完成，本期从略。
 _MACRO_SOURCE_FALLBACK_NOTE = "宏观数据源暂不可用，本期从略。"
 _COMPANY_PROCESSING_FALLBACK_NOTE = "个股动态整理未完成，本期从略。"
 _COMPANY_SOURCE_FALLBACK_NOTE = "个股动态数据源暂不可用，本期从略。"
-_FIGURE_PROCESSING_FALLBACK_NOTE = "关键发言整理未完成，本期从略。"
+_FIGURE_PROCESSING_FALLBACK_NOTE = "关键发言筛选暂不可用，本期暂不刊载。"
 
 _ACTIVE_THESIS_STATUS_RANK = {
     "core": 0,
@@ -523,16 +523,20 @@ def main() -> int:
     figure_footnotes = []
     if not figure_summaries:
         if figure_failures:
-            figure_fallback_note = _FIGURE_PROCESSING_FALLBACK_NOTE
+            figure_fallback_note = (
+                _FIGURE_PROCESSING_FALLBACK_NOTE if any(s.processing_error for s in figure_failures)
+                else "关键发言候选内容未通过核验，本期暂不刊载。" if any(s.content_rejections for s in figure_failures)
+                else "关键发言来源读取失败，本期暂不刊载。"
+            )
             _record_quality_alert(
-                f"关键发言加工失败：{len(figure_failures)} 位人物处理未完成，" "已使用受控占位语。"
+                f"关键发言存在来源、筛选或核验缺口：{len(figure_failures)} 位人物，已显示对应提示。"
             )
         else:
             figure_silence_note = figure_filter.generate_silence_note(llm) or "群贤皆默，市自为声。"
     else:
         if figure_failures:
             _record_quality_alert(
-                f"关键发言部分降级：{len(figure_failures)} 位人物处理未完成，"
+                f"关键发言部分降级：{len(figure_failures)} 位人物存在来源、筛选或核验缺口，"
                 "已展示其余有效内容。"
             )
         # 版面限流:质量评分后最多展示 3 位人物
@@ -731,7 +735,8 @@ def main() -> int:
             "source_failures": frontier_report.source_failures,
             "processing_failures": frontier_report.processing_failures,
             "content_rejections": frontier_report.content_rejections,
-        }},
+        }, "figures": {summary.person: summary.content_rejections for summary in figure_results
+                        if summary.content_rejections}},
         expected_tickers=[holding.ticker for holding in HOLDINGS] if settings.valuation_enabled else [],
         expected_prices=[holding.ticker for holding in HOLDINGS],
         expected_metrics=sentiment.METRIC_NAMES,
@@ -745,7 +750,9 @@ def main() -> int:
                                                  or bool(macro_news_fallback_note and any(b.items for b in macro_bundles))),
                       "fallback": bool(macro_news_fallback_note), "silence": bool(macro_news_silence_note)},
             "figures": {"source_failures": sum(bool(b.error) for b in fig_bundles),
-                        "processing_failures": len(figure_failures), "fallback": bool(figure_fallback_note),
+                        "processing_failures": sum(bool(s.processing_error) for s in figure_results),
+                        "content_rejections": sum(len(s.content_rejections) for s in figure_results),
+                        "fallback": bool(figure_fallback_note),
                         "silence": not figure_summaries and not figure_failures},
             "frontier": frontier_report.health(),
             "sentiment": {"fallback": sentiment_verdict is None or bool(sentiment_verdict.get("argument_fallback"))},

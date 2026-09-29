@@ -1,0 +1,38 @@
+{
+  "apple": {
+    "original_title": "Apple Stock Edges Higher Although Two Legal Bills Stack Up",
+    "original_summary": "A revived UK reseller case follows a $5.7 billion U.S. patent verdict that Apple plans to appeal.",
+    "published_at": "2026-09-28 19:26:53+00:00",
+    "source_name": "Yahoo",
+    "excerpt": "Apple Stock Edges Higher Although Two Legal Bills Stack Up",
+    "validated_text": "尽管两项法律议案接踵而至，Apple 股价仍小幅走高",
+    "url": "https://finnhub.io/api/news?id=bed4b3111a105884e4e705863d77bab8e327b7754b2ed60564dd4f2bcda1cf60"
+  },
+  "amex": {
+    "original_title": "American Express is Now Accepted at More Than 190 Million Merchant Locations Worldwide; Acceptance Outside the U.S. Has More Than Doubled in Last Four Years",
+    "original_summary": "NEW YORK, September 28, 2026--American Express today announced that its Cards are now accepted at more than 190 million Merchant locations worldwide1, an increase of approximately 20 million locations this year. The number of Amex-accepting Merchant locations outside the U.S. has more than doubled over the last four years. This growth reflects ongoing momentum in the company's global acceptance strategy, driven by key partnerships, targeted expansion in the places Card Members live, work, and tr",
+    "published_at": "2026-09-28 12:00:00+00:00",
+    "source_name": "Yahoo",
+    "excerpt": "NEW YORK, September 28, 2026--American Express today announced that its Cards are now accepted at more than 190 million Merchant locations worldwide1, an increase of approximately 20 million locations this year.",
+    "validated_text": "纽约，2026 年 9 月 28 日——American Express 今日宣布，其卡现已在全球超过 1.9 亿个商户地点被受理1，今年增加了约 2000 万个地点。",
+    "url": "https://finnhub.io/api/news?id=3fe277c61d36adcc03d57320823377f4bae24a455a15c418ddcf15c8aa7f1056"
+  },
+  "mastercard": {
+    "original_title": "Could Blockchain Create Another Growth Lever for SoFi Technologies (SOFI) and Mastercard (MA)?",
+    "original_summary": "On September 22, SoFi Technologies, Inc. (NASDAQ:SOFI) and Mastercard Incorporated (NYSE:MA) launched live stablecoin settlement across SoFi Bank’s debit and credit card program. Powered by SoFiUSD, the first stablecoin issued by a nationally chartered bank, SoFi is migrating its entire $25 billion card program to blockchain-based settlement on Mastercard’s global payment network. The initiative bridges […]",
+    "published_at": "2026-09-28 23:00:47+00:00",
+    "source_name": "Yahoo",
+    "excerpt": "On September 22, SoFi Technologies, Inc. (NASDAQ:SOFI) and Mastercard Incorporated (NYSE:MA) launched live stablecoin settlement across SoFi Bank’s debit and credit card program.",
+    "validated_text": "9 月 22 日，SoFi Technologies, Inc. (NASDAQ:SOFI) 与 Mastercard Incorporated (NYSE:MA) 在 SoFi Bank 的借记卡和信用卡项目中推出实时稳定币结算。",
+    "url": "https://finnhub.io/api/news?id=355608c9e5fced41986974990232bc18486b962fcc550bcb194ece3c0da23135"
+  },
+  "local_crime": {
+    "original_title": "The Small English Town Rattled by Alleged Terror Plot Near U.S. Bomber Base",
+    "original_summary": "Locals in Fairford question whether it really was a terror plot or something more mundane.",
+    "published_at": "2026-09-28 20:47:00+00:00",
+    "source_name": "WSJ",
+    "excerpt": "The Small English Town Rattled by Alleged Terror Plot Near U.S. Bomber Base",
+    "validated_text": "美国轰炸机基地附近据称发生恐怖阴谋，这座英国小镇受到震动",
+    "url": "https://www.wsj.com/world/europe/the-u-k-village-rattled-by-an-alleged-terror-plot-near-a-u-s-air-base-7362428b?mod=rss_worldnews"
+  }
+}

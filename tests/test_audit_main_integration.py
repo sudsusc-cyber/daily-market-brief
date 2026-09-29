@@ -2,11 +2,13 @@
 
 import importlib
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from bs4 import BeautifulSoup
 
 from src.collectors import company_news
 from src.config import HOLDINGS
@@ -22,6 +24,8 @@ from src.valuation.models import ValuationDisplay
     (False, "qqqm_retry"), (False, "qqqm_retry_fail"), (False, "qqqm_retry_timeout"),
     (False, "frontier_silent"), (False, "frontier_source"), (False, "frontier_rejected"),
     (False, "frontier_partial"), (False, "frontier_processing"),
+    (False, "figure_silent"), (False, "figure_source"), (False, "figure_rejected"),
+    (False, "figure_partial"), (False, "figure_processing"),
 ])
 def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(monkeypatch, tmp_path, exhausted, scenario):
     main = importlib.import_module("src.main")
@@ -113,6 +117,24 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         if scenario == "frontier_processing":
             output = None
         llm.chat.return_value = SimpleNamespace(text=output, error="timeout")
+    if scenario.startswith("figure_"):
+        good = main.figures.FigureMention("黄仁勋明确表示将投资100亿美元建设数据中心。", "", now,
+                                          "https://example.com/good", "Reuters")
+        bad = main.figures.FigureMention("Jensen said a cloud deal was announced", "", now,
+                                         "https://example.com/bad", "Reuters")
+        items = [good, bad] if scenario == "figure_partial" else [bad]
+        error = "RSS timeout" if scenario == "figure_source" else None
+        if error:
+            items = []
+        bundles = [main.figures.FigureBundle("黄仁勋", "Jensen Huang", "Jensen Huang", items, error)]
+        pending_figures = {main.figures._content_hash("黄仁勋", row): now.isoformat() for row in items}
+        monkeypatch.setattr(main.figures, "fetch_all", lambda *a, **k: (bundles, pending_figures))
+        output = "\n".join(f"▦ {i}: yes | score=5 | {good.title}" for i in range(1, len(items) + 1))
+        if scenario == "figure_silent":
+            output = "▦ 1: no | score=2 | 普通更新"
+        if scenario == "figure_processing":
+            output = None
+        llm.chat.return_value = SimpleNamespace(text=output, error="timeout")
     monkeypatch.setattr(main.buffett_13f, "fetch", lambda **_: (None, None))
     monkeypatch.setattr(main.jiangsu_fuel, "fetch", lambda **_: None)
     monkeypatch.setattr(main.sentiment, "fetch_all", lambda *a, **k: main.sentiment.SentimentBundle([], now))
@@ -120,7 +142,8 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     monkeypatch.setattr(main.news_summarizer, "summarize", lambda *a, **k: None)
     monkeypatch.setattr(main.news_summarizer, "generate_silence_note", lambda **_: None)
     monkeypatch.setattr(main.macro_filter, "generate_silence_note", lambda **_: None)
-    monkeypatch.setattr(main.figure_filter, "filter_all", lambda *a, **k: [])
+    if not scenario.startswith("figure_"):
+        monkeypatch.setattr(main.figure_filter, "filter_all", lambda *a, **k: [])
     monkeypatch.setattr(main.figure_filter, "generate_silence_note", lambda *a: None)
     monkeypatch.setattr(main.sentiment_judge, "judge", lambda *a, **k: None)
     publication_scenario = scenario in {"failed_delivery", "partial_delivery", "thesis_publication", "preview"}
@@ -201,6 +224,23 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         saved_frontier = main.frontier_labs._load_pushed(tmp_path / "pushed_frontier_labs.json")
         assert set(saved_frontier) == (
             {main.frontier_labs._content_hash("OpenAI", good)} if expected == "partial" else set())
+    if scenario.startswith("figure_"):
+        body = sent[0]["html_body"]
+        figures_health = health["figures"]
+        assert figures_health["processing_failures"] == int(scenario == "figure_processing")
+        assert figures_health["content_rejections"] == int(scenario in {"figure_rejected", "figure_partial"})
+        assert figures_health["source_failures"] == int(scenario == "figure_source")
+        assert figures_health["silence"] == (scenario == "figure_silent")
+        assert "关键发言整理未完成" not in body
+        if scenario == "figure_partial":
+            assert "投资100亿美元建设数据中心。" in re.sub(r"\s", "", BeautifulSoup(body, "html.parser").get_text())
+            assert not figures_health["fallback"]
+            assert manifest["content"]["diagnostics"]["figures"]
+            assert len(manifest["content"]["summary_mapping"]["figures"]) == 1
+        elif scenario != "figure_silent":
+            assert "本期暂不刊载" in body
+        saved = main.figures._load_pushed(tmp_path / "pushed_figures.json")
+        assert set(saved) == ({main.figures._content_hash("黄仁勋", good)} if scenario == "figure_partial" else set())
     if scenario.startswith("qqqm_retry"):
         assert len(qqqm_calls) == 2
         assert valuation_calls[-1]["qqqm_display"].status == ("current" if scenario == "qqqm_retry" else "source_unavailable")

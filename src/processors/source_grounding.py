@@ -20,6 +20,8 @@ from src.processors.news_selection import (
     chinese_prose,
     complete_excerpt,
     factual_excerpt,
+    old_event_excerpt,
+    old_event_recap,
     plain_source,
     sentences,
 )
@@ -46,6 +48,8 @@ class SourceEvidence:
 
 
 def source_sentences(item) -> list[str]:
+    if old_event_recap(item):
+        return []
     result = []
     for key in ("title", "summary", "snippet"):
         raw = plain_source(str(getattr(item, key, "") or "")).strip()
@@ -53,7 +57,7 @@ def source_sentences(item) -> list[str]:
             continue
         # No splitting on semicolon/colon: their clauses often qualify a claim.
         result.extend(s for s in [raw, *sentences(raw)]
-                      if complete_excerpt(s, getattr(item, 'source', '')))
+                      if complete_excerpt(s, getattr(item, 'source', '')) and not old_event_excerpt(item, s))
     return list(dict.fromkeys(result))
 
 
@@ -77,7 +81,7 @@ def source_prompt(item) -> str:
 def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
     claim = plain_source(claim).strip()
     candidates = [
-        item for item in items if is_safe_url(getattr(item, "url", "")) and source_text(item)
+        item for item in items if is_safe_url(getattr(item, "url", "")) and source_text(item) and not old_event_recap(item)
     ]
     if not candidates:
         return "", []
@@ -110,7 +114,7 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
     for item, excerpt, mode in selected:
         original = source_text(item)
         # Excerpts come from complete source fields/sentences after HTML removal.
-        if excerpt not in plain_source(original):
+        if excerpt not in plain_source(original) or old_event_excerpt(item, excerpt):
             continue
         validated = checked_excerpt(item)[1] if mode == "checked_translation" else excerpt
         source_name = str(getattr(item, "source", "") or "")
