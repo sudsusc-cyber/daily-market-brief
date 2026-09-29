@@ -20,7 +20,7 @@ from urllib.parse import urldefrag
 from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url, strip_all_tags
 from src.processors.llm_client import LLMClient
-from src.processors.news_presentation import publication_text
+from src.processors.news_presentation import publication_text, voice_text
 from src.processors.news_selection import plain_source
 from src.processors.source_grounding import source_sentences
 from src.processors.translation_guard import translation_errors
@@ -114,8 +114,11 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
                              published_at=row.get("published_at"), url=row.get("url", ""), source=row.get("source_name", ""))
     complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
     validated = str(row.get("validated_text", output))
-    display_supported = output == (publication_text(validated, source_name=str(row.get("source_name", "")))
-                                  if row.get("presentation_version") == 1 else validated)
+    displayed = (publication_text(validated, source_name=str(row.get("source_name", "")))
+                 if row.get("presentation_version") in (1, 2) else validated)
+    if row.get("presentation_version") == 2:
+        displayed = voice_text(displayed, str(row.get("presentation_speaker", "")))
+    display_supported = output == displayed
     output_supported = display_supported and (canonical_fact(validated) == canonical_fact(excerpt) or (
         row.get("mode") == "checked_translation" and not translation_errors(excerpt, validated)
     ))

@@ -23,6 +23,7 @@ from datetime import datetime
 from src.collectors.figures import FigureBundle, FigureMention
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
+from src.processors.news_presentation import voice_text
 from src.processors.news_selection import meaningful_quote, plain_source
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
@@ -68,6 +69,7 @@ class FigureKeyPoint:
     score: int = 0  # LLM 质量评分 1-5;>=4 才可展示
     published_at: datetime | None = None
     evidence: list[dict] = field(default_factory=list)  # 原始报道时间,用于限流排序
+    history_text: str = ""  # 保留署名前的核验文本，避免版式变动重置新闻去重
 
 
 @dataclass
@@ -358,6 +360,13 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
     rejected = []
 
     def result(processing_error=None):
+        for point in kept:
+            point.history_text = point.text
+            for row in point.evidence:
+                row['output_text'] = voice_text(row['output_text'], bundle.person)
+                row['presentation_version'] = 2
+                row['presentation_speaker'] = bundle.person
+            point.text = '；'.join(dict.fromkeys(row['output_text'] for row in point.evidence))
         errors = [redact_secrets(str(error))[:240] for error in [bundle.error, processing_error, *rejected] if error]
         summary = FigureSummary(person=bundle.person, person_en=bundle.person_en, items=kept,
                                 error="; ".join(errors) or None, processing_error=processing_error,

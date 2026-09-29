@@ -107,7 +107,7 @@ class EditorialHistory:
     def filter_figure(self, summary):
         before = len(summary.items)
         summary.items = [item for item in summary.items
-                         if not self.duplicate("figures", summary.person, item.text)]
+                         if not self.duplicate("figures", summary.person, getattr(item, "history_text", "") or item.text)]
         if len(summary.items) < before:
             logger.info("editorial_history.duplicate section=figures entity=%s count=%d",
                         summary.person, before - len(summary.items))
@@ -122,7 +122,7 @@ class EditorialHistory:
                 self.remember("company", name.get_text(strip=True) if name else "", _published_text(row))
         for summary in figures:
             for item in summary.items:
-                self.remember("figures", summary.person, item.text)
+                self.remember("figures", summary.person, getattr(item, "history_text", "") or item.text)
 
     def commit(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
