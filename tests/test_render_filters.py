@@ -46,8 +46,8 @@ class TestMetricFilters:
         assert _filter_metric_num(5.83, unit="%") == "5.83"
 
     def test_metric_num_large(self) -> None:
-        # >= 100 用 1 位小数 + 千分位
-        assert _filter_metric_num(1234.567) == "1,234.6"
+        # 与变化值保持两位小数，使用千分位
+        assert _filter_metric_num(1234.567) == "1,234.57"
 
     def test_metric_num_none(self) -> None:
         assert _filter_metric_num(None) == "—"

@@ -198,10 +198,7 @@ def _filter_metric_num(value: float | None, unit: str = "") -> str:
     if value is None:
         return "—"
     try:
-        absv = abs(value)
-        if absv >= 100:
-            return f"{value:,.1f}"
-        return f"{value:.2f}"
+        return f"{value:,.2f}"
     except (TypeError, ValueError):
         return "—"
 
@@ -218,9 +215,7 @@ def _filter_metric_delta(delta: float | None, unit: str = "") -> str:
         # 浮点容差:绝对值 < 0.005(2 位小数四舍五入会显示 0.00)视为无变化
         if absv < 0.005:
             return "—"
-        if absv >= 100:
-            return f"{delta:+,.1f}"
-        return f"{delta:+.2f}"
+        return f"{delta:+,.2f}"
     except (TypeError, ValueError):
         return "—"
 
@@ -452,6 +447,7 @@ def render_email(
     logo_cids: ticker -> CID 映射,如 {"NVDA": "logo_NVDA"}。
     个股动态与宏观视野不降级渲染原始列表，失败时使用受控占位语。
     """
+    generated_at = to_beijing(generated_at)
     env = _build_env()
     template = env.get_template("email.html.j2")
     sentiment_gauge = _build_sentiment_gauge(sentiment_verdict)

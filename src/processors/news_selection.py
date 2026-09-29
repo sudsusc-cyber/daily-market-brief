@@ -2,6 +2,7 @@
 
 import html
 import re
+from datetime import date, datetime
 
 from src.processors.html_safe import strip_all_tags
 
@@ -42,6 +43,10 @@ def sentences(text: str) -> list[str]:
 def complete_excerpt(text: str, source_name: str = '') -> bool:
     """Reject observable RSS truncation; source-field boundaries are not sentences."""
     text = plain_source(text).strip()
+    # Flattened publisher footnotes are not financial quantities. Do not guess
+    # away the number: reject this excerpt and select another complete source.
+    if re.search(r'\b(?:worldwide|locations|merchants|customers)[1-9](?=[,.;:]|$)', text, re.I):
+        return False
     if source_name:
         text = re.sub(r'\s+[-–—|]\s*' + re.escape(source_name) + r'\s*$', '', text, flags=re.I)
     if re.search(r'(?:\.{3}|…|\[\s*…\s*\])\s*[。.!！?？”’"\']*$', text):
@@ -62,12 +67,12 @@ def chinese_prose(text: str) -> bool:
 
 _PRICE_EDITORIAL = re.compile(
     r'which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
-    r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rallies|surges|jumps|slumps)'
+    r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rallies|surges|jumps|slumps|edges? (?:higher|lower))'
     r'|哪.*股票|值得买|股价.*(?:上涨|下跌|飙升)', re.I)
 _BUSINESS_FACT = re.compile(
     r'\b(?:reported?.*(?:results|earnings|revenue)|earnings|revenue|sales|renew\w*.*(?:licen\w*|agreement)'
     r'|(?:plans?|will|agrees? to) invest|announced|appoint\w*|acqui\w*|merger|launch\w*'
-    r'|settlement|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
+    r'|settlement|lawsuit|litigation|patent verdict|court ruling|appeal|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
 _RATING_SERVICE = re.compile(
     r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级|outlook|展望)", re.I)
@@ -76,19 +81,77 @@ _PARTNER_PROMOTION = re.compile(
     r'|合作伙伴(?:奖|称号|认证)|年度合作伙伴|内圈奖', re.I)
 
 
+def old_event_excerpt(item, text: str) -> bool:
+    """Reject explicitly dated old-event investment recaps, not new reporting.
+
+    Anchor to the article's publication date, never today's fetch time. This is
+    deliberately limited to leading event dates; historical comparisons remain.
+    """
+    # A retrospective investment question can recycle an old announcement. Do
+    # not apply a two-day stock-news rule to interviews, macro or other feeds.
+    if not re.search(r'\b(?:Can|Could|Should|Will)\b.*\?|值得买|增长机会',
+                     plain_source(getattr(item, 'title', '')), re.I):
+        return False
+    published = getattr(item, 'published_at', None)
+    if isinstance(published, str):
+        try:
+            published = datetime.fromisoformat(published)
+        except ValueError:
+            return False
+    if not isinstance(published, datetime):
+        return False
+    text = plain_source(text)
+    if re.search(r'\btoday\b|\byesterday\b|\bwill\b|\bplans? to\b|今日|昨日|今天|昨天|将于|计划于', text, re.I):
+        return False
+    match = re.match(
+        r'^(?:On\s+)?(Jan\w*|Feb\w*|Mar\w*|Apr\w*|May|Jun\w*|Jul\w*|Aug\w*|Sep\w*|Oct\w*|Nov\w*|Dec\w*)'
+        r'\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\s*[,，:：]', text, re.I)
+    chinese = re.match(r'^(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*[,，:：]', text)
+    if not match and not chinese:
+        return False
+    if match:
+        month = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].index(match[1][:3].lower()) + 1
+        day, year = int(match[2]), match[3]
+    else:
+        month, day, year = int(chinese[2]), int(chinese[3]), chinese[1]
+    # Infer a previous year only around the year boundary, not arbitrary future dates.
+    year = int(year) if year else published.year - int(published.month <= 2 and month >= 11)
+    try:
+        event = date(year, month, day)
+    except ValueError:
+        return False
+    return (published.date() - event).days > 2
+
+
+
+def old_event_recap(item) -> bool:
+    """Undated continuation clauses must not turn a dated recap into new news."""
+    summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '') or ''
+    parts = sentences(summary)
+    return bool(parts and old_event_excerpt(item, parts[0]) and not re.search(
+        r'\btoday\b|\byesterday\b|今日|昨日|今天|昨天', plain_source(summary), re.I))
+
+
 def factual_excerpt(item) -> str:
     """Prefer a complete operational sentence to an opinion/question headline.
 
     The immutable title and summary remain attached for context and auditing.
     RSS snippets that merely repeat the headline are not extra evidence.
     """
+    if old_event_recap(item):
+        return ''
     title = plain_source(getattr(item, 'title', ''))
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '')
     eligible = []
     for sentence in sentences(summary):
-        if (complete_excerpt(sentence) and len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)
+        if (complete_excerpt(sentence) and not old_event_excerpt(item, sentence)
+                and len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)
                 and sentence not in title and title not in sentence):
             eligible.append(sentence)
+    # When a recap contains an explicit fresh update, lead with that update.
+    for sentence in eligible:
+        if re.search(r'\btoday\b|\byesterday\b|今日|昨日|今天|昨天', sentence, re.I):
+            return sentence
     # Prefer the reported financial result over a sentence merely announcing
     # the earnings date; source-company binding is supplied by the collector.
     for sentence in eligible:
@@ -98,15 +161,15 @@ def factual_excerpt(item) -> str:
         return eligible[0]
     title_sentences = sentences(title)
     if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s why|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
-        return title_sentences[0]
+        return '' if old_event_excerpt(item, title_sentences[0]) else title_sentences[0]
     # A rolling news-page title is navigation, not a fact. Prefer its actual
     # complete summary sentence even if it is not a company earnings item.
     if re.match(r'Latest .*News and Analysis|.*: Markets Wrap$', title, re.I):
-        return next((s for s in sentences(summary) if complete_excerpt(s) and len(s) >= 30), '')
+        return next((s for s in sentences(summary) if complete_excerpt(s) and not old_event_excerpt(item, s) and len(s) >= 30), '')
     if re.search(r'\b(?:Can|Should|Could|Will) .*\?|\b(?:Opportunity|Returns)\?', title, re.I):
         # Do not fill a company slot with a question about investment returns.
         return ''
-    return title
+    return '' if old_event_excerpt(item, title) else title
 
 
 def company_candidate(item, ticker: str) -> bool:
@@ -115,6 +178,10 @@ def company_candidate(item, ticker: str) -> bool:
     # A vendor winning a platform's badge is not operating news about that platform.
     # Keep substantive partner contracts, capacity and investments eligible.
     if _PARTNER_PROMOTION.search(title):
+        return False
+    # A newly published investing commentary can merely recycle last week's
+    # launch. Do not turn its undated follow-up clauses into fresh company news.
+    if old_event_recap(item):
         return False
     if (ticker == 'MCO' and (_RATING_SERVICE.search(text) or re.search(
             r'(?:upgrad\w*|ratings?|outlook).*\bfrom\s+Moody[’\']?s', title, re.I))
@@ -144,4 +211,12 @@ def neutral_macro_topic(items, *, supported_text: str = '') -> str:
 
 def macro_candidate(item) -> bool:
     # Symbolic summit colour is not a market/policy development on its own.
-    return not re.search(r"panda diplomacy|熊猫外交", plain_source(item.title), re.I)
+    title = plain_source(item.title)
+    if re.search(r"panda diplomacy|熊猫外交", title, re.I):
+        return False
+    text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
+    local_colour = re.search(r'\b(?:small .*town|village|locals|neighbou?rhood)\b|小镇|村庄|社区居民', title, re.I)
+    crime = re.search(r'terror plot|murder|burglary|alleged plot|恐怖阴谋|谋杀|入室盗窃', text, re.I)
+    wider_impact = re.search(r'sanctions?|trade|oil|shipping|supply|interest rates?|markets? (?:fall|drop|close)'
+                            r'|制裁|贸易|石油|航运|供应|利率|市场(?:下跌|关闭)', text, re.I)
+    return not (local_colour and crime and not wider_impact)

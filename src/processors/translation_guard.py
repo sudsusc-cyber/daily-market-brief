@@ -185,6 +185,9 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = re.sub(r"\b(orders?|ordered|requires?|required)(\s+[^.;!?]{1,80}?)\bto\s+(pay)\b",
                       r"\1\2\3", original, flags=re.I)
     errors = []
+    if (re.search(r'\blegal (?:costs?|fees?|bills? (?:stack up|mount|pile up))\b', original, re.I)
+            and re.search(r'法案|议案|法律草案', translated)):
+        errors.append('legal_cost_sense')
     if not re.search(r'[一-鿿]', translated):
         errors.append('not_chinese')
     if _quantities(original) != _quantities(translated):
