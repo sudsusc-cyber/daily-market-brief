@@ -246,9 +246,8 @@ def test_holdings_intro_and_subject_disable_thinking() -> None:
         _response(None, "timeout"),
         _response("潮水未至，持仓仍守其位。"),
     ])
-    assert write_intro([_signal()], client=intro_client) == "潮水未至，持仓仍守其位。"
-    assert len(intro_client.calls) == 2
-    assert all(call["thinking"] is False for call in intro_client.calls)
+    assert "暂无买入信号" in write_intro([_signal()], client=intro_client)
+    assert intro_client.calls == []
 
     subject_client = _SequenceClient([_response("风清云定")])
     text, error = _call_deepseek(subject_client, "生成主题")

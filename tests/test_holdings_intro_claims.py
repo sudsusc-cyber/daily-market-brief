@@ -1,35 +1,25 @@
-"""Poetic openings must not invent holding counts or trade-trigger facts."""
+"""Actual signal states determine every factual clause of the opening."""
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import pytest
-
 from src.processors.holdings_intro import write_intro
 
-SIGNALS=[SimpleNamespace(signal='DCA',error=None,holding=SimpleNamespace(ticker='0700.HK'),
-                         buy_lines=[],last_close=439.8)]
-GOOD='潮水有起落，价格也有自己的节律；守候的人不急于追逐远帆，只在熟悉的岸边辨认水位。'
 
-
-@pytest.mark.parametrize('bad', [
-    '海面之上，十一艘船正悬于高位，而香江之畔，两叶轻舟悄然退至潮线之下。',
-    '十三只股票都在高位。',
-    '价格距离参考线还有15%。',
-    '所有标的以120周和200周触发信号。',
-    '全部标的都无信号。',
-    '港股首次跌破参考线，建议加仓。',
-    '这是开场白。'*30,
-])
-def test_unsupported_intro_retries_with_same_inputs_and_keeps_verified_replacement(bad):
+def test_actual_below_reference_none_and_two_hk_positions_cannot_invent_claims():
+    signals = [SimpleNamespace(signal='NONE', error=None, last_close=922.92, sma_120=945.82)]
+    signals += [SimpleNamespace(signal='DCA',error=None) for _ in range(2)]
     client=Mock()
-    client.chat.side_effect=[SimpleNamespace(text=bad,error=None),SimpleNamespace(text=GOOD,error=None)]
-    assert write_intro(SIGNALS,client=client)==GOOD
-    assert client.chat.call_count==2
-    assert client.chat.call_args_list[0].args==client.chat.call_args_list[1].args
+    client.chat.return_value=SimpleNamespace(text='两地各有一处，其余均在参考线之上。',error=None)
+    text=write_intro(signals,client=client)
+    assert '2只处于小额区间' in text and '1只暂无买入信号' in text
+    assert '两地' not in text and '参考线之上' not in text
+    client.chat.assert_not_called()
 
 
-def test_second_unsupported_intro_returns_controlled_fallback_not_truncated_claim():
-    client=Mock()
-    client.chat.return_value=SimpleNamespace(text='十一艘船都高于参考线。',error=None)
-    assert write_intro(SIGNALS,client=client) is None
-    assert client.chat.call_count==2
+def test_failed_and_unknown_observations_are_not_counted_as_no_signal():
+    signals = [SimpleNamespace(signal='NONE',error='missing'),
+               SimpleNamespace(signal='unexpected',error=None),
+               SimpleNamespace(signal='LUMP_SUM',error=None)]
+    text=write_intro(signals)
+    assert '2只信号待核验' in text and '1只处于大额区间' in text
+    assert '暂无买入信号' not in text

@@ -18,7 +18,7 @@ NOW = datetime(2026, 9, 26, 7, tzinfo=UTC)
 
 @pytest.mark.parametrize('source,sentence,expected', [
     ('Windows Report', 'Xbox 有很棒的游戏，但 Satya Nadella 称商业模式必须改变 - Windows Report',
-     'Xbox 有很棒的游戏，但 Satya Nadella 称商业模式必须改变'),
+     'Xbox 有很棒的游戏，但萨提亚·纳德拉称商业模式必须改变'),
     ('wsj.com', 'Anthropic 将支付 116 亿美元 - wsj.com', 'Anthropic 将支付 116 亿美元'),
     ('WSJ', 'Anthropic 将支付 116 亿美元 — 华尔街日报', 'Anthropic 将支付 116 亿美元'),
     ('Reuters', '据 Reuters 报道，Apple 尚未获批 - Reuters', '据 Reuters 报道，Apple 尚未获批'),

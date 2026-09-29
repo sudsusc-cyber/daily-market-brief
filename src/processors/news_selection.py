@@ -82,6 +82,39 @@ _PARTNER_PROMOTION = re.compile(
     r'|合作伙伴(?:奖|称号|认证)|年度合作伙伴|内圈奖', re.I)
 
 
+
+_PROMO_PROSE = re.compile(
+    r"^move over[,，]|^让开[，,]|^why (?:it|this|that) (?:could|may|might|matters)|为何.*(?:股票|重要)|为什么.*(?:股票|重要)", re.I)
+_ROUNDUP = re.compile(r"回购(?:集合|汇总|一览)|(?:buyback|repurchase).*(?:roundup|round-up|round up)", re.I)
+
+
+def promotional_prose(text: str) -> bool:
+    return any(_PROMO_PROSE.search(part) for part in sentences(text))
+
+
+def company_fact_matches(text: str, ticker: str) -> bool:
+    """Roundup titles are not a single holding's report. Keep a scoped sentence."""
+    if _ROUNDUP.search(plain_source(text)):
+        return False
+    from src.collectors.company_news import _RELEVANCE_KEYWORDS
+    from src.config import HOLDINGS
+
+    aliases = list(_RELEVANCE_KEYWORDS.get(ticker, []))
+    aliases.extend(h.name for h in HOLDINGS if h.ticker == ticker)
+    aliases.extend({'0700.HK': ['腾讯', 'Tencent'], '9992.HK': ['泡泡玛特', 'POP MART']}.get(ticker, []))
+    scope = re.split(r'其中|among them', plain_source(text), flags=re.I)
+    if len(scope) > 1 and not any(scope[-1].strip().lower().startswith(alias.strip().lower()) for alias in aliases):
+        return False
+    return bool(aliases and any(plain_source(text).lower().startswith(alias.strip().lower()) for alias in aliases))
+
+
+def roundup_excerpt(item, ticker: str) -> str:
+    summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '') or ''
+    return next((part for part in sentences(summary)
+                 if company_fact_matches(part, ticker) and complete_excerpt(part)
+                 and _BUSINESS_FACT.search(part)), '')
+
+
 def old_event_excerpt(item, text: str) -> bool:
     """Reject explicitly dated old-event investment recaps, not new reporting.
 
@@ -142,11 +175,18 @@ def factual_excerpt(item) -> str:
     if old_event_recap(item):
         return ''
     title = plain_source(getattr(item, 'title', ''))
+    if _ROUNDUP.search(title):
+        return roundup_excerpt(item, getattr(item, 'holding_ticker', '') or '')
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '')
     eligible = []
     # Mixed headlines often put a buying pitch before a complete reported fact.
     # Extract only that complete fact, without joining clauses or rewriting it.
     title_parts = sentences(title)
+    if promotional_prose(title):
+        return next((part for part in title_parts if not promotional_prose(part)
+                     and complete_excerpt(part) and re.search(
+                         r'Anthropic|OpenAI', part, re.I)
+                     and re.search(r'go public|IPO|fil(?:e|ed|ing)|launch|release|上市|招股|提交|发布', part, re.I)), '')
     if len(title_parts) > 1 and _PRICE_EDITORIAL.search(title_parts[0]):
         for part in title_parts[1:]:
             if (complete_excerpt(part) and not _PRICE_EDITORIAL.search(part)
@@ -184,6 +224,8 @@ def factual_excerpt(item) -> str:
 def company_candidate(item, ticker: str) -> bool:
     title = plain_source(getattr(item, 'title', ''))
     text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
+    if _ROUNDUP.search(title):
+        return bool(roundup_excerpt(item, ticker))
     # A vendor winning a platform's badge is not operating news about that platform.
     # Keep substantive partner contracts, capacity and investments eligible.
     if _PARTNER_PROMOTION.search(title):
@@ -202,7 +244,9 @@ def company_candidate(item, ticker: str) -> bool:
 
 def frontier_candidate(item) -> bool:
     title = plain_source(getattr(item, 'title', ''))
-    return not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title
+    excerpt = factual_excerpt(item)
+    return bool(excerpt) and not promotional_prose(excerpt) and (
+        not _PRICE_EDITORIAL.search(title) or excerpt != title)
 
 
 def meaningful_quote(item) -> bool:

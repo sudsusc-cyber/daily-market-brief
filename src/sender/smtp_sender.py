@@ -113,12 +113,21 @@ class _PlainTextExtractor(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self.hidden_tags: list[str] = []
+        self.links: list[tuple[bool, str]] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
         if tag in self._HIDDEN_TAGS:
             self.hidden_tags.append(tag)
         if self.hidden_tags:
             return
+        if tag == "a":
+            from src.processors.html_safe import is_safe_url
+
+            attr = dict(attrs)
+            source = "source-link" in (attr.get("class") or "").split()
+            href = attr.get("href") or ""
+            self.links.append((source, href if is_safe_url(href) else ""))
+            self.parts.append("\n" if source else " ")
         if tag == "li":
             self.parts.append("\n- ")
         elif tag in self._BLOCK_TAGS:
@@ -131,6 +140,12 @@ class _PlainTextExtractor(HTMLParser):
             if tag == self.hidden_tags[-1]:
                 self.hidden_tags.pop()
             return
+        if tag == "a" and self.links:
+            source, href = self.links.pop()
+            if source:
+                self.parts.append((" " + href if href else "") + "\n")
+            else:
+                self.parts.append(" ")
         if tag in self._BLOCK_TAGS:
             self.parts.append("\n")
 

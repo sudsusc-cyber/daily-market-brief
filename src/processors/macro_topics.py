@@ -29,6 +29,8 @@ def macro_topic(text: str) -> str:
     if _has(r'Russia|Ukraine|俄乌|俄罗斯|乌克兰', text):
         return '俄乌局势'
     for topic, pattern in (
+        ('科技监管', r'(?:AI|人工智能|科技|人才).*(?:travel|出行|出境|限制|禁令)|(?:travel curbs|出行限制|出境限制).*(?:AI|人工智能|人才)'),
+        ('经济增长', r'pro.growth|促增长|增长政策'),
         ('国防开支', r'(?:missile|defen[cs]e|military|导弹|国防|军工).*(?:contract|spending|合同|开支)'
          r'|(?:contract|spending|合同|开支).*(?:missile|defen[cs]e|military|导弹|国防|军工)'),
         ('能源市场', r'\boil\b|\bcrude\b|\benergy\b|natural gas|油价|原油|石油|能源|天然气'),
@@ -50,7 +52,7 @@ def macro_topic(text: str) -> str:
     ):
         if _has(pattern, text):
             return topic
-    if _has(_CHINA, text):
+    if _has(_CHINA, text) and _has(r'econom|经济', text):
         return '中国经济'
     # Unclassified is not evidence that unrelated facts share a topic. The
     # renderer keeps these independent without inventing specific headings.
@@ -62,7 +64,7 @@ def macro_topics(texts: list[str]) -> list[str]:
     topics = [macro_topic(text) for text in texts]
     if '中美关系' in topics:
         for i, text in enumerate(texts):
-            if (topics[i] == '中国经济' and _has(_CHINA, text)
+            if (topics[i] in {'中国经济', '其他宏观'} and _has(_CHINA, text)
                     and _has(r'self.sufficien|自给自足', text)
                     and _has(r'negotiat|talks|bargain|谈判|磋商', text)
                     and not _has(r'European|Europe|Russia|Japan|欧盟|欧洲|俄罗斯|日本', text)):
@@ -77,7 +79,7 @@ _MACRO_PRIORITY = {
     '美债市场': 90, '中美关系': 90, '中东局势': 90, '俄乌局势': 90,
     '国际贸易': 85, '财政政策': 85, '信用市场': 80, '能源市场': 80,
     '债券市场': 75, '外汇市场': 75, '中国经济': 75, '资本流动': 70,
-    '地缘政治': 65, 'AI 安全': 60, '国防开支': 55,
+    '科技监管': 75, '地缘政治': 65, 'AI 安全': 60, '国防开支': 55,
     '选举与司法': 50, '资本市场': 45,
 }
 

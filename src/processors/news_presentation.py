@@ -10,6 +10,7 @@ _PUBLISHERS = {
     'wsj': ('WSJ', 'wsj.com', 'The Wall Street Journal', '华尔街日报'),
     'reuters': ('Reuters', '路透社'),
     'bloomberg': ('Bloomberg', '彭博社'),
+    'abc australia': ('ABC News Australia', 'ABC News', '澳大利亚广播公司'),
     'financial times': ('Financial Times', 'FT', '金融时报'),
 }
 _LISTING = re.compile(
@@ -33,7 +34,9 @@ _BARE_LISTINGS = {
     '泡泡玛特': r'0?9992\.HK', 'POP MART': r'0?9992\.HK',
     '腾讯': r'0?0700\.HK|700\.HK', 'Tencent': r'0?0700\.HK|700\.HK',
 }
-_FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Treasuries': '美国国债'}
+_FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Treasuries': '美国国债',
+                    'Strait of Hormuz': '霍尔木兹海峡', 'Hormuz': '霍尔木兹海峡',
+                    'Saudi Arabia': '沙特阿拉伯', 'Iran': '伊朗', 'Satya Nadella': '萨提亚·纳德拉'}
 
 
 def publication_text(text: str, *, source_name: str = '') -> str:
@@ -44,8 +47,15 @@ def publication_text(text: str, *, source_name: str = '') -> str:
     for names in _PUBLISHERS.values():
         if source.casefold() in {name.casefold() for name in names}:
             aliases.update(names)
-    for name in sorted(aliases, key=len, reverse=True):
-        text = re.sub(r'(?:\s*[-–—|]+\s*|\s{2,})' + re.escape(name) + r'[。.]?\s*$', '', text, flags=re.I)
+    # Nested syndication tails may name another known publisher. Only a
+    # delimited trailing label is metadata; in-sentence attribution is retained.
+    aliases.update(name for names in _PUBLISHERS.values() for name in names)
+    for _ in range(4):
+        before = text
+        for name in sorted(aliases, key=len, reverse=True):
+            text = re.sub(r'(?:\s*[-–—|]+\s*|\s{2,})' + re.escape(name) + r'[。.]?\s*$', '', text, flags=re.I)
+        if text == before:
+            break
     text = _LISTING.sub('', text)
     for name, ticker in _BARE_LISTINGS.items():
         text = re.sub(r'(?<![A-Za-z])(' + re.escape(name) + r')\s*[（(](?:' + ticker + r')[)）]',

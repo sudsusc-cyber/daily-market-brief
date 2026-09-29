@@ -23,6 +23,7 @@ from src.processors.news_selection import (
     old_event_excerpt,
     old_event_recap,
     plain_source,
+    promotional_prose,
     sentences,
 )
 from src.processors.translation_guard import translation_errors
@@ -57,7 +58,7 @@ def source_sentences(item) -> list[str]:
             continue
         # No splitting on semicolon/colon: their clauses often qualify a claim.
         result.extend(s for s in [raw, *sentences(raw)]
-                      if complete_excerpt(s, getattr(item, 'source', '')) and not old_event_excerpt(item, s))
+                      if complete_excerpt(s, getattr(item, 'source', '')) and not old_event_excerpt(item, s) and not promotional_prose(s))
     return list(dict.fromkeys(result))
 
 
@@ -119,7 +120,7 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
         validated = checked_excerpt(item)[1] if mode == "checked_translation" else excerpt
         source_name = str(getattr(item, "source", "") or "")
         displayed = publication_text(validated, source_name=source_name)
-        if not chinese_prose(displayed) or not complete_excerpt(displayed):
+        if not chinese_prose(displayed) or not complete_excerpt(displayed) or promotional_prose(displayed):
             logger.warning("news.publication_rejected reason=not_complete_chinese")
             continue
         if mode == "source_extract":

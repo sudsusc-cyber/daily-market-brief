@@ -63,7 +63,7 @@ _RULES = (
     WatchRule(
         "infrastructure-investment",
         r"cloud|data cent(?:er|re)s?|infrastructure|fab\b|云|数据中心|基础设施|晶圆厂|产能",
-        r"invest|capex|capital expend|build|expand|spend|投资|投入|资本开支|建设|扩建|扩产",
+        r"invest|capex|capital expend|build|expand|spend|under construction|being built|投资|投入|资本开支|建设|扩建|扩产|在建",
         "基础设施投入的长期价值取决于资本回报",
         "实际投入、投产进度、利用率与现金流能否匹配。",
     ),
@@ -83,14 +83,14 @@ _RULES = (
     ),
     WatchRule(
         "product-release-risk",
-        r"model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
+        r"\bGPT[- .]?\d+(?:\.\d+)?\b|model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
         r"scrap|abandon|cancel|shelv|axes?|halt|delay|postpon|放弃|取消|搁置|砍掉|暂停|推迟|延后",
         "产品发布调整后的长期影响取决于后续安排",
         "调整原因、问题解决进度、后续发布安排与投入变化。",
     ),
     WatchRule(
         "product-commercialization",
-        r"model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
+        r"\bGPT[- .]?\d+(?:\.\d+)?\b|model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
         r"launch|releas|introduc|roll.?out|推出|发布|上市|上线",
         "新产品的长期价值仍需持续采用和盈利兑现",
         "用户采用、收入贡献、利润率与持续投入。",
@@ -164,7 +164,10 @@ def _rule_for(row: dict) -> WatchRule | None:
         return None
     # Denials of a cancellation must not be labelled as a release setback.
     negated_change = r"(?:not|never|no longer)\s+(?:\w+\s+){0,2}(?:scrap|cancel|abandon|delay|shelv)|(?:并未|没有|不会|未)(?:放弃|取消|搁置|暂停|推迟)"
+    no_construction = r"not (?:currently )?(?:under construction|being built)|并非在建|没有在建|尚未(?:开工|建设)"
     return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)
+                 and not (rule.key == "infrastructure-investment" and (
+                     re.search(no_construction, original, re.I) or re.search(no_construction, text)))
                  and not (rule.key == "product-release-risk" and (
                      re.search(negated_change, original, re.I) or re.search(negated_change, text)))), None)
 
