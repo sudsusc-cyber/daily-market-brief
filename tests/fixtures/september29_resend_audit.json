@@ -1,0 +1,420 @@
+{
+  "36519910922": {
+    "sentiment": [
+      {
+        "section": "sentiment",
+        "key": "CNN Fear & Greed",
+        "status": "current_verified",
+        "observed_at": "2026-09-28",
+        "fetched_at": "2026-09-29T04:07:31.542980+00:00",
+        "current": 33.9428571428571,
+        "prior": 37.0,
+        "unit": "",
+        "source": "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+      },
+      {
+        "section": "sentiment",
+        "key": "VIX",
+        "status": "current_verified",
+        "observed_at": "2026-09-28",
+        "fetched_at": "2026-09-29T04:07:31.872021+00:00",
+        "current": 16.07,
+        "prior": 14.87,
+        "unit": "",
+        "source": "https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/_VIX.json"
+      },
+      {
+        "section": "sentiment",
+        "key": "DXY",
+        "status": "current_verified",
+        "observed_at": "2026-09-28",
+        "fetched_at": "2026-09-29T04:07:32.169499+00:00",
+        "current": 101.19999694824219,
+        "prior": 100.97000122070312,
+        "unit": "",
+        "source": "yfinance:DX-Y.NYB"
+      },
+      {
+        "section": "sentiment",
+        "key": "Shiller PE",
+        "status": "current_verified",
+        "observed_at": "2026-09-28",
+        "fetched_at": "2026-09-29T04:07:32.546546+00:00",
+        "current": 41.16,
+        "prior": null,
+        "unit": "",
+        "source": "https://www.multpl.com/shiller-pe/table/by-month"
+      },
+      {
+        "section": "sentiment",
+        "key": "高收益债利差",
+        "status": "current_verified",
+        "observed_at": "2026-09-25",
+        "fetched_at": "2026-09-29T04:07:32.913839+00:00",
+        "current": 2.93,
+        "prior": 2.8,
+        "unit": "%",
+        "source": "FRED:BAMLH0A0HYM2"
+      }
+    ]
+  },
+  "36522465039": {
+    "sentiment": [
+      {
+        "section": "sentiment",
+        "key": "CNN Fear & Greed",
+        "status": "carried",
+        "observed_at": "2026-09-28",
+        "fetched_at": "2026-09-28T23:05:06.693665+00:00",
+        "current": 33.9428571428571,
+        "prior": 37.0,
+        "unit": "",
+        "source": "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+      },
+      {
+        "section": "sentiment",
+        "key": "VIX",
+        "status": "current_verified",
+        "observed_at": "2026-09-28",
+        "fetched_at": "2026-09-29T04:40:33.374309+00:00",
+        "current": 16.07,
+        "prior": 14.87,
+        "unit": "",
+        "source": "https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/_VIX.json"
+      },
+      {
+        "section": "sentiment",
+        "key": "DXY",
+        "status": "current_verified",
+        "observed_at": "2026-09-29",
+        "fetched_at": "2026-09-29T04:40:33.622986+00:00",
+        "current": 101.26599884033203,
+        "prior": 101.19999694824219,
+        "unit": "",
+        "source": "yfinance:DX-Y.NYB"
+      },
+      {
+        "section": "sentiment",
+        "key": "Shiller PE",
+        "status": "current_verified",
+        "observed_at": "2026-09-28",
+        "fetched_at": "2026-09-29T04:40:33.887803+00:00",
+        "current": 41.16,
+        "prior": null,
+        "unit": "",
+        "source": "https://www.multpl.com/shiller-pe/table/by-month"
+      },
+      {
+        "section": "sentiment",
+        "key": "高收益债利差",
+        "status": "current_verified",
+        "observed_at": "2026-09-25",
+        "fetched_at": "2026-09-29T04:40:34.468664+00:00",
+        "current": 2.93,
+        "prior": 2.8,
+        "unit": "%",
+        "source": "FRED:BAMLH0A0HYM2"
+      }
+    ],
+    "news": {
+      "company": [
+        {
+          "url": "https://finnhub.io/api/news?id=685efdb76dbb90c48043e19f9a69dee637ac0b3ef573faa2cb1aa66566cb4b2e",
+          "original_title": "Costco (COST) Collects More Membership Fees. How Much Does It Give Back?",
+          "original_summary": "Costco Wholesale Corporation (NASDAQ:COST) increased membership income in fiscal 2026, but rewarding loyal shoppers carries a cost elsewhere in its accounts. Results released September 24 showed membership-fee revenue of $5.907 billion, up from $5.323 billion. That $584 million increase, or approximately 11%, strengthens recurring revenue. For Costco Wholesale Corporation (NASDAQ:COST), Executive rewards reduce reported merchandise […]",
+          "excerpt": "Results released September 24 showed membership-fee revenue of $5.907 billion, up from $5.323 billion.",
+          "published_at": "2026-09-29 02:23:01+00:00",
+          "source_sha256": "8a62da6160dfb7864a3a87115ffde62829cf9453f4b600629e1bbffffb61f13a",
+          "output_text": "9 月 24 日发布的结果显示，会员费收入为 59.07 亿美元，高于 53.23 亿美元。",
+          "mode": "checked_translation",
+          "validated_text": "9 月 24 日发布的结果显示，会员费收入为 59.07 亿美元，高于 53.23 亿美元。",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=947ce4945c533e42101e6703119285830e06f862c5b3820fe2208568a38a79ae",
+          "original_title": "Costco cuts prices on everyday items as inflation wallops shoppers",
+          "original_summary": "Costco is turning tariff refunds into lower prices on coffee and more. Here’s what it means for Costco stock investors.",
+          "excerpt": "Costco cuts prices on everyday items as inflation wallops shoppers",
+          "published_at": "2026-09-28 23:37:00+00:00",
+          "source_sha256": "5cecdc5615a7412f6937a98d49737c2c2d66f0decb8fa5fbbfde5567a10b7c84",
+          "output_text": "Costco 下调日常商品价格，因通胀重创消费者",
+          "mode": "checked_translation",
+          "validated_text": "Costco 下调日常商品价格，因通胀重创消费者",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=bed4b3111a105884e4e705863d77bab8e327b7754b2ed60564dd4f2bcda1cf60",
+          "original_title": "Apple Stock Edges Higher Although Two Legal Bills Stack Up",
+          "original_summary": "A revived UK reseller case follows a $5.7 billion U.S. patent verdict that Apple plans to appeal.",
+          "excerpt": "A revived UK reseller case follows a $5.7 billion U.S. patent verdict that Apple plans to appeal.",
+          "published_at": "2026-09-28 19:26:53+00:00",
+          "source_sha256": "133ef838341471fd3168c5cc85ec77a64fabca3ab622a0164a5b56acc4cf0927",
+          "output_text": "英国经销商案件重启，此前美国专利案判决 57 亿美元，Apple 计划上诉。",
+          "mode": "checked_translation",
+          "validated_text": "英国经销商案件重启，此前美国专利案判决 57 亿美元，Apple 计划上诉。",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=da8ab7b92392b6a73781200ca4036b6e28025727c30966a98890d3b0ccf1278a",
+          "original_title": "Alibaba (NYSE:BABA) Nears Approval For RTX PRO 5500 Chip Purchases In China",
+          "original_summary": "Alibaba Group Holding (NYSE:BABA) is expected to secure Chinese approval to purchase Nvidia RTX PRO 5500 chips under current export rules. Regulators in Beijing are reviewing the RTX PRO 5500 orders as a category of AI hardware seen as compliant with US curbs. The prospective approval would expand Alibaba's pool of Nvidia processors for use in its cloud services and in-house AI projects. The likely green light for Alibaba's RTX PRO 5500 imports sits alongside broader shifts in China AI...",
+          "excerpt": "Alibaba (NYSE:BABA) Nears Approval For RTX PRO 5500 Chip Purchases In China",
+          "published_at": "2026-09-29 02:09:34+00:00",
+          "source_sha256": "c1f3df8df690165ff7ff3ec2c4a76fc4653572c49491044746e735a2cd8a675a",
+          "output_text": "Alibaba 接近获批在中国采购 RTX PRO 5500 芯片",
+          "mode": "checked_translation",
+          "validated_text": "Alibaba (NYSE:BABA) 接近获批在中国采购 RTX PRO 5500 芯片",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=726f5fb49c3ec6e1d67d3a65fe95d4af3cfaff63d617dd55ba6180abb3b4cf91",
+          "original_title": "Is CEO Jensen Huang Becoming Nvidia (NVDA)’s Most Valuable Political Asset?",
+          "original_summary": "CEO of Nvidia, Jensen Huang’s influence in Washington has become one of Nvidia’s more unusual competitive assets. Late September 2026 brought confirmation of just how close that relationship has become, with Treasury Secretary Scott Bessent telling Congress that President Trump is “completely aligned” with Huang’s views on AI policy. The alignment follows Huang’s public pushback […]",
+          "excerpt": "Is CEO Jensen Huang Becoming Nvidia (NVDA)’s Most Valuable Political Asset?",
+          "published_at": "2026-09-29 01:30:38+00:00",
+          "source_sha256": "1c8309480a34aa468c3d3e0f899c7f99f1e7d6c1fbae53eff240d4c1c1223dba",
+          "output_text": "CEO Jensen Huang 是否正成为 Nvidia 最有价值的政治资产？",
+          "mode": "checked_translation",
+          "validated_text": "CEO Jensen Huang 是否正成为 Nvidia (NVDA) 最有价值的政治资产？",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=9f2eb8b5d7dad294bff161d8b292c6a72440a15ead87ca179c0fece29a5d282e",
+          "original_title": "The Zacks Analyst Blog Highlights Analog Devices, Semtech, Taiwan Semiconductor and ASM",
+          "original_summary": "ADI, SMTC, TSM and ASMIY are positioned to benefit from AI-driven semiconductor demand, spanning chips, connectivity, advanced packaging and ALD.",
+          "excerpt": "The Zacks Analyst Blog Highlights Analog Devices, Semtech, Taiwan Semiconductor and ASM",
+          "published_at": "2026-09-28 06:00:00+00:00",
+          "source_sha256": "1ebee0f0487f78aaf737751a4c9fcf7600622a5b8572d3b6e08e48e6fd924e5e",
+          "output_text": "Zacks 分析师博客重点提及 Analog Devices、Semtech、Taiwan Semiconductor 和 ASM",
+          "mode": "checked_translation",
+          "validated_text": "Zacks 分析师博客重点提及 Analog Devices、Semtech、Taiwan Semiconductor 和 ASM",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=210d4d2255f5b68113e17836c482ae0e6d9af8fc8c97e4a2f89c5761df631c4a",
+          "original_title": "S&P Global and Moody's Have Rated Debt for More Than 100 Years. Here's Why That Moat Still Holds.",
+          "original_summary": "The two credit-rating giants remain resilient, evergreen investments.",
+          "excerpt": "S&P Global and Moody's Have Rated Debt for More Than 100 Years.",
+          "published_at": "2026-09-28 17:50:00+00:00",
+          "source_sha256": "64e14fd5a6aa5bfec917735d3d1553871a26b8504d23ab9373805de9e034008c",
+          "output_text": "S&P Global 和 Moody's 评级债务已超过 100 年。",
+          "mode": "checked_translation",
+          "validated_text": "S&P Global 和 Moody's 评级债务已超过 100 年。",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=cea73a9489948d1a5650a29bfefc174d7553035c1663fd74978eb33a8dd3a083",
+          "original_title": "Alphabet: Buy Before It Cashes In On Its TPUs",
+          "original_summary": "Google Cloud's accelerating growth, Gemini adoption, and $514B backlog provide substantial AI-driven revenue visibility for Alphabet. Read why GOOGL stock is a Buy.",
+          "excerpt": "Google Cloud's accelerating growth, Gemini adoption, and $514B backlog provide substantial AI-driven revenue visibility for Alphabet.",
+          "published_at": "2026-09-28 22:00:00+00:00",
+          "source_sha256": "efc8e2cb024f1f10afb000137dfe03029c1d6650a359254f339fed8122930cd5",
+          "output_text": "Google Cloud 加速增长、Gemini 采用率提升以及 5140 亿美元积压订单，为 Alphabet 提供了可观的 AI 驱动收入可见性。",
+          "mode": "checked_translation",
+          "validated_text": "Google Cloud 加速增长、Gemini 采用率提升以及 5140 亿美元积压订单，为 Alphabet 提供了可观的 AI 驱动收入可见性。",
+          "source_name": "SeekingAlpha",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=5539118d729eb2815fc6770de78e9a6618a7fd7ee3bbf50167fe1e4a8551da1d",
+          "original_title": "Crusoe Developing Data Center Campus in Armstrong County, Texas",
+          "original_summary": "Data center to be built at the source of West Texas clean energyCLAUDE, Texas, Sept. 28, 2026 (GLOBE NEWSWIRE) -- Crusoe, the AI factory company, today announced it is the developer of Google’s data center campus under construction in Armstrong County outside of Amarillo. The campus is engineered to provide capacity to power advanced AI. “Building the future of AI requires a new kind of infrastructure, starting with energy. Crusoe’s strategy is to build AI factories directly at the source of abu",
+          "excerpt": "Crusoe, the AI factory company, today announced it is the developer of Google’s data center campus under construction in Armstrong County outside of Amarillo.",
+          "published_at": "2026-09-28 21:53:00+00:00",
+          "source_sha256": "a6ae1ef609f31299d702076a5301f52941988f88e2722ceb65cc1d841dfa99d3",
+          "output_text": "AI 工厂公司 Crusoe 今日宣布，其是 Google 位于 Amarillo 郊外 Armstrong County 在建数据中心园区的开发商。",
+          "mode": "checked_translation",
+          "validated_text": "AI 工厂公司 Crusoe 今日宣布，其是 Google 位于 Amarillo 郊外 Armstrong County 在建数据中心园区的开发商。",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=c162a9937608169b762e69059d513be70facb57127aa810bc3200fa7691157cb",
+          "original_title": "If Berkshire’s $2.1 Billion Bet Is Right, You’ll Probably Wish You Bought This Unloved Housing Stock. Abel and Weschler Just Bought Another 2.7 Million Shares Of Lennar.",
+          "original_summary": "Berkshire Hathaway (NYSE:BRK-B) moved fast into a homebuilder Wall Street has turned against. Per TipRanks, Berkshire bought $212.4 million of Lennar (NYSE:LEN) stock, over 2.7 million shares, between September 17 and September 21, 2026, at weighted-average prices from $74.80 to $79.41. GuruFocus reported a follow-on purchase of $136.4 million, bringing recent buying to over $348 […]",
+          "excerpt": "Abel and Weschler Just Bought Another 2.7 Million Shares Of Lennar.",
+          "published_at": "2026-09-28 14:05:13+00:00",
+          "source_sha256": "dd2a7f0b996c070d52a19a7d739c61800cc84c756dc640dd074373c642ee3ef0",
+          "output_text": "Abel 和 Weschler 刚刚又买入了 270 万股 Lennar。",
+          "mode": "checked_translation",
+          "validated_text": "Abel 和 Weschler 刚刚又买入了 270 万股 Lennar。",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=d312ec421e01d14194812afca4179c86e7aa9bc7f247fe9285f1f596208ea0fb",
+          "original_title": "Coca-Cola taps Monster exec to lead North America unit",
+          "original_summary": "Rob Gehring will lead the beverage giant’s largest region as it works to keep up with growing demand.",
+          "excerpt": "Coca-Cola taps Monster exec to lead North America unit",
+          "published_at": "2026-09-28 14:47:00+00:00",
+          "source_sha256": "4c49388637cc7bce76f64ff9961ca0eca7ce578b3dda4b284f6860f4830f2c59",
+          "output_text": "Coca-Cola 聘请 Monster 高管执掌北美业务",
+          "mode": "checked_translation",
+          "validated_text": "Coca-Cola 聘请 Monster 高管执掌北美业务",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=f67a58c648de0ea30cd624a3f8ade32e68d606f7da28c806360baa5e7eeaa33c",
+          "original_title": "American Express Card Acceptance Reaches More Than 190 Million Merchant Locations",
+          "original_summary": "American Express (NYSE:AXP) said on Monday that its cards are now accepted at more than 190 million merchant locations worldwide, with acceptance outside the US more than doubling over the past four years. The company has expanded its international merchant network, including in travel destinations such as Barcelona, Hong Kong, Paris and Sicily.",
+          "excerpt": "American Express Card Acceptance Reaches More Than 190 Million Merchant Locations",
+          "published_at": "2026-09-28 14:12:30+00:00",
+          "source_sha256": "c2c108ef1de0dae7c3f104ca200e5d668d56a47ddf050c72f39b39bac0e4b3eb",
+          "output_text": "American Express 卡受理覆盖超过 1.9 亿个商户网点",
+          "mode": "checked_translation",
+          "validated_text": "American Express 卡受理覆盖超过 1.9 亿个商户网点",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=14f8956181c6877175e5069a5a2ebd27e49f02cc6eda848d766260afb7c356e4",
+          "original_title": "Is Mastercard’s New AI B2B Analytics Platform Reshaping the Investment Case for MA?",
+          "original_summary": "In September 2026, Mastercard introduced Advanced B2B Analytics, an AI-powered card acceptance platform that turns accounts payable data into supplier payment insights for issuers and corporate clients, with early adopters including Absa Group and Emirates NBD. This launch highlights Mastercard’s effort to capture a share of the very large B2B payments market by layering data-driven services on top of its existing commercial payments capabilities. Next, we’ll examine how Mastercard’s new...",
+          "excerpt": "This launch highlights Mastercard’s effort to capture a share of the very large B2B payments market by layering data-driven services on top of its existing commercial payments capabilities.",
+          "published_at": "2026-09-29 02:07:45+00:00",
+          "source_sha256": "f3c32e86e2bcd1e55c87bf8115d5e39efb671eaba7cf84189db3ea987fa58ecd",
+          "output_text": "此次发布凸显了 Mastercard 通过在现有商业支付能力之上叠加数据驱动服务，来抢占规模庞大的 B2B 支付市场份额的努力。",
+          "mode": "checked_translation",
+          "validated_text": "此次发布凸显了 Mastercard 通过在现有商业支付能力之上叠加数据驱动服务，来抢占规模庞大的 B2B 支付市场份额的努力。",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=00a48251f4adc61f8e2948d4f94dfd30967fdce2fb5580580056b5c0955fe956",
+          "original_title": "Mastercard Makes Major Push Into $80 Trillion Market",
+          "original_summary": "Commercial payments are becoming a bigger growth battleground.",
+          "excerpt": "Mastercard Makes Major Push Into $80 Trillion Market",
+          "published_at": "2026-09-28 17:20:16+00:00",
+          "source_sha256": "1ba1a33df8800a0551049e3bae213d79eaf73d12647eb901ee48131926115f1e",
+          "output_text": "Mastercard 大举进军 80 万亿美元市场",
+          "mode": "checked_translation",
+          "validated_text": "Mastercard 大举进军 80 万亿美元市场",
+          "source_name": "Yahoo",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://finnhub.io/api/news?id=149072d70294058c04855492030950a817f771216932e7a6408425a74ad221da",
+          "original_title": "Argus Research Maintains Buy on Linde, Lowers Price Target to $538",
+          "original_summary": "Argus Research  analyst Alexandra Yates   maintains Linde (NASDAQ:LIN) with a Buy and lowers the price target from $563 to $538.",
+          "excerpt": "Argus Research Maintains Buy on Linde, Lowers Price Target to $538",
+          "published_at": "2026-09-28 09:00:24+00:00",
+          "source_sha256": "005066eb2d16f79f4140e5083d1f6237bc7eaa80dc1967f9c15f7fcbea3fad2d",
+          "output_text": "Argus Research 维持对 Linde 的买入评级，将目标价下调至 538 美元",
+          "mode": "checked_translation",
+          "validated_text": "Argus Research 维持对 Linde 的买入评级，将目标价下调至 538 美元",
+          "source_name": "Benzinga",
+          "presentation_version": 1
+        }
+      ],
+      "macro": [
+        {
+          "url": "https://www.cnbc.com/2026/09/29/australia-rates-inflation-monetary-policy.html",
+          "original_title": "Australia raises benchmark rates to 15-year high as it fights sticky inflation",
+          "original_summary": "The hike of 25 basis points was in line with expectations by economists polled by Reuters.",
+          "excerpt": "Australia raises benchmark rates to 15-year high as it fights sticky inflation",
+          "published_at": "2026-09-29 04:32:09+00:00",
+          "source_sha256": "28808ace4e2b9797269e3e01c86a402e0a1ba45df402e024fbfa540597e9579c",
+          "output_text": "Australia 将基准利率上调至 15 年高位，以对抗顽固通胀",
+          "mode": "checked_translation",
+          "validated_text": "Australia 将基准利率上调至 15 年高位,以对抗顽固通胀",
+          "source_name": "CNBC",
+          "presentation_version": 1,
+          "macro_topic": "通胀数据"
+        },
+        {
+          "url": "https://www.wsj.com/world/middle-east/middle-east-oil-exports-rebound-as-irans-chokehold-on-hormuz-breaks-down-4ffde655?mod=rss_worldnews",
+          "original_title": "Middle East Oil Exports Rebound as Iran’s Chokehold on Hormuz Breaks Down",
+          "original_summary": "The erosion of Iran’s position comes as the U.S. Navy and Gulf oil producers have become better at fending off or evading Iranian attacks, allowing more tankers to cross the strait.",
+          "excerpt": "Middle East Oil Exports Rebound as Iran’s Chokehold on Hormuz Breaks Down",
+          "published_at": "2026-09-29 01:00:00+00:00",
+          "source_sha256": "5f86cc858eabfb5cb53efe69e9c7e39efcd8e82b050da6fc2fe2c94875e8c0c6",
+          "output_text": "中东石油出口回升，伊朗对霍尔木兹海峡的扼制瓦解",
+          "mode": "checked_translation",
+          "validated_text": "中东石油出口回升,Iran 对 Hormuz 的扼制瓦解",
+          "source_name": "WSJ",
+          "presentation_version": 1,
+          "macro_topic": "中东局势"
+        },
+        {
+          "url": "https://www.wsj.com/world/middle-east/saudi-arabia-resumes-oil-exports-via-east-west-pipeline-after-repairs-sources-say-314c9ae8?mod=rss_worldnews",
+          "original_title": "Saudi Arabia Resumes Red Sea Oil Exports in Blow to Iran",
+          "original_summary": "Saudi Aramco is currently operating the pipeline at a throughput rate of around 3.5 million barrels a day, people familiar with the matter said.",
+          "excerpt": "Saudi Arabia Resumes Red Sea Oil Exports in Blow to Iran",
+          "published_at": "2026-09-28 18:45:00+00:00",
+          "source_sha256": "1cadf763757487d596d5f7c228c319437aaa02ab309efe61f8a67a5ee00efb37",
+          "output_text": "沙特阿拉伯恢复红海石油出口，打击伊朗",
+          "mode": "checked_translation",
+          "validated_text": "Saudi Arabia 恢复红海石油出口,打击 Iran",
+          "source_name": "WSJ",
+          "presentation_version": 1,
+          "macro_topic": "中东局势"
+        },
+        {
+          "url": "https://www.ft.com/content/f894f69a-9e2b-4c3f-bf5d-c5c4dc0e6197?syn-25a6b1a6=1",
+          "original_title": "Oil price and US Treasury yields in tightest relationship since 1990",
+          "original_summary": "Bond investors watch Iran conflict and crude price for signs as to where government borrowing costs will go",
+          "excerpt": "Oil price and US Treasury yields in tightest relationship since 1990",
+          "published_at": "2026-09-29 04:00:23+00:00",
+          "source_sha256": "193942d4db2c79d13b04f91a8544300a71e8431f4585d7260aa546131e098446",
+          "output_text": "油价与美国国债收益率关系为 1990 年以来最紧密",
+          "mode": "checked_translation",
+          "validated_text": "油价与美国国债收益率关系为 1990 年以来最紧密",
+          "source_name": "FT",
+          "presentation_version": 1,
+          "macro_topic": "美债市场"
+        }
+      ],
+      "figures": [
+        {
+          "url": "https://news.google.com/rss/articles/CBMiaEFVX3lxTFBMbDM3NVJCTTJwcW1WTmZqSFNaOWZhRGdMUGJ5ZExpWlFySnRrTU9ZLThHU1Y3cldGeVRJODRpQnROZlZYY21RdVE3VUhsV2FhOXcxblNUR05qd2pSRF9VOW4zLW9GQ2lN?oc=5",
+          "original_title": "Satya Nadella Says Xbox Is on Track for a Comeback After Major Layoffs — ‘I Feel Fantastic’ About Its Gaming IP - TradingView",
+          "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiaEFVX3lxTFBMbDM3NVJCTTJwcW1WTmZqSFNaOWZhRGdMUGJ5ZExpWlFySnRrTU9ZLThHU1Y3cldGeVRJODRpQnROZlZYY21RdVE3VUhsV2FhOXcxblNUR05qd2pSRF9VOW4zLW9GQ2lN?oc=5\" target=\"_blank\">Satya Nadella Says Xbox Is on Track for a Comeback After Major Layoffs — ‘I Feel Fantastic’ About Its Gaming IP</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">TradingView</font>",
+          "excerpt": "Satya Nadella Says Xbox Is on Track for a Comeback After Major Layoffs — ‘I Feel Fantastic’ About Its Gaming IP - TradingView",
+          "published_at": "2026-09-28 12:56:47+00:00",
+          "source_sha256": "fcb21c367b01616b8bdf4182e0163799605c5d518f71d777aafe6fb954623f99",
+          "output_text": "萨提亚·纳德拉称 Xbox 在大规模裁员后有望复苏——“我对它的游戏 IP 感觉非常好”",
+          "mode": "checked_translation",
+          "validated_text": "Satya Nadella 称 Xbox 在大规模裁员后有望复苏——“我对它的游戏 IP 感觉非常好”——TradingView",
+          "source_name": "TradingView",
+          "presentation_version": 1
+        }
+      ],
+      "frontier": [
+        {
+          "url": "https://news.google.com/rss/articles/CBMiYkFVX3lxTE8xSlFvVTRWdHp5ODMtZEZKZzVfTU52a1RSTTNsWTNITWxRNjhyYXlFX3RIekJJeWlIMHhoeXJlSU5WdHRya0VJZjQxT1hwamNYTFlJWElzTEpERktCOE8wYy1n?oc=5",
+          "original_title": "Anthropic's New Sonnet Model Nears Opus Performance but Uses More Tokens - BeInCrypto",
+          "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiYkFVX3lxTE8xSlFvVTRWdHp5ODMtZEZKZzVfTU52a1RSTTNsWTNITWxRNjhyYXlFX3RIekJJeWlIMHhoeXJlSU5WdHRya0VJZjQxT1hwamNYTFlJWElzTEpERktCOE8wYy1n?oc=5\" target=\"_blank\">Anthropic's New Sonnet Model Nears Opus Performance but Uses More Tokens</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">BeInCrypto</font>",
+          "excerpt": "Anthropic's New Sonnet Model Nears Opus Performance but Uses More Tokens - BeInCrypto",
+          "published_at": "2026-09-29 04:29:00+00:00",
+          "source_sha256": "be040aa4b610a3e7cf50d2707a802c64502dc86e3a3ddc9701468a309543e869",
+          "output_text": "Anthropic 的新 Sonnet 模型接近 Opus 性能，但消耗更多 token",
+          "mode": "checked_translation",
+          "validated_text": "Anthropic 的新 Sonnet 模型接近 Opus 性能,但消耗更多 token - BeInCrypto",
+          "source_name": "BeInCrypto",
+          "presentation_version": 1
+        },
+        {
+          "url": "https://news.google.com/rss/articles/CBMijwFBVV95cUxPaWNPUVFYTzJOeDU0MTFNVHNKci1DaXd4eDJ5REJFamlEb0E4d2pZOHlVQ1B0S01tNTYwNlNfb3Brak5Mblc4cGs2ekxEbWZHTW1XUTd5OVBLUXZiaUVRa1FRV1lvYUhkUklpSXFDc2VTQlFJbzlrajQ5d2pQNkttS1VvTFVDZ1B2VXJwSTg1NA?oc=5",
+          "original_title": "OpenAI Pauses GPT-6.1 Astra Over Safety Gaps - Briefs Finance",
+          "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMijwFBVV95cUxPaWNPUVFYTzJOeDU0MTFNVHNKci1DaXd4eDJ5REJFamlEb0E4d2pZOHlVQ1B0S01tNTYwNlNfb3Brak5Mblc4cGs2ekxEbWZHTW1XUTd5OVBLUXZiaUVRa1FRV1lvYUhkUklpSXFDc2VTQlFJbzlrajQ5d2pQNkttS1VvTFVDZ1B2VXJwSTg1NA?oc=5\" target=\"_blank\">OpenAI Pauses GPT-6.1 Astra Over Safety Gaps</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">Briefs Finance</font>",
+          "excerpt": "OpenAI Pauses GPT-6.1 Astra Over Safety Gaps - Briefs Finance",
+          "published_at": "2026-09-29 03:59:43+00:00",
+          "source_sha256": "56b957c54447ac6e122b31ad7b6af438bd557c61ae2832e8ea649bdfd0973927",
+          "output_text": "OpenAI 因安全漏洞暂停 GPT-6.1 Astra",
+          "mode": "checked_translation",
+          "validated_text": "OpenAI 因安全漏洞暂停 GPT-6.1 Astra - Briefs Finance",
+          "source_name": "Briefs Finance",
+          "presentation_version": 1
+        }
+      ]
+    }
+  }
+}

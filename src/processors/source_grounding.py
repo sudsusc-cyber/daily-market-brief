@@ -14,16 +14,17 @@ import hashlib
 import logging
 from dataclasses import asdict, dataclass
 
+from src.processors.editorial_evidence import analysis_source, editorial_issue
 from src.processors.html_safe import is_safe_url
 from src.processors.news_presentation import publication_text
 from src.processors.news_selection import (
     chinese_prose,
     complete_excerpt,
     factual_excerpt,
-    old_event_excerpt,
     old_event_recap,
     plain_source,
     promotional_prose,
+    publishable_excerpt,
     sentences,
 )
 from src.processors.translation_guard import translation_errors
@@ -46,6 +47,8 @@ class SourceEvidence:
     validated_text: str
     source_name: str
     presentation_version: int = 1
+    publication_path: str = "selected_excerpt"
+    source_kind: str = "reported"
 
 
 def source_sentences(item) -> list[str]:
@@ -58,7 +61,7 @@ def source_sentences(item) -> list[str]:
             continue
         # No splitting on semicolon/colon: their clauses often qualify a claim.
         result.extend(s for s in [raw, *sentences(raw)]
-                      if complete_excerpt(s, getattr(item, 'source', '')) and not old_event_excerpt(item, s) and not promotional_prose(s))
+                      if publishable_excerpt(item, s))
     return list(dict.fromkeys(result))
 
 
@@ -99,6 +102,7 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
             selected = [(item, excerpt, "checked_translation")]
         if selected:
             break
+    fallback = not selected
     if not selected:
         # This is a visible downgrade, not a declaration that a translation or
         # free-form summary has passed a lexical/LLM self-check.
@@ -115,12 +119,12 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
     for item, excerpt, mode in selected:
         original = source_text(item)
         # Excerpts come from complete source fields/sentences after HTML removal.
-        if excerpt not in plain_source(original) or old_event_excerpt(item, excerpt):
+        if excerpt not in plain_source(original) or not publishable_excerpt(item, excerpt):
             continue
         validated = checked_excerpt(item)[1] if mode == "checked_translation" else excerpt
         source_name = str(getattr(item, "source", "") or "")
         displayed = publication_text(validated, source_name=source_name)
-        if not chinese_prose(displayed) or not complete_excerpt(displayed) or promotional_prose(displayed):
+        if not chinese_prose(displayed) or not complete_excerpt(displayed) or promotional_prose(displayed) or editorial_issue(displayed):
             logger.warning("news.publication_rejected reason=not_complete_chinese")
             continue
         if mode == "source_extract":
@@ -141,6 +145,8 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
                     mode=mode,
                     validated_text=validated,
                     source_name=source_name,
+                    publication_path="source_fallback" if fallback else "selected_excerpt",
+                    source_kind="analysis" if analysis_source(item.title, str(getattr(item, "summary", "") or "")) else "reported",
                 )
             )
         )

@@ -118,14 +118,14 @@ def test_unclassified_facts_stay_independent_without_invented_connections():
 
 def test_actual_preview_unknown_topics_are_specific_and_only_same_topics_merge():
     titles=[
-        'OpenAI 以安全问题为由砍掉下一代模型。',
+        'OpenAI 以安全问题为由取消下一代模型的发布。',
         'Pope Leo 就 AI 安全批评 Nvidia 的 Jensen Huang。',
         '由 AQR 推广的减税策略招致 IRS 警告。',
         '法官裁定，联邦政府不能以扣留反恐资金来迫使各州改变选举管理。',
         'RoboTechnik 领衔香港18亿美元上市首发阵容。',
         '次级汽车贷款让华尔街赚得盆满钵满，借款人却举步维艰。',
     ]
-    items=[MacroNewsItem(t,NOW,f'https://example.com/{i}','Source') for i,t in enumerate(titles)]
+    items=[MacroNewsItem(t,NOW,'https://openai.com/index/fixture-cancel/' if i == 0 else f'https://example.com/{i}','Source') for i,t in enumerate(titles)]
     evidence=[]
     html,notes=_rebuild_safe_html('<p>其他宏观。' + ''.join(f'[{i}]' for i in range(1,7)) + '</p>',items,evidence)
     soup=BeautifulSoup(html,'html.parser')

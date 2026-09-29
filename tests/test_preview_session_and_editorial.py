@@ -96,7 +96,7 @@ def test_thesis_watchpoint_matches_actual_release_state(text,key):
 def test_actual_cancelled_release_cannot_keep_previous_commercialization_watchpoint():
     original='OpenAI abandons plan to release upcoming model as safety concerns escalate'
     text='安全担忧升级，OpenAI 放弃发布即将推出的模型'
-    row=dict(original_title=original,original_summary='',excerpt=original,output_text=text,
+    row=dict(original_title='Company confirms launch cancellation',original_summary=original,excerpt=original,output_text=text,
              validated_text=text,mode='checked_translation',url='https://example.com/cancel',published_at='2026-09-28')
     obj=SimpleNamespace(summary_html=text,evidence=[row],footnotes=[SimpleNamespace(url=row['url'])])
     sources={'macro':[obj]}
@@ -115,10 +115,10 @@ def test_identical_macro_frontier_fact_merges_sources_without_losing_changed_upd
         _rebuild_safe_html,
         merge_frontier_duplicates,
     )
-    original='OpenAI axes next model citing safety issues'
-    chinese='OpenAI 以安全问题为由砍掉下一代模型'
+    original='OpenAI cancels the launch of its next model citing safety issues'
+    chinese='OpenAI 以安全问题为由取消下一代模型的发布'
     def article(url, source, title, translation):
-        return SimpleNamespace(title=title,summary='',url=url,source=source,published_at='2026-09-29',
+        return SimpleNamespace(title='Company product report',summary=title,url=url,source=source,published_at='2026-09-29',
                                source_excerpt=title,translated_excerpt=translation)
     base=article('https://example.com/macro','Financial Times',original,chinese)
     evidence=[]
@@ -134,7 +134,7 @@ def test_identical_macro_frontier_fact_merges_sources_without_losing_changed_upd
     assert merged.summary_html.count(chinese)==1
     assert {row.url for row in merged.footnotes}=={base.url,duplicate.source_url}
     assert len(merged.evidence)==2
-    assert original+' - Financial Times' in [row['original_title'] for row in merged.evidence]
+    assert original+' - Financial Times' in [row['original_summary'] for row in merged.evidence]
 
 
 def test_cross_section_same_subject_or_forged_mapping_cannot_erase_a_candidate():

@@ -47,11 +47,11 @@ def test_known_publisher_tail_removed_without_mutating_evidence(separator):
     source='washingtonpost.com'
     original='OpenAI cancels new AI launch, citing safety issues'+separator+source
     translated='OpenAI 以安全问题为由取消新的 AI 发布'+separator+source
-    item=SimpleNamespace(title=original,summary='',url='https://example.com/ai',source=source,
+    item=SimpleNamespace(title='OpenAI product report',summary=original,url='https://example.com/ai',source=source,
                          source_excerpt=original,translated_excerpt=translated,published_at=NOW)
     text,mapping=grounded_text(translated,[item])
     assert text=='OpenAI 以安全问题为由取消新的 AI 发布'
-    assert mapping[0]['original_title']==original and mapping[0]['validated_text']==translated
+    assert mapping[0]['original_title']==item.title and mapping[0]['original_summary']==original and mapping[0]['validated_text']==translated
     assert mapping[0]['source_name']==source
 
 

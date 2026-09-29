@@ -16,6 +16,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from src.processors.editorial_evidence import analysis_source, editorial_issue
 from src.processors.html_safe import is_safe_url
 from src.utils.news_facts import canonical_fact
 
@@ -160,6 +161,8 @@ def _fact_key(row: dict) -> str:
 
 def _rule_for(row: dict) -> WatchRule | None:
     original, text = row["excerpt"], row["output_text"]
+    if editorial_issue(original) or editorial_issue(text):
+        return None
     if not _ENTITY.search(original) or not _ENTITY.search(text) or not re.search(r"[一-鿿]", text):
         return None
     # Denials of a cancellation must not be labelled as a release setback.
@@ -169,6 +172,7 @@ def _rule_for(row: dict) -> WatchRule | None:
                  and not (rule.key == "infrastructure-investment" and (
                      re.search(no_construction, original, re.I) or re.search(no_construction, text)))
                  and not (rule.key == "product-release-risk" and (
+                     re.search(r"training|evaluation|inference|训练|评估|推理", original + " " + text, re.I) or
                      re.search(negated_change, original, re.I) or re.search(negated_change, text)))), None)
 
 
@@ -181,6 +185,9 @@ def _publication_item(section: str, row: dict, today: date):
         return None, "missing_source_date"
     if not 0 <= (today - observed).days <= 7:
         return None, "source_outside_news_window"
+    if row.get("source_kind") == "analysis" or analysis_source(
+            row.get("original_title", ""), row.get("original_summary", "")):
+        return None, "analysis_not_new_evidence"
     rule = _rule_for(row)
     if not rule:
         return None, "no_bounded_long_term_watchpoint"

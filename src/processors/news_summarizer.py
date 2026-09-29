@@ -53,6 +53,7 @@ class CompanyNewsSummary:
     footnotes: list[Footnote] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)
     is_silence: bool = False
+    content_rejections: list[str] = field(default_factory=list)
 
 
 # 中文公司名映射(prompt 里展示给 LLM 让它选用,不是 enforce)
@@ -317,6 +318,7 @@ def _rebuild_safe_summary(
 
     verified_rows = []
     evidence = []
+    rejections = []
     for cn, summary in raw_rows:
         company = strip_all_tags(cn).strip()
         company = {"美国运通": "运通", "伯克希尔哈撒韦": "伯克希尔", "苹果公司": "苹果",
@@ -334,14 +336,17 @@ def _rebuild_safe_summary(
             # are still rejected. Production always supplies explicit identities.
             valid = ticker is None or not cited or any(_is_relevant(item, ticker) for item in cited)
         if not valid or any(not company_candidate(item, ticker or "") for item in cited):
+            rejections.append(f"{company}: source_or_editorial_gate")
             logger.warning("news_summarizer.company_source_mismatch company=%r", company)
             continue
         claim = FOOTNOTE_RE.sub("", strip_all_tags(summary)).strip()
         supported, mapping = grounded_text(claim, cited)
         if not supported:
+            rejections.append(f"{company}: no_self_contained_supported_excerpt")
             continue
         if any(_ROUNDUP.search(item.title) for item in cited) and any(
                 not company_fact_matches(row['output_text'], ticker or '') for row in mapping):
+            rejections.append(f"{company}: roundup_subject_mismatch")
             logger.warning("news_summarizer.roundup_source_mismatch company=%r", company)
             continue
         evidence.extend(mapping)
@@ -349,8 +354,15 @@ def _rebuild_safe_summary(
         citations = "".join(match.group(0) for match in FOOTNOTE_RE.finditer(summary)
                             if 1 <= (index := footnote_idx(match)) <= len(flat_items)
                             and flat_items[index - 1].url in published_urls)
-        verified_rows.append((cn, supported + citations))
-    raw_rows = verified_rows
+        verified_rows.append((company, supported + citations))
+    # One company row, all distinct verified facts retained with their own
+    # citations. Grouping is not factual deduplication and never drops updates.
+    grouped: dict[str, list[str]] = {}
+    for company, text in verified_rows:
+        bucket = grouped.setdefault(company, [])
+        if text not in bucket:
+            bucket.append(text)
+    raw_rows = [(company, " ".join(facts)) for company, facts in grouped.items()]
     combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)
     rewrite, footnotes = _resolve_footnote_mapping(combined_for_scan, flat_items)
 
@@ -389,7 +401,7 @@ def _rebuild_safe_summary(
         return None
     return CompanyNewsSummary(
         summary_html="".join(rendered_rows),
-        footnotes=footnotes, evidence=evidence,
+        footnotes=footnotes, evidence=evidence, content_rejections=rejections,
     )
 
 

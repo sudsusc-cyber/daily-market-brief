@@ -41,6 +41,8 @@ _EVENTS["payment"] += r"|\bpayments?\b|\bpayable\b"
 _EVENTS["payment_completed"] = r"\b(?:has|have|had|already)\s+paid\b|已(?:经)?支付|已付"
 _EVENTS["payment_order"] = r"\b(?:orders?|ordered|requires?|required)\b.*\bpay\b|命令.*支付|责令.*支付|判令.*支付|判赔"
 _EVENTS["person_release"] = r"\bperson_release\b|释放"
+_EVENTS["pause"] = r"\b(?:paus\w*|suspend\w*|halt\w*)\b|暂停|中止"
+_EVENTS["cancel"] = r"\b(?:cancel\w*|scrap\w*|abandon\w*|shelv\w*)\b|取消|放弃|搁置"
 _ENTITIES = {
     "Microsoft": ("Microsoft", "微软"), "Google": ("Google", "谷歌"),
     "Alphabet": ("Alphabet",), "Apple": ("Apple", "苹果"),
@@ -151,7 +153,7 @@ def _scoped_states(text: str) -> set[tuple]:
     # Bind polarity/modality to the event clause so a 'not' elsewhere cannot
     # bless a reversed approval/completion assertion.
     for clause in re.split(r"[，,；;。!?]|\bbut\b|但是|但", text, flags=re.I):
-        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release"):
+        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release", "pause", "cancel"):
             if re.search(_EVENTS[event], clause, re.I):
                 states.add((event, bool(re.search(_NEGATION, clause, re.I)),
                             bool(re.search(_MODALITY, clause, re.I))))
@@ -185,6 +187,23 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = re.sub(r"\b(orders?|ordered|requires?|required)(\s+[^.;!?]{1,80}?)\bto\s+(pay)\b",
                       r"\1\2\3", original, flags=re.I)
     errors = []
+    if re.search(r"safety gaps?", original, re.I) and re.search(r"安全漏洞", translated):
+        errors.append("safety_gap_not_vulnerability")
+    if re.search(r"(?:in |a )blow to", original, re.I) and re.search(r"(?:^|[，,；;])\s*打击", translated):
+        errors.append("economic_impact_not_attack")
+    # Preserve the object of a pause/cancellation, not merely the verb/model.
+    from src.processors.editorial_evidence import model_status_claim
+    if model_status_claim(original) or model_status_claim(translated):
+        for scope, pattern in {
+            "training": r"\btraining\b|训练",
+            "evaluation": r"\bevaluat\w*\b|评估|评测",
+            "tool_use": r"tool[- ]use|using tools|工具使用|使用工具",
+            "inference": r"\binference\b|推理",
+            "release": r"\b(?:release|launch|rollout|deployment)\b|发布|推出|上线|部署",
+            "service": r"\b(?:service|API|subscription)\w*\b|服务|API|订阅",
+        }.items():
+            if bool(re.search(pattern, original, re.I)) != bool(re.search(pattern, translated, re.I)):
+                errors.append("status_scope:" + scope)
     if (re.search(r'\blegal (?:costs?|fees?|bills? (?:stack up|mount|pile up))\b', original, re.I)
             and re.search(r'法案|议案|法律草案', translated)):
         errors.append('legal_cost_sense')

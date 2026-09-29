@@ -44,7 +44,6 @@ _WEIGHTS: dict[str, float] = {
 _PRIMARY_METRICS = frozenset({"CNN Fear & Greed", "VIX"})
 _MIN_EFFECTIVE_WEIGHT = 0.50
 _MIN_VALID_METRICS = 2
-_STALE_WEIGHT_FACTOR = 0.50
 
 
 def _piecewise_linear(x: float, points: list[tuple[float, float]]) -> float:
@@ -144,7 +143,9 @@ def score_sentiment(bundle: SentimentBundle) -> dict | None:
             logger.warning("sentiment.duplicate_metric name=%s", m.name)
             continue
         seen_names.add(m.name)
-        effective_weight = w * (_STALE_WEIGHT_FACTOR if m.stale_from else 1.0)
+        # Collection enforces observation age. A cache hit is a transport
+        # fact, not a change in market sentiment or evidence date.
+        effective_weight = w
         weighted_sum += s * effective_weight
         weight_total += effective_weight
         valid_count += 1
