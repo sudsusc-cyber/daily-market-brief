@@ -176,6 +176,9 @@ def _translate_all_bundles(
     frontier_bundles: list | None = None,
 ) -> None:
     """按实际选稿窗口翻译，原始标题/摘要保持不变。"""
+    from src.collectors.news_context import enrich_technical_context
+    enrich_technical_context([item for bundle in [*cn_bundles, *fig_bundles, *macro_bundles, *(frontier_bundles or [])]
+                              for item in bundle.items])
     titles_to_translate: list[object] = []
     for b in cn_bundles:
         titles_to_translate.extend([item for item in b.items if company_candidate(item, b.holding.ticker)][:5])
@@ -734,7 +737,13 @@ def main() -> int:
         qqqm_diagnostics = {}
     report = content_report(
         signals=signals, valuations=valuation_displays, sentiment=sentiment_bundle,
-        diagnostics={"QQQM": qqqm_diagnostics, "company": {
+        diagnostics={"QQQM": qqqm_diagnostics, "news_context": [
+            {"title": item.title, "status": item.context_diagnostic,
+             "context_url": getattr(item, "context_url", ""),
+             "fetched_at": getattr(item, "context_fetched_at", "")}
+            for bundle in [*cn_bundles, *macro_bundles, *fig_bundles, *frontier_labs_bundles]
+            for item in bundle.items if getattr(item, "context_diagnostic", "")
+        ][:20], "company": {
             "content_rejections": getattr(company_news_summary, "content_rejections", []),
         }, "frontier": {
             "source_failures": frontier_report.source_failures,

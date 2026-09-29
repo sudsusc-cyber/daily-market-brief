@@ -6,6 +6,11 @@ from datetime import date, datetime
 
 from src.processors.editorial_evidence import editorial_issue, status_has_scope
 from src.processors.html_safe import strip_all_tags
+from src.processors.technical_context import (
+    context_allows,
+    contextual_excerpt,
+    needs_technical_context,
+)
 
 # RSS sometimes joins a promotional standfirst directly to a wire dateline.
 # The reporting sentence after the dateline remains an exact source substring.
@@ -169,7 +174,7 @@ def old_event_recap(item) -> bool:
 
 
 def publishable_excerpt(item, text: str) -> bool:
-    return (complete_excerpt(text, getattr(item, 'source', ''))
+    return (context_allows(item, text) and complete_excerpt(text, getattr(item, 'source', ''))
             and not editorial_issue(text) and not promotional_prose(text)
             and not old_event_excerpt(item, text) and status_has_scope(item, text))
 
@@ -180,6 +185,8 @@ def factual_excerpt(item) -> str:
     The immutable title and summary remain attached for context and auditing.
     RSS snippets that merely repeat the headline are not extra evidence.
     """
+    if needs_technical_context(str(getattr(item, 'title', ''))):
+        return contextual_excerpt(item)
     if old_event_recap(item):
         return ''
     title = plain_source(getattr(item, 'title', ''))

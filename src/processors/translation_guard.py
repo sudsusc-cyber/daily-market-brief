@@ -187,6 +187,11 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = re.sub(r"\b(orders?|ordered|requires?|required)(\s+[^.;!?]{1,80}?)\bto\s+(pay)\b",
                       r"\1\2\3", original, flags=re.I)
     errors = []
+    from src.processors.technical_context import AI_METHODS
+    if re.search(r'AI|artificial intelligence|model|人工智能|模型', original + translated, re.I):
+        for method, pattern in AI_METHODS.items():
+            if bool(re.search(pattern, original, re.I)) != bool(re.search(pattern, translated, re.I)):
+                errors.append('technical_method:' + method)
     if re.search(r"safety gaps?", original, re.I) and re.search(r"安全漏洞", translated):
         errors.append("safety_gap_not_vulnerability")
     if re.search(r"(?:in |a )blow to", original, re.I) and re.search(r"(?:^|[，,；;])\s*打击", translated):

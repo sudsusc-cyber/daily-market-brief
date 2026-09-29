@@ -27,6 +27,7 @@ from src.processors.news_selection import (
     publishable_excerpt,
     sentences,
 )
+from src.processors.technical_context import contextual_excerpt
 from src.processors.translation_guard import translation_errors
 from src.utils.news_facts import canonical_fact, source_text
 
@@ -49,13 +50,17 @@ class SourceEvidence:
     presentation_version: int = 1
     publication_path: str = "selected_excerpt"
     source_kind: str = "reported"
+    source_body: str = ""
+    context_url: str = ""
+    context_fetched_at: str = ""
 
 
 def source_sentences(item) -> list[str]:
     if old_event_recap(item):
         return []
-    result = []
-    for key in ("title", "summary", "snippet"):
+    context = contextual_excerpt(item)
+    result = [context] if context and publishable_excerpt(item, context) else []
+    for key in ("title", "summary", "snippet", "source_body"):
         raw = plain_source(str(getattr(item, key, "") or "")).strip()
         if not raw:
             continue
@@ -134,6 +139,9 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
             asdict(
                 SourceEvidence(
                     url=item.url,
+                    source_body=str(getattr(item, "source_body", "") or ""),
+                    context_url=str(getattr(item, "context_url", "") or ""),
+                    context_fetched_at=str(getattr(item, "context_fetched_at", "") or ""),
                     original_title=item.title,
                     original_summary=str(
                         getattr(item, "summary", "") or getattr(item, "snippet", "") or ""
