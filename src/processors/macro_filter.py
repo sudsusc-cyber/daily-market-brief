@@ -248,7 +248,8 @@ def _rebuild_safe_html(
             if text[-1:] not in '。！？!?':
                 text = text.rstrip('.') + '。'
             facts.append(f'<span data-macro-fact="true">{escape_text(text)}</span>')
-        heading = f'<span style="{_THEME_STYLE}">{escape_text(topic)}。</span>' if topic != "其他宏观" else ""
+        label = topic if topic != '其他宏观' else '宏观观察'
+        heading = f'<span data-macro-heading="true" style="{_THEME_STYLE}">{escape_text(label)}。</span>'
         parts.append(f'<p style="{_PARAGRAPH_STYLE}">'
                      f'{heading}'
                      f'{" ".join(facts)}{"".join(paragraph_citations)}</p>')

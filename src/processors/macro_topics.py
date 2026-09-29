@@ -28,6 +28,10 @@ def macro_topic(text: str) -> str:
         return '中东局势'
     if _has(r'Russia|Ukraine|俄乌|俄罗斯|乌克兰', text):
         return '俄乌局势'
+    # Public budgets are fiscal policy; corporate/project budgets are not.
+    if (_has(r'\bbudgets?\b|预算', text) and
+            _has(r'\b(?:EU|government|federal|national|state)\s+(?:\w+\s+){0,2}budgets?\b|European Union.{0,20}budget|(?:欧盟|政府|联邦|国家|财政).{0,8}预算', text)):
+        return '财政政策'
     for topic, pattern in (
         ('科技监管', r'(?:AI|人工智能|科技|人才).*(?:travel|出行|出境|限制|禁令)|(?:travel curbs|出行限制|出境限制).*(?:AI|人工智能|人才)'),
         ('经济增长', r'pro.growth|促增长|增长政策'),
@@ -55,7 +59,7 @@ def macro_topic(text: str) -> str:
     if _has(_CHINA, text) and _has(r'econom|经济', text):
         return '中国经济'
     # Unclassified is not evidence that unrelated facts share a topic. The
-    # renderer keeps these independent without inventing specific headings.
+    # renderer keeps these independent with a neutral heading, without inventing connections.
     return '其他宏观'
 
 
