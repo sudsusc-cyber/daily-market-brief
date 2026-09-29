@@ -36,6 +36,7 @@ _BARE_LISTINGS = {
 }
 _FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Treasuries': '美国国债',
                     'Strait of Hormuz': '霍尔木兹海峡', 'Hormuz': '霍尔木兹海峡',
+                    'European Union': '欧盟', 'EU': '欧盟', 'Germany': '德国',
                     'Saudi Arabia': '沙特阿拉伯', 'Australia': '澳大利亚', 'Iran': '伊朗', 'Satya Nadella': '萨提亚·纳德拉'}
 
 

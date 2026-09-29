@@ -14,7 +14,7 @@ from decimal import Decimal
 
 # Match negative phrases before checking event states (e.g. not approved).
 _NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|未经|而非|并非|不是"
-_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled)\b|\bto\s+(?:pay|invest|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
+_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled|looms?)\b|\bto\s+(?:pay|invest|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
 _EVENTS = {
     "approval": r"\b(?:approv\w*|clearance|greenlight\w*)\b|批准|获批|监管放行",
     "completion": r"\b(?:completed?|finalized?|closed the deal)\b|完成|已交割|已落地",
@@ -187,6 +187,11 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = re.sub(r"\b(orders?|ordered|requires?|required)(\s+[^.;!?]{1,80}?)\bto\s+(pay)\b",
                       r"\1\2\3", original, flags=re.I)
     errors = []
+    # A calendar period does not physically approach a financial asset. Retry
+    # this literal headline construction instead of rewriting checked evidence.
+    if (re.search(r"\blooms?\b", original, re.I) and
+            re.search(r"(?:月|季度|年底|年末)\s*(?:逼近|迫近).{0,20}(?:国债|美债|债券|股票|股市|Treasuries|bonds|stocks)", translated, re.I)):
+        errors.append("calendar_market_word_order")
     from src.processors.technical_context import AI_METHODS
     if re.search(r'AI|artificial intelligence|model|人工智能|模型', original + translated, re.I):
         for method, pattern in AI_METHODS.items():
@@ -220,7 +225,11 @@ def translation_errors(original: str, translated: str) -> list[str]:
     if len(bindings) > 1 and bindings != _financial_bindings(translated):
         errors.append('financial_metric_binding')
     for name, pattern in {'negation': _NEGATION, 'modality': _MODALITY, **_EVENTS}.items():
-        if bool(re.search(pattern, original, re.I)) != bool(re.search(pattern, translated, re.I)):
+        source_present = bool(re.search(pattern, original, re.I))
+        translated_present = bool(re.search(pattern, translated, re.I))
+        if name == 'modality' and re.search(r'\blooms?\b', original, re.I):
+            translated_present |= bool(re.search(r'临近|迫近|逼近|将至|面临|迎来', translated))
+        if source_present != translated_present:
             errors.append(name)
     for entity, aliases in _ENTITIES.items():
         if any(_contains(original, alias) for alias in aliases) != any(_contains(translated, alias) for alias in aliases):
