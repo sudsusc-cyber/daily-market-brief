@@ -30,7 +30,7 @@ def equivalent(a: str, b: str) -> bool:
 def source_text(item) -> str:
     # Never consult translated_title when establishing source facts.
     return "\n".join(
-        str(getattr(item, key, "") or "") for key in ("title", "summary", "snippet")
+        str(getattr(item, key, "") or "") for key in ("title", "summary", "snippet", "source_body")
     ).strip()
 
 

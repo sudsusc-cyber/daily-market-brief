@@ -106,12 +106,13 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
     if not isinstance(row, dict):
         return None
     excerpt = plain_source(str(row.get("excerpt", "")))
-    raw = plain_source(str(row.get("original_title", "")) + "\n" + str(row.get("original_summary", "")))
+    raw = plain_source(str(row.get("original_title", "")) + "\n" + str(row.get("original_summary", "")) + "\n" + str(row.get("source_body", "")))
     output = str(row.get("output_text", ""))
     url = _normalize_grounding_url(row.get("url"))
     published = plain_source(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
     source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""),
-                             published_at=row.get("published_at"), url=row.get("url", ""), source=row.get("source_name", ""))
+                             published_at=row.get("published_at"), url=row.get("url", ""), source=row.get("source_name", ""),
+                             source_body=row.get("source_body", ""))
     complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
     validated = str(row.get("validated_text", output))
     displayed = (publication_text(validated, source_name=str(row.get("source_name", "")))

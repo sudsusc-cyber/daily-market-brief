@@ -38,8 +38,8 @@ def test_context_negation_warning_and_other_people_are_not_removed():
 
 
 def test_publication_preserves_original_evidence_and_history(tmp_path):
-    title = "Jensen Huang says using others' AI models is competition, clashing with U.S. view of theft"
-    translation = 'Jensen Huang 称使用他人的 AI 模型是竞争，与美国视其为窃取的观点相冲突'
+    title = "Jensen Huang says AI model distillation is competition, clashing with U.S. view of theft"
+    translation = 'Jensen Huang 称 AI 模型蒸馏是竞争，与美国视其为窃取的观点相冲突'
     now = datetime(2026, 9, 29, 5, tzinfo=UTC)
     item = FigureMention(title, '', now, 'https://example.com/voice', 'Source')
     item.source_excerpt = title
@@ -49,7 +49,7 @@ def test_publication_preserves_original_evidence_and_history(tmp_path):
     result = filter_one(bundle, client=client)
     assert len(result.items) == 1
     point = result.items[0]
-    assert point.text == translation.removeprefix('Jensen Huang 称')
+    assert point.text == translation.removeprefix('Jensen Huang 称').strip()
     row = point.evidence[0]
     assert row['original_title'] == row['excerpt'] == title
     assert row['validated_text'] == translation

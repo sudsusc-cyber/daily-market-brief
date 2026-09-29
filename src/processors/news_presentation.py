@@ -92,7 +92,14 @@ def voice_text(text: str, person: str) -> str:
     if not names:
         return text
     prefix = '|'.join(re.escape(name) for name in sorted(names, key=len, reverse=True))
-    match = re.match(r'^(?:' + prefix + r')\s*(?:表示|认为|指出|称|说)\s*[：:，,]?\s*(.+)$', text)
+    role = r'(?:(?:Nvidia|英伟达)\s*(?:CEO|首席执行官)\s*)?' if 'Jensen Huang' in names else ''
+    local_name = r'(?:\s*[（(]젠슨 황[)）])?' if 'Jensen Huang' in names else ''
+    leading = r'^' + role + r'(?:' + prefix + r')' + local_name + r'\s*'
+    match = re.match(leading + r'(?:表示|认为|指出|称|说)\s*[：:，,]?\s*(.+)$', text, re.I)
+    if not match:
+        # Keep the whole attribution verb in "将 ... 称为 ..."; only the
+        # speaker metadata moves to the byline.
+        match = re.match(leading + r'((?:将|把).*(?:称为|视为|形容为).+)$', text, re.I)
     if not match:
         return text
     body = match[1].strip()
