@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from src.processors.llm_client import LLMClient
@@ -76,8 +77,23 @@ def _format_input(signals: list[Any]) -> str:
     return "\n".join(lines)
 
 
+def _intro_errors(text: str, signals: list[Any]) -> list[str]:
+    """Enforce observable prompt constraints; poetry cannot supply market facts."""
+    errors = []
+    if len(text) > 110:
+        errors.append("overlength")
+    if re.search(r"(?:\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百]+)\s*(?:只|艘|叶|支|档|美元|港元|元|[%％]|周|日)", text):
+        errors.append("unsupported_quantitative_claim")
+    if re.search(r"应该买入|建议(?:买入|加仓)|立即买入|首次跌破|新触发|刚刚跌破", text):
+        errors.append("action_or_new_trigger")
+    if (any(s.signal in {"DCA", "LUMP_SUM"} for s in signals)
+            and re.search(r"(?:全部|所有|全都|一律).*(?:无信号|NONE)", text, re.I)):
+        errors.append("signal_contradiction")
+    return errors
+
+
 def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
-    """成功返回开场白字符串(80-130 字),失败返回 None。"""
+    """成功返回不超过 110 字的开场白,失败返回 None。"""
     if not signals:
         return None
     payload = _format_input(signals)
@@ -92,10 +108,14 @@ def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
             timeout=20,
             thinking=False,
         )
-        text = (resp.text or "").strip()
-        if text:
+        text = (resp.text or "").strip().strip("\"'“”「」 ").strip()
+        if text.startswith("```"):
+            text = text.strip("` \n")
+        errors = _intro_errors(text, signals) if text else []
+        if text and not errors:
             break
-        last_error = resp.error or "EmptyOutput"
+        last_error = "UnsupportedIntro:" + ",".join(errors) if errors else resp.error or "EmptyOutput"
+        text = ""
         logger.warning(
             "holdings_intro.attempt_failed attempt=%d/%d reason=%s",
             attempt, _MAX_ATTEMPTS, last_error,
@@ -103,12 +123,5 @@ def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
     if not text:
         logger.warning("holdings_intro.failed reason=%s", last_error or "unknown")
         return None
-    # 去除偶发的引号包裹与 markdown
-    text = text.strip("\"'“”「」 ").strip()
-    if text.startswith("```"):
-        text = text.strip("` \n")
-    # 极端长度兜底:模型可能溢出,截到约 200 字
-    if len(text) > 200:
-        text = text[:200].rstrip("。!?,;:") + "。"
     logger.info("holdings_intro.ok chars=%d", len(text))
     return text

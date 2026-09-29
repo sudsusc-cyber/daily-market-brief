@@ -102,8 +102,8 @@ def test_unknown_topics_do_not_create_a_false_connection():
     items = [SimpleNamespace(title=t, source='Source', summary='', url=f'https://example.com/{i}')
              for i,t in enumerate(['甲国公布统计结果。', '乙国宣布会议日程。'])]
     html, _ = _rebuild_safe_html('<p>全球增长。凭空合并[1][2]</p>', items)
-    assert len(BeautifulSoup(html, 'html.parser').select('p')) == 1
-    assert '其他宏观。' in html and '凭空合并' not in html
+    assert len(BeautifulSoup(html, 'html.parser').select('p')) == 2
+    assert '其他宏观。' not in html and '凭空合并' not in html
 
 
 def test_business_date_and_negation_are_not_mistaken_for_a_dateline():

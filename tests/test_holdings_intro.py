@@ -103,11 +103,11 @@ class TestWriteIntro:
         assert "```" not in out
         assert "潮水退去" in out
 
-    def test_llm_truncates_overflow(self) -> None:
-        """LLM 溢出输出 → 截到 200 字加句号。"""
+    def test_llm_rejects_overflow(self) -> None:
+        """LLM 超长输出重试后降级，不截断成不完整的正文。"""
         long_text = "潮" * 300
         client = MagicMock()
         client.chat.return_value = _ok_resp(long_text)
         out = write_intro([_signal(0)], client=client)
-        assert len(out) <= 201, f"截断后长度 {len(out)} 超出 201"
-        assert out.endswith("。")
+        assert out is None
+        assert client.chat.call_count == 2

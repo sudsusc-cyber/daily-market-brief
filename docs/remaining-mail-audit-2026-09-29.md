@@ -103,3 +103,23 @@ These exact archived wrappers and translation forms are regression fixtures.
 The corrected archive replay retains content/source bindings and final-render
 judgment validation. It is an offline revision of that preview's inputs, not a
 new SMTP send or a claim that arbitrary future translations are infallible.
+
+Visual review of the same archive also showed six unrelated facts grouped under
+“其他宏观”. Add concrete AI safety, elections/judicial, IPO/capital-market and
+credit-market rules, plus Chinese tax-policy synonyms. Same recognized topics
+remain one paragraph; unclassified facts remain independent, without a made-up
+shared heading. Preserve each fact, source and citation through reconstruction.
+
+The same preview's poetic holdings introduction invented “eleven boats” despite
+the actual signal set. Enforce the existing no-quantity/no-trade-advice/no-new-
+trigger prompt constraints in code, retry unsupported text once, and use the
+existing deterministic holding-count introduction on failure. Reject overlong
+text instead of cutting a sentence. These are bounded checks, not a general
+semantic proof of every possible metaphor.
+
+Final verification: 1,807 tests passed on each of Python 3.11 and 3.12; Ruff and
+`git diff --check` passed. The changed-block replay of run 36509293133 is 95,787
+HTML bytes, preserves all 15 price/reference-line rows and four dated retained
+valuations, and passes original-excerpt/body/source mapping checks. Browser review
+confirmed separated macro topics, grouped same-topic facts and readable source
+footers. This remains an explicitly marked offline artifact with zero SMTP calls.

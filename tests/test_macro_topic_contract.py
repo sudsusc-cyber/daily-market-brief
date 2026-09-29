@@ -106,10 +106,32 @@ def test_retries_and_final_renderer_keep_the_same_grouping_contract():
     assert len(soup.select('[data-macro-fact]')) == 9
 
 
-def test_unknown_topics_share_one_neutral_section_without_invented_connections():
+def test_unclassified_facts_stay_independent_without_invented_connections():
     items = [MacroNewsItem(t, NOW, f'https://example.com/{i}', 'Source') for i,t in enumerate([
         '甲国公布统计结果。', '乙国宣布会议日程。'])]
     html, notes = _rebuild_safe_html('<p>全球危机。编造关联[1]</p><p>另一主题。编造关联[2]</p>', items)
     soup = BeautifulSoup(html, 'html.parser')
-    assert len(soup.select('p')) == 1 and '其他宏观。' in soup.get_text()
+    assert len(soup.select('p')) == 2 and '其他宏观。' not in soup.get_text()
+    assert all(len(p.select('a')) == 1 for p in soup.select('p'))
     assert '编造关联' not in soup.get_text() and len(notes) == 2
+
+
+def test_actual_preview_unknown_topics_are_specific_and_only_same_topics_merge():
+    titles=[
+        'OpenAI 以安全问题为由砍掉下一代模型。',
+        'Pope Leo 就 AI 安全批评 Nvidia 的 Jensen Huang。',
+        '由 AQR 推广的减税策略招致 IRS 警告。',
+        '法官裁定，联邦政府不能以扣留反恐资金来迫使各州改变选举管理。',
+        'RoboTechnik 领衔香港18亿美元上市首发阵容。',
+        '次级汽车贷款让华尔街赚得盆满钵满，借款人却举步维艰。',
+    ]
+    items=[MacroNewsItem(t,NOW,f'https://example.com/{i}','Source') for i,t in enumerate(titles)]
+    evidence=[]
+    html,notes=_rebuild_safe_html('<p>其他宏观。' + ''.join(f'[{i}]' for i in range(1,7)) + '</p>',items,evidence)
+    soup=BeautifulSoup(html,'html.parser')
+    assert len(soup.select('p'))==5
+    assert [row['macro_topic'] for row in evidence]==['AI 安全','AI 安全','财政政策','选举与司法','资本市场','信用市场']
+    assert len(soup.select('p')[0].select('a'))==2
+    assert len(notes)==len(evidence)==6
+    assert all(title in soup.get_text() for title in titles)
+    assert '其他宏观' not in soup.get_text()
