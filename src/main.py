@@ -734,7 +734,9 @@ def main() -> int:
         qqqm_diagnostics = {}
     report = content_report(
         signals=signals, valuations=valuation_displays, sentiment=sentiment_bundle,
-        diagnostics={"QQQM": qqqm_diagnostics, "frontier": {
+        diagnostics={"QQQM": qqqm_diagnostics, "company": {
+            "content_rejections": getattr(company_news_summary, "content_rejections", []),
+        }, "frontier": {
             "source_failures": frontier_report.source_failures,
             "processing_failures": frontier_report.processing_failures,
             "content_rejections": frontier_report.content_rejections,
@@ -746,6 +748,7 @@ def main() -> int:
         expected_metrics=sentiment.METRIC_NAMES,
         section_health={
             "company": {"source_failures": company_source_failures,
+                        "content_rejections": len(getattr(company_news_summary, "content_rejections", [])),
                         "processing_failures": int(bool(getattr(company_news_summary, "error", None))
                                                    or bool(company_news_fallback_note and any(b.items for b in cn_bundles))),
                         "fallback": bool(company_news_fallback_note), "silence": bool(company_news_silence_note)},

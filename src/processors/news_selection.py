@@ -4,6 +4,7 @@ import html
 import re
 from datetime import date, datetime
 
+from src.processors.editorial_evidence import editorial_issue, status_has_scope
 from src.processors.html_safe import strip_all_tags
 
 # RSS sometimes joins a promotional standfirst directly to a wire dateline.
@@ -72,8 +73,8 @@ _PRICE_EDITORIAL = re.compile(
     r'|哪.*股票|值得买|股价.*(?:上涨|下跌|飙升)', re.I)
 _BUSINESS_FACT = re.compile(
     r'\b(?:reported?.*(?:results|earnings|revenue)|earnings|revenue|sales|renew\w*.*(?:licen\w*|agreement)'
-    r'|(?:plans?|will|agrees? to) invest|announced|appoint\w*|acqui\w*|merger|launch\w*'
-    r'|settlement|lawsuit|litigation|patent verdict|court ruling|appeal|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
+    r'|(?:plans?|will|agrees? to) invest|announced|introduc\w*|appoint\w*|acqui\w*|merger|launch\w*'
+    r'|(?:paus\w*|cancel\w*).*(?:training|evaluation|launch)|settlement|lawsuit|litigation|patent verdict|court ruling|appeal|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
 _RATING_SERVICE = re.compile(
     r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级|outlook|展望)", re.I)
@@ -121,10 +122,11 @@ def old_event_excerpt(item, text: str) -> bool:
     Anchor to the article's publication date, never today's fetch time. This is
     deliberately limited to leading event dates; historical comparisons remain.
     """
-    # A retrospective investment question can recycle an old announcement. Do
+    # Explicit dated reported results can also recycle an old announcement. Do
     # not apply a two-day stock-news rule to interviews, macro or other feeds.
-    if not re.search(r'\b(?:Can|Could|Should|Will)\b.*\?|值得买|增长机会',
-                     plain_source(getattr(item, 'title', '')), re.I):
+    dated_results = bool(re.match(r'Results (?:released|published)|Reported on|(?:\d{4}\s*年)?\d{1,2}\s*月\s*\d{1,2}\s*日发布的', plain_source(text), re.I))
+    retrospective_question = bool(re.search(r'\b(?:Can|Could|Should|Will)\b.*\?|值得买|增长机会', plain_source(getattr(item, 'title', '')), re.I))
+    if not dated_results and not retrospective_question:
         return False
     published = getattr(item, 'published_at', None)
     if isinstance(published, str):
@@ -138,9 +140,9 @@ def old_event_excerpt(item, text: str) -> bool:
     if re.search(r'\btoday\b|\byesterday\b|\bwill\b|\bplans? to\b|今日|昨日|今天|昨天|将于|计划于', text, re.I):
         return False
     match = re.match(
-        r'^(?:On\s+)?(Jan\w*|Feb\w*|Mar\w*|Apr\w*|May|Jun\w*|Jul\w*|Aug\w*|Sep\w*|Oct\w*|Nov\w*|Dec\w*)'
-        r'\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\s*[,，:：]', text, re.I)
-    chinese = re.match(r'^(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*[,，:：]', text)
+        r'^(?:(?:On|Results released|Results published|Reported on)\s+)?(Jan\w*|Feb\w*|Mar\w*|Apr\w*|May|Jun\w*|Jul\w*|Aug\w*|Sep\w*|Oct\w*|Nov\w*|Dec\w*)'
+        r'\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?(?:\s*[,，:：]|\s+(?=showed|reported|revealed))', text, re.I)
+    chinese = re.match(r'^(?:(\d{4})\s*年)?(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*[,，:：]|\s*发布的)', text)
     if not match and not chinese:
         return False
     if match:
@@ -164,6 +166,12 @@ def old_event_recap(item) -> bool:
     parts = sentences(summary)
     return bool(parts and old_event_excerpt(item, parts[0]) and not re.search(
         r'\btoday\b|\byesterday\b|今日|昨日|今天|昨天', plain_source(summary), re.I))
+
+
+def publishable_excerpt(item, text: str) -> bool:
+    return (complete_excerpt(text, getattr(item, 'source', ''))
+            and not editorial_issue(text) and not promotional_prose(text)
+            and not old_event_excerpt(item, text) and status_has_scope(item, text))
 
 
 def factual_excerpt(item) -> str:
@@ -193,7 +201,7 @@ def factual_excerpt(item) -> str:
                     and re.search(r'\b(?:bought|purchased|acquired|announced|reported)\b|买入|增持|收购|宣布|营收', part, re.I)):
                 return part
     for sentence in sentences(summary):
-        if (complete_excerpt(sentence) and not old_event_excerpt(item, sentence)
+        if (publishable_excerpt(item, sentence)
                 and len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)
                 and sentence not in title and title not in sentence):
             eligible.append(sentence)
@@ -210,7 +218,7 @@ def factual_excerpt(item) -> str:
         return eligible[0]
     title_sentences = sentences(title)
     if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s why|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
-        return '' if old_event_excerpt(item, title_sentences[0]) else title_sentences[0]
+        return title_sentences[0] if publishable_excerpt(item, title_sentences[0]) else ''
     # A rolling news-page title is navigation, not a fact. Prefer its actual
     # complete summary sentence even if it is not a company earnings item.
     if re.match(r'Latest .*News and Analysis|.*: Markets Wrap$', title, re.I):
@@ -218,7 +226,7 @@ def factual_excerpt(item) -> str:
     if re.search(r'\b(?:Can|Should|Could|Will) .*\?|\b(?:Opportunity|Returns)\?', title, re.I):
         # Do not fill a company slot with a question about investment returns.
         return ''
-    return '' if old_event_excerpt(item, title) else title
+    return title if publishable_excerpt(item, title) else ''
 
 
 def company_candidate(item, ticker: str) -> bool:
@@ -238,14 +246,14 @@ def company_candidate(item, ticker: str) -> bool:
             r'(?:upgrad\w*|ratings?|outlook).*\bfrom\s+Moody[’\']?s', title, re.I))
             and not re.search(r'earnings|revenue|profit|营收|盈利|利润|业绩', title, re.I)):
         return False
-    return complete_excerpt(factual_excerpt(item), getattr(item, 'source', '')) and (
+    return publishable_excerpt(item, factual_excerpt(item)) and (
         not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title)
 
 
 def frontier_candidate(item) -> bool:
     title = plain_source(getattr(item, 'title', ''))
     excerpt = factual_excerpt(item)
-    return bool(excerpt) and not promotional_prose(excerpt) and (
+    return publishable_excerpt(item, excerpt) and (
         not _PRICE_EDITORIAL.search(title) or excerpt != title)
 
 

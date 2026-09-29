@@ -27,7 +27,7 @@ FACTS = [
 
 
 def items():
-    return [MacroNewsItem(t, NOW, f'https://example.com/{i}', 'Source') for i,t in enumerate(FACTS)]
+    return [MacroNewsItem(t, NOW, f'https://openai.com/index/fixture-{i}/' if i==1 else f'https://example.com/{i}', 'Source') for i,t in enumerate(FACTS)]
 
 
 def rebuild():

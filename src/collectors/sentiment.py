@@ -26,8 +26,9 @@ import logging
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -105,8 +106,42 @@ def _validate_observation(observed: str | None, key: str, today: date,
     if key in _MAX_OBSERVATION_AGE:
         if not 0 <= (today - day).days <= _MAX_OBSERVATION_AGE[key]:
             raise ValueError(f"来源观测已过期或超前: {observed}")
+        if key == "DXY" and not _dxy_day_completed(day, now or datetime.now(UTC)):
+            raise ValueError(f"DXY 观测日尚未完成: {observed}")
     elif day != latest_closed_session("SPY", now or datetime.now(UTC)):
         raise ValueError(f"来源观测不是最近已收盘交易日: {observed}")
+
+
+def _dxy_day_completed(day: date, now: datetime) -> bool:
+    # USDX's FX session runs across midnight, ending at 17:00 New York.
+    # Use source-supplied session dates (including FX holidays), not an NYSE
+    # calendar. ZoneInfo handles US DST; no fixed UTC or Beijing close time.
+    # ICE product/session reference: https://www.ice.com/products/194
+    close = datetime.combine(day, time(17), ZoneInfo("America/New_York"))
+    return close <= now
+
+
+def _completed_dxy_values(values, dates, *, source: str, now: datetime | None = None):
+    now = now or datetime.now(UTC)
+    if not values or len(values) != len(dates):
+        raise ValueError("DXY 价格与日期数量不一致")
+    days = [_observation_day(raw) for raw in dates]
+    if days != sorted(set(days)):
+        raise ValueError("DXY 来源日期重复或乱序")
+    if any(date.fromisoformat(day) > now.date() + timedelta(days=1) for day in days):
+        raise ValueError("DXY 来源日期超前")
+    completed = [(v, d) for v, d in zip(values, days, strict=True)
+                 if _dxy_day_completed(date.fromisoformat(d), now)]
+    if not completed:
+        raise ValueError("DXY 无已完成观测")
+    # Only unfinished bars may be excluded. A null latest completed close is
+    # an error, never an invitation to silently fall back to an earlier bar.
+    closes, observed = zip(*completed, strict=True)
+    if date.fromisoformat(observed[-1]).weekday() >= 5:
+        raise ValueError("DXY 最新观测不是工作日")
+    logger.info("sentiment.dxy_completed observed_at=%s unfinished_excluded=%d",
+                observed[-1], len(days) - len(observed))
+    return _dated_values(list(closes), list(observed), source=source, key="DXY", now=now)
 
 
 class DatedValues(list):
@@ -117,7 +152,7 @@ class DatedValues(list):
         self.fetched_at = datetime.now(UTC).isoformat()
 
 
-def _dated_values(values, dates, *, source: str, key: str) -> DatedValues:
+def _dated_values(values, dates, *, source: str, key: str, now: datetime | None = None) -> DatedValues:
     if not values or len(values) != len(dates):
         raise ValueError("价格与日期数量不一致")
     days = [_observation_day(raw) for raw in dates]
@@ -125,7 +160,8 @@ def _dated_values(values, dates, *, source: str, key: str) -> DatedValues:
         raise ValueError("来源日期重复或乱序")
     if _finite_float(values[-1]) is None:
         raise ValueError("最新观测无效；不得悄悄使用上一条")
-    _validate_observation(days[-1], key, datetime.now(UTC).date())
+    now = now or datetime.now(UTC)
+    _validate_observation(days[-1], key, now.date(), now=now)
     return DatedValues([_finite_float(value) for value in values], observed_at=days[-1], source=source)
 
 
@@ -226,8 +262,10 @@ def _fetch_yfinance_close(ticker: str, period: str = "2mo") -> list[float]:
     hist = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=False)
     if hist is None or hist.empty:
         raise RuntimeError(f"{ticker} 返回空数据")
+    if ticker == "DX-Y.NYB":
+        return _completed_dxy_values(hist["Close"].tolist(), list(hist.index), source=f"yfinance:{ticker}")
     return _dated_values(hist["Close"].tolist(), list(hist.index),
-                         source=f"yfinance:{ticker}", key="VIX" if ticker == "^VIX" else "DXY")
+                         source=f"yfinance:{ticker}", key="VIX")
 
 
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
@@ -251,8 +289,9 @@ def _fetch_yahoo_chart_close(ticker: str, period: str = "2mo") -> list[float]:
         raise RuntimeError(f"{ticker} Yahoo Chart 返回空 result")
     quotes = (((results[0].get("indicators") or {}).get("quote")) or [{}])[0]
     stamps = results[0].get("timestamp") or []
-    return _dated_values(quotes.get("close") or [], stamps,
-                         source=url, key="VIX" if ticker == "^VIX" else "DXY")
+    if ticker == "DX-Y.NYB":
+        return _completed_dxy_values(quotes.get("close") or [], stamps, source=url)
+    return _dated_values(quotes.get("close") or [], stamps, source=url, key="VIX")
 
 
 def _fetch_simple_index(ticker: str, display_name: str, unit: str = "") -> SentimentMetric:
@@ -418,6 +457,9 @@ def _with_last_good(
             "sentiment.last_good_stale metric=%s saved_at=%s",
             cache_key, saved_at,
         )
+        return m
+    if cache_key == "DXY" and not _dxy_day_completed(date.fromisoformat(saved_at), datetime.now(UTC)):
+        logger.warning("sentiment.last_good_unfinished metric=DXY observed_at=%s", saved_at)
         return m
     logger.info(
         "sentiment.last_good_used metric=%s saved_at=%s",

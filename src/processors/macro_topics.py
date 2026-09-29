@@ -35,7 +35,7 @@ def macro_topic(text: str) -> str:
          r'|(?:contract|spending|合同|开支).*(?:missile|defen[cs]e|military|导弹|国防|军工)'),
         ('能源市场', r'\boil\b|\bcrude\b|\benergy\b|natural gas|油价|原油|石油|能源|天然气'),
         ('财政政策', r'\btax\w*\b|\bIRS\b|fiscal|government spending|避税|财政|税收|减税|加税|税务|政府支出'),
-        ('货币政策', r'\bFed\b|FOMC|Federal Reserve|central bank|\bECB\b|美联储|央行|降息|加息'),
+        ('货币政策', r'\bFed\b|FOMC|Federal Reserve|central bank|\bECB\b|(?:raises?|cuts?|hikes?|lowers?).{0,30}(?:benchmark|interest|policy) rates?|美联储|央行|降息|加息|(?:上调|下调).{0,8}(?:基准|政策|利率)|(?:基准|政策)利率.{0,6}(?:上调|下调)'),
         ('AI 安全', r'(?:\bAI\b|OpenAI|Anthropic|人工智能|模型).*(?:safety|安全|失控|存在性风险|生存风险)'
          r'|(?:safety|安全).*(?:\bAI\b|OpenAI|Anthropic|人工智能|模型)'),
         ('选举与司法', r'election|electoral|选举|选务'),

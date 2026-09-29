@@ -36,7 +36,7 @@ _BARE_LISTINGS = {
 }
 _FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Treasuries': '美国国债',
                     'Strait of Hormuz': '霍尔木兹海峡', 'Hormuz': '霍尔木兹海峡',
-                    'Saudi Arabia': '沙特阿拉伯', 'Iran': '伊朗', 'Satya Nadella': '萨提亚·纳德拉'}
+                    'Saudi Arabia': '沙特阿拉伯', 'Australia': '澳大利亚', 'Iran': '伊朗', 'Satya Nadella': '萨提亚·纳德拉'}
 
 
 def publication_text(text: str, *, source_name: str = '') -> str:
@@ -63,7 +63,10 @@ def publication_text(text: str, *, source_name: str = '') -> str:
     for name, short_name in _LEGAL_NAMES.items():
         text = re.sub(r'(?<![A-Za-z])' + re.escape(name) + r'(?![A-Za-z])', short_name, text, flags=re.I)
     for name, translation in _FINANCIAL_TERMS.items():
-        text = re.sub(r'\b' + re.escape(name) + r'\b', translation, text)
+        # A country inside a publisher's proper name is not body geography.
+        protected = '|'.join(re.escape(label) for label in sorted(aliases, key=len, reverse=True))
+        pattern = protected + r'|(?P<term>\b' + re.escape(name) + r'\b)'
+        text = re.sub(pattern, lambda m, translation=translation: translation if m.group('term') else m[0], text)
     # These commas separate prose, not digits in a financial quantity.
     text = re.sub(r'(?<!\d),|,(?!\d)', '，', text)
     text = re.sub(r'[ \t]+', ' ', text)

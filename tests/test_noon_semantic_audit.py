@@ -78,10 +78,11 @@ def test_nested_publisher_tails_are_not_news_but_attribution_and_other_dash_text
     row=ROWS['frontier'][1]
     it=article(row)
     original=copy.deepcopy(vars(it))
-    text,evidence=grounded_text(row['validated_text'],[it])
+    assert grounded_text(row['validated_text'],[it])==('',[])  # headline lacks the scope of cancellation
+    text=publication_text(row['validated_text'],source_name=it.source)
     assert 'ABC News Australia' not in text and 'UA.NEWS' not in text
     assert 'GPT-6.1 Astra' in text and '取消' in text
-    assert evidence[0]['validated_text']==row['validated_text'] and vars(it)==original
+    assert vars(it)==original
     for text in ['ABC News Australia 报道，公司尚未获批。','公司称计划未变 — 仍待批准','公司宣布计划 — Unknown Outlet']:
         assert publication_text(text,source_name='UA.NEWS')==text
 
@@ -109,7 +110,7 @@ def test_named_products_and_construction_keep_event_state(original,translated,ke
 
 
 def test_actual_news_can_supply_bounded_judgments_without_inventing_facts():
-    for row in [next(r for r in ROWS['company'] if 'Crusoe' in r['output_text']),ROWS['frontier'][1]]:
+    for row in [next(r for r in ROWS['company'] if 'Crusoe' in r['output_text'])]:
         it=article(row)
         text,evidence=grounded_text(row['validated_text'],[it])
         obj=SimpleNamespace(summary_html=text,evidence=evidence,footnotes=[SimpleNamespace(url=it.url)])

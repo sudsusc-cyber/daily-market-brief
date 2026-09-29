@@ -107,7 +107,8 @@ def content_report(
         coverage[section] = {
             "candidates": candidates,
             "published_sources": len({e["url"] for e in evidence}),
-            "extractive_fallbacks": sum(e.get("mode") == "source_extract" for e in evidence),
+            "extractive_fallbacks": sum(e.get("publication_path") == "source_fallback" or e.get("mode") == "source_extract" for e in evidence),
+            "analysis_sources": sum(e.get("source_kind") == "analysis" for e in evidence),
             "checked_translations": sum(e.get("mode") == "checked_translation" for e in evidence),
             "non_chinese_outputs": sum(not re.search(r"[一-鿿]", str(e.get("output_text", ""))) for e in evidence),
             "translation_validation": "numbers_units_entities_modality_event_states; not_full_semantic_proof",
