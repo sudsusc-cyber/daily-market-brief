@@ -93,7 +93,6 @@ _MACRO_SOURCE_FALLBACK_NOTE = "宏观数据源暂不可用，本期从略。"
 _COMPANY_PROCESSING_FALLBACK_NOTE = "个股动态整理未完成，本期从略。"
 _COMPANY_SOURCE_FALLBACK_NOTE = "个股动态数据源暂不可用，本期从略。"
 _FIGURE_PROCESSING_FALLBACK_NOTE = "关键发言整理未完成，本期从略。"
-_FRONTIER_PROCESSING_FALLBACK_NOTE = "前沿动态整理未完成，本期从略。"
 
 _ACTIVE_THESIS_STATUS_RANK = {
     "core": 0,
@@ -547,16 +546,18 @@ def main() -> int:
         _record_quality_alert("市场情绪文字说明加工失败：已使用确定性说明。")
 
     logger.info("processors.frontier_labs_filter")
-    frontier_labs_items, frontier_labs_failures = frontier_labs_filter.filter_all_with_status(
+    frontier_report = frontier_labs_filter.filter_all_report(
         frontier_labs_bundles,
         client=llm,
     )
-    frontier_labs_fallback_note = None
-    if frontier_labs_failures:
-        if not frontier_labs_items:
-            frontier_labs_fallback_note = _FRONTIER_PROCESSING_FALLBACK_NOTE
+    frontier_labs_items = frontier_report.items
+    frontier_labs_fallback_note = frontier_report.fallback_note
+    if frontier_report.failures:
         _record_quality_alert(
-            f"前沿动态加工失败：{len(frontier_labs_failures)} 个实验室处理未完成。"
+            f"前沿动态状态={frontier_report.state}："
+            f"来源异常 {len(frontier_report.source_failures)}，"
+            f"筛选异常 {len(frontier_report.processing_failures)}，"
+            f"候选核验拒绝 {len(frontier_report.content_rejections)}。"
         )
 
     logger.info("processors.thesis")
@@ -726,7 +727,11 @@ def main() -> int:
         qqqm_diagnostics = {}
     report = content_report(
         signals=signals, valuations=valuation_displays, sentiment=sentiment_bundle,
-        diagnostics={"QQQM": qqqm_diagnostics},
+        diagnostics={"QQQM": qqqm_diagnostics, "frontier": {
+            "source_failures": frontier_report.source_failures,
+            "processing_failures": frontier_report.processing_failures,
+            "content_rejections": frontier_report.content_rejections,
+        }},
         expected_tickers=[holding.ticker for holding in HOLDINGS] if settings.valuation_enabled else [],
         expected_prices=[holding.ticker for holding in HOLDINGS],
         expected_metrics=sentiment.METRIC_NAMES,
@@ -742,9 +747,7 @@ def main() -> int:
             "figures": {"source_failures": sum(bool(b.error) for b in fig_bundles),
                         "processing_failures": len(figure_failures), "fallback": bool(figure_fallback_note),
                         "silence": not figure_summaries and not figure_failures},
-            "frontier": {"source_failures": sum(bool(b.errors) for b in frontier_labs_bundles),
-                         "processing_failures": len(frontier_labs_failures), "fallback": bool(frontier_labs_fallback_note),
-                         "silence": not frontier_labs_items and not frontier_labs_failures},
+            "frontier": frontier_report.health(),
             "sentiment": {"fallback": sentiment_verdict is None or bool(sentiment_verdict.get("argument_fallback"))},
             "judgment": {"processing_failures": int(judgment_error is not None)},
             "holdings_intro": {"fallback": bool(signals) and holdings_intro_text is None},

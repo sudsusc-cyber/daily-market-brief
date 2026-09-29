@@ -19,6 +19,7 @@ from src.processors.llm_client import LLMClient
 from src.processors.news_selection import frontier_candidate
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
+from src.utils.secrets import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,42 @@ class FrontierKeyPoint:
     source_type: SourceType = "google_news"
     published_at: datetime | None = None
     evidence: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class FrontierFilterReport:
+    items: list[FrontierKeyPoint] = field(default_factory=list)
+    source_failures: list[str] = field(default_factory=list)
+    processing_failures: list[str] = field(default_factory=list)
+    content_rejections: list[str] = field(default_factory=list)
+
+    @property
+    def failures(self) -> list[str]:
+        return self.source_failures + self.processing_failures + self.content_rejections
+
+    @property
+    def state(self) -> str:
+        if self.items:
+            return "partial" if self.failures else "published"
+        if self.processing_failures:
+            return "processing_failed"
+        if self.source_failures:
+            return "source_unavailable"
+        return "content_rejected" if self.content_rejections else "silent"
+
+    @property
+    def fallback_note(self) -> str | None:
+        return {
+            "processing_failed": "前沿动态筛选暂不可用，本期暂不刊载。",
+            "source_unavailable": "前沿动态来源读取失败，本期暂不刊载。",
+            "content_rejected": "前沿动态候选内容未通过核验，本期暂不刊载。",
+        }.get(self.state)
+
+    def health(self) -> dict:
+        return {"state": self.state, "source_failures": len(self.source_failures),
+                "processing_failures": len(self.processing_failures),
+                "content_rejections": len(self.content_rejections),
+                "fallback": bool(self.fallback_note), "silence": self.state == "silent"}
 
 
 _TASK_INSTRUCTION = """\
@@ -82,8 +119,8 @@ MSFT, COST, AAPL, NVDA, TSM, MCO, GOOG, BRK.B, KO, AXP, 0700.HK, 9992.HK, AMD
 - yes 行必须包含 score=1..5 和 tickers=...
 - score < 4 即使 yes 也不会展示
 - tickers 为空或不在允许清单中不会展示
-- 中文摘要 24-44 字,客观、克制,不要写"重大""重磅"
-- 摘要不要重复实验室名称,展示层会自动加 OpenAI / Anthropic
+- yes 正文直接选用输入中的完整可刊发译文或完整中文证据句，不压缩改写，不补充推论
+- 完整句子的事实与限定优先于字数；不得为了缩短而删掉否定、条件或主体
 - 每个输入索引必须只出现一次
 """
 
@@ -152,6 +189,7 @@ class _FrontierParseResult:
     covered_indexes: set[int]
     duplicate_indexes: set[int]
     invalid_yes: bool = False
+    rejected_indexes: dict[int, str] = field(default_factory=dict)
 
     def is_complete(self, expected_count: int) -> bool:
         return (
@@ -166,10 +204,10 @@ def _parse_output_result(
     items: list[FrontierItem],
     lab: str,
 ) -> _FrontierParseResult:
-    kept: list[FrontierKeyPoint] = []
+    kept: list[tuple[int, FrontierKeyPoint]] = []
     index_counts: dict[int, int] = {}
-    seen_source_facts: set[str] = set()
     invalid_yes = False
+    rejected_indexes: dict[int, str] = {}
     for line in text.splitlines():
         match = _LINE_RE.match(line.strip())
         if not match:
@@ -220,27 +258,35 @@ def _parse_output_result(
         # A model merging indexes does not prove that their facts are equal.
         for source_index in valid_indexes:
             source_item = items[source_index - 1]
-            if not is_safe_url(source_item.url) or not frontier_candidate(source_item):
+            if not is_safe_url(source_item.url):
+                rejected_indexes[source_index] = "unsafe_source_url"
                 continue
-            key = content_key(source_item)
-            if key in seen_source_facts:
+            if not frontier_candidate(source_item):
                 continue
             supported, mapping = grounded_text(body, [source_item])
             if not supported:
-                invalid_yes = True
+                rejected_indexes[source_index] = "no_verified_chinese_excerpt"
                 continue
-            seen_source_facts.add(key)
-            kept.append(FrontierKeyPoint(
+            kept.append((source_index, FrontierKeyPoint(
                 lab=lab, related_tickers=tickers, source_type=source_item.source_type,
                 text=supported, evidence=mapping,
                 source_url=source_item.url, source_name=source_item.source,
                 score=score, published_at=source_item.published_at,
-            ))
+            )))
+    duplicates = {index for index, count in index_counts.items() if count > 1}
+    unique = []
+    seen_source_facts: set[str] = set()
+    for index, point in kept:
+        key = content_key(items[index - 1])
+        if index not in duplicates and key not in seen_source_facts:
+            unique.append(point)
+            seen_source_facts.add(key)
     return _FrontierParseResult(
-        items=kept,
+        items=unique,
         covered_indexes=set(index_counts),
-        duplicate_indexes={index for index, count in index_counts.items() if count > 1},
+        duplicate_indexes=duplicates,
         invalid_yes=invalid_yes,
+        rejected_indexes=rejected_indexes,
     )
 
 
@@ -284,21 +330,21 @@ def select_frontier_items(
     return selected
 
 
-def _filter_one_with_status(
+def _filter_one_report(
     bundle: FrontierBundle,
     *,
     client: LLMClient,
     max_items: int = 8,
-) -> tuple[list[FrontierKeyPoint], str | None]:
-    source_error = None
-    if bundle.errors:
-        source_error = f"SourceError: {'; '.join(bundle.errors)[:240]}"
+) -> FrontierFilterReport:
+    report = FrontierFilterReport(source_failures=[
+        f"{bundle.lab}: SourceError: {redact_secrets(str(error))[:240]}" for error in bundle.errors
+    ])
     if not bundle.items:
-        return [], source_error
+        return report
     items = [item for item in bundle.items if frontier_candidate(item)][:max_items]
     payload = _format_input(items)
     if not payload.strip():
-        return [], None
+        return report
 
     last_error: str | None = None
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
@@ -319,14 +365,14 @@ def _filter_one_with_status(
                 thinking=False,
             )
         except Exception as exc:  # noqa: BLE001
-            last_error = f"{type(exc).__name__}: {str(exc)[:160]}"
+            last_error = f"{type(exc).__name__}: {redact_secrets(str(exc))[:160]}"
             logger.warning(
                 "frontier_labs_filter.attempt_failed lab=%s attempt=%d/%d reason=%s",
                 bundle.lab, attempt, _MAX_FILTER_ATTEMPTS, last_error,
             )
             continue
         if not resp.text:
-            last_error = resp.error or "EmptyOutput"
+            last_error = redact_secrets(str(resp.error or "EmptyOutput"))[:240]
             logger.warning(
                 "frontier_labs_filter.attempt_failed lab=%s attempt=%d/%d reason=%s",
                 bundle.lab, attempt, _MAX_FILTER_ATTEMPTS, last_error,
@@ -334,12 +380,22 @@ def _filter_one_with_status(
             continue
 
         parsed = _parse_output_result(resp.text, items, bundle.lab)
+        # A rejected source is a per-candidate publication decision, not a
+        # malformed model response. Never discard its verified neighbours.
+        if parsed.covered_indexes:
+            report.items = parsed.items
+            report.content_rejections = [
+                f"{bundle.lab}: index={index} reason={reason}"
+                for index, reason in sorted(parsed.rejected_indexes.items())
+            ]
+        for rejection in report.content_rejections:
+            logger.warning("frontier_labs_filter.content_rejected %s", rejection)
         if parsed.is_complete(len(items)):
             logger.info(
                 "frontier_labs_filter.ok lab=%s candidates=%d kept=%d attempt=%d",
                 bundle.lab, len(items), len(parsed.items), attempt,
             )
-            return parsed.items, source_error
+            return report
 
         last_error = (
             "IncompleteOrInvalidOutput: "
@@ -355,7 +411,15 @@ def _filter_one_with_status(
         "frontier_labs_filter.failed lab=%s attempts=%d reason=%s",
         bundle.lab, _MAX_FILTER_ATTEMPTS, last_error or "unknown",
     )
-    return [], last_error or "UnknownProcessingFailure"
+    report.processing_failures.append(f"{bundle.lab}: {last_error or 'UnknownProcessingFailure'}")
+    return report
+
+
+def _filter_one_with_status(
+    bundle: FrontierBundle, *, client: LLMClient, max_items: int = 8,
+) -> tuple[list[FrontierKeyPoint], str | None]:
+    report = _filter_one_report(bundle, client=client, max_items=max_items)
+    return report.items, "; ".join(report.failures) or None
 
 
 def filter_one(
@@ -388,15 +452,24 @@ def filter_all_with_status(
     client: LLMClient,
     max_items_per_lab: int = 8,
 ) -> tuple[list[FrontierKeyPoint], list[str]]:
-    points: list[FrontierKeyPoint] = []
-    failures: list[str] = []
+    report = filter_all_report(bundles, client=client, max_items_per_lab=max_items_per_lab)
+    return report.items, report.failures
+
+
+def filter_all_report(
+    bundles: list[FrontierBundle], *, client: LLMClient, max_items_per_lab: int = 8,
+) -> FrontierFilterReport:
+    report = FrontierFilterReport()
     for bundle in bundles:
-        bundle_points, error = _filter_one_with_status(
+        result = _filter_one_report(
             bundle,
             client=client,
             max_items=max_items_per_lab,
         )
-        points.extend(bundle_points)
-        if error:
-            failures.append(f"{bundle.lab}: {error}")
-    return select_frontier_items(points), failures
+        report.items.extend(result.items)
+        report.source_failures.extend(result.source_failures)
+        report.processing_failures.extend(result.processing_failures)
+        report.content_rejections.extend(result.content_rejections)
+    report.items = select_frontier_items(report.items)
+    logger.info("frontier_labs_filter.publication health=%s", report.health())
+    return report

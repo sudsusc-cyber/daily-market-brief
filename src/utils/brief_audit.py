@@ -125,7 +125,7 @@ def content_report(
             or row["extractive_fallbacks"] or row["non_chinese_outputs"])
         for section, row in coverage.items()
     ) or (sentiment is not None and not sentiment.metrics) or any(
-        any(health.get(key) for key in ("source_failures", "processing_failures", "fallback", "timeout_count"))
+        any(health.get(key) for key in ("source_failures", "processing_failures", "content_rejections", "fallback", "timeout_count"))
         for health in section_health.values()
     )
     return {
