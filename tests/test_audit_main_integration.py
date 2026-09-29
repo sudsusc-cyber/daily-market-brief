@@ -20,6 +20,8 @@ from src.valuation.models import ValuationDisplay
     (False, "normal"), (False, "preview"), (True, "normal"), (False, "failed_delivery"),
     (False, "partial_delivery"), (False, "thesis_publication"), (False, "valuation_timeout"),
     (False, "qqqm_retry"), (False, "qqqm_retry_fail"), (False, "qqqm_retry_timeout"),
+    (False, "frontier_silent"), (False, "frontier_source"), (False, "frontier_rejected"),
+    (False, "frontier_partial"), (False, "frontier_processing"),
 ])
 def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(monkeypatch, tmp_path, exhausted, scenario):
     main = importlib.import_module("src.main")
@@ -89,6 +91,28 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         ([company_news.CompanyNewsBundle(HOLDINGS[0], [item])], pending))
     for collector in (main.macro_news, main.figures, main.frontier_labs):
         monkeypatch.setattr(collector, "fetch_all", lambda *a, **k: ([], {}))
+    if scenario.startswith("frontier_"):
+        def frontier_item(title, suffix):
+            return main.frontier_labs.FrontierItem(
+                "OpenAI", title, "", now, f"https://example.com/{suffix}", "Reuters",
+                "google_news", ["MSFT"])
+        good = frontier_item("OpenAI 宣布新的企业云合作。", "good")
+        bad = frontier_item("OpenAI announces a cloud agreement", "bad")
+        items = [good, bad] if scenario == "frontier_partial" else [bad]
+        errors = ["RSS timeout"] if scenario == "frontier_source" else []
+        if scenario == "frontier_source":
+            items = []
+        bundles = [main.frontier_labs.FrontierBundle("OpenAI", ["MSFT"], items, errors)]
+        frontier_pending = {main.frontier_labs._content_hash("OpenAI", row): now.isoformat() for row in items}
+        monkeypatch.setattr(main.frontier_labs, "fetch_all", lambda *a, **k: (bundles, frontier_pending))
+        output = "\n".join(
+            f"▦ {i}: yes | score=5 | tickers=MSFT | OpenAI 宣布新的企业云合作。"
+            for i in range(1, len(items) + 1))
+        if scenario == "frontier_silent":
+            output = "▦ 1: no | score=2 | 普通更新"
+        if scenario == "frontier_processing":
+            output = None
+        llm.chat.return_value = SimpleNamespace(text=output, error="timeout")
     monkeypatch.setattr(main.buffett_13f, "fetch", lambda **_: (None, None))
     monkeypatch.setattr(main.jiangsu_fuel, "fetch", lambda **_: None)
     monkeypatch.setattr(main.sentiment, "fetch_all", lambda *a, **k: main.sentiment.SentimentBundle([], now))
@@ -99,7 +123,6 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     monkeypatch.setattr(main.figure_filter, "filter_all", lambda *a, **k: [])
     monkeypatch.setattr(main.figure_filter, "generate_silence_note", lambda *a: None)
     monkeypatch.setattr(main.sentiment_judge, "judge", lambda *a, **k: None)
-    monkeypatch.setattr(main.frontier_labs_filter, "filter_all_with_status", lambda *a, **k: ([], []))
     publication_scenario = scenario in {"failed_delivery", "partial_delivery", "thesis_publication", "preview"}
     if publication_scenario:
         fact = "微软计划投资100亿美元建设云基础设施。"
@@ -156,6 +179,28 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         assert (manifests[0].parent / "preview.html").exists()
         return
     assert len(sent) == 1
+    if scenario.startswith("frontier_"):
+        expected = {"frontier_silent": "silent", "frontier_source": "source_unavailable",
+                    "frontier_rejected": "content_rejected", "frontier_partial": "partial",
+                    "frontier_processing": "processing_failed"}[scenario]
+        assert health["frontier"]["state"] == expected
+        body = sent[0]["html_body"]
+        assert "前沿动态整理未完成" not in body
+        if expected == "silent":
+            assert "前沿动态" not in body
+            assert health["frontier"]["silence"]
+        elif expected == "partial":
+            assert "宣布新的企业云合作。" in body
+            assert "本期暂不刊载" not in body
+            assert health["frontier"]["content_rejections"] == 1
+            assert manifest["content"]["diagnostics"]["frontier"]["content_rejections"]
+            assert len(manifest["content"]["summary_mapping"]["frontier"]) == 1
+        else:
+            assert "本期暂不刊载" in body
+            assert not health["frontier"]["silence"]
+        saved_frontier = main.frontier_labs._load_pushed(tmp_path / "pushed_frontier_labs.json")
+        assert set(saved_frontier) == (
+            {main.frontier_labs._content_hash("OpenAI", good)} if expected == "partial" else set())
     if scenario.startswith("qqqm_retry"):
         assert len(qqqm_calls) == 2
         assert valuation_calls[-1]["qqqm_display"].status == ("current" if scenario == "qqqm_retry" else "source_unavailable")
