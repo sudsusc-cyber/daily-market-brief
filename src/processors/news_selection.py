@@ -5,6 +5,25 @@ import re
 
 from src.processors.html_safe import strip_all_tags
 
+# RSS sometimes joins a promotional standfirst directly to a wire dateline.
+# The reporting sentence after the dateline remains an exact source substring.
+_WIRE_DATELINE = re.compile(
+    r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?'
+    r'|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+    r'\.?\s+\d{1,2},?\s+\d{4}\s*(?:\((?:GLOBE NEWSWIRE|BUSINESS WIRE|PR NEWSWIRE)\))?'
+    r'\s*(?:--|—{1,2})\s*', re.I)
+
+
+def reporting_text(text: str) -> str:
+    """Drop a wire dateline/standfirst, never rewrite the reporting sentence."""
+    text = plain_source(text)
+    dateline = _WIRE_DATELINE.search(text[:600])
+    if dateline and re.search(
+            r"(?:^|(?<=[a-z]))[A-Z][A-Z .'-]{1,45},\s*(?:[A-Z][A-Za-z .'-]{1,30},\s*)?$",
+            text[:dateline.start()]):
+        return text[dateline.end():].strip()
+    return text
+
 
 def plain_source(text: str) -> str:
     # Decode before stripping, then escape only once at final HTML construction.
@@ -14,7 +33,7 @@ def plain_source(text: str) -> str:
 
 
 def sentences(text: str) -> list[str]:
-    text = plain_source(text)
+    text = reporting_text(text)
     # Split only where the next sentence begins; keep decimal points, initials,
     # month abbreviations and company suffixes within their complete sentence.
     return [s.strip() for s in re.split(r'(?<=[。！？])|(?<=[.!?])\s+(?=[A-Z])', text) if s.strip()]
@@ -52,6 +71,9 @@ _BUSINESS_FACT = re.compile(
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
 _RATING_SERVICE = re.compile(
     r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级|outlook|展望)", re.I)
+_PARTNER_PROMOTION = re.compile(
+    r'\b(?:inner circle|partner of the year|partner award|partner status|partner designation)\b'
+    r'|合作伙伴(?:奖|称号|认证)|年度合作伙伴|内圈奖', re.I)
 
 
 def factual_excerpt(item) -> str:
@@ -90,6 +112,10 @@ def factual_excerpt(item) -> str:
 def company_candidate(item, ticker: str) -> bool:
     title = plain_source(getattr(item, 'title', ''))
     text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
+    # A vendor winning a platform's badge is not operating news about that platform.
+    # Keep substantive partner contracts, capacity and investments eligible.
+    if _PARTNER_PROMOTION.search(title):
+        return False
     if (ticker == 'MCO' and (_RATING_SERVICE.search(text) or re.search(
             r'(?:upgrad\w*|ratings?|outlook).*\bfrom\s+Moody[’\']?s', title, re.I))
             and not re.search(r'earnings|revenue|profit|营收|盈利|利润|业绩', title, re.I)):
@@ -109,14 +135,18 @@ def meaningful_quote(item) -> bool:
     return not generic or bool(re.search(r'\d|capex|capital spending|billion|million|资本开支|产能|投资额', text, re.I))
 
 
-def neutral_macro_topic(items) -> str:
-    text = " ".join(plain_source(item.title) for item in items)
+def neutral_macro_topic(items, *, supported_text: str = '') -> str:
+    # Prefer the actual published evidence, especially for rolling-page titles.
+    text = supported_text or " ".join(plain_source(item.title) for item in items)
     for topic, pattern in (
-        ("能源市场", r'\boil\b|\bcrude\b|\benergy\b|油价|原油|能源'),
+        ("国防开支", r'(?:missile|defen[cs]e|military|导弹|国防|军工).*(?:contract|spending|合同|开支)'
+         r'|(?:contract|spending|合同|开支).*(?:missile|defen[cs]e|military|导弹|国防|军工)'),
+        ("能源市场", r'\boil\b|\bcrude\b|\benergy\b|油价|原油|石油|能源'),
         ("财政政策", r'tax|Treasury threatens|避税|财政|税收'),
         ("国际贸易", r"tariff|trade|关税|贸易"),
-        ("地缘政治", r"Russia|Ukraine|Iran|ceasefire|terror|suspects|战争|停火|俄乌|嫌疑人"),
+        ("地缘政治", r"Russia|Ukraine|Iran|ceasefire|terror|suspects|战争|停火|俄乌|嫌疑人|恐怖"),
         ("资本流动", r"capital flows|fund flows|foreign capital|资金流|外资"),
+        ("债券市场", r'\bbonds?\b|Treasuries|债券|国债'),
         ("货币政策", r"\bFed\b|FOMC|美联储|降息|加息"),
         ("通胀数据", r"inflation|\bCPI\b|通胀"),
     ):
