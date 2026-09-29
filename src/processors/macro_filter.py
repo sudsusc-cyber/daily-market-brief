@@ -23,7 +23,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
-from src.processors.macro_topics import macro_topics
+from src.processors.macro_topics import macro_importance, macro_topics
 from src.processors.news_selection import macro_candidate
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
@@ -32,6 +32,7 @@ from src.utils.news_facts import canonical_fact
 logger = logging.getLogger(__name__)
 
 _MAX_SUMMARY_ATTEMPTS = 2
+MAX_MACRO_PARAGRAPHS = 3
 
 
 @dataclass
@@ -67,7 +68,9 @@ _TASK_INSTRUCTION = """\
 
 把筛选后的新闻按具体主题归类，每个主题只能出现一段。
 同类项必须合并，不能按媒体、输入顺序、原始段落或来源数量拆开。
-段落数由实际主题数量决定，不为凑两三段拆散或丢弃同类事实。
+最多输出三个最重要的主题段落，按重要性由高到低排列；不足三个时不凑数。
+优先重大政策决定、关键经济数据、系统性风险和重大地缘变化；次要行业新闻与评论让位。
+先确定主题重要性再取前三个，不按来源或输入顺序截取。
 
 每段格式严格为:
   <p><strong>主题词。</strong>完整事实叙述,段末用 <sup>[N]</sup> 标注脚注。</p>
@@ -223,8 +226,14 @@ def _rebuild_safe_html(
         # Group known topics across sources; an unknown label proves no relation.
         themes.setdefault((topic, position if topic == "其他宏观" else None), []).append(group)
 
+    selected = list(themes.items())
+    if len(selected) > MAX_MACRO_PARAGRAPHS:
+        selected.sort(key=lambda entry: macro_importance(
+            entry[0][0], [group["text"] for group in entry[1]]), reverse=True)
+        logger.info("macro_filter.topic_limit candidates=%d published=%d", len(selected), MAX_MACRO_PARAGRAPHS)
+        selected = selected[:MAX_MACRO_PARAGRAPHS]
     parts, footnotes = [], []
-    for (topic, _), related in themes.items():
+    for (topic, _), related in selected:
         facts, paragraph_citations = [], []
         for group in related:
             citations = []
@@ -346,3 +355,23 @@ def merge_frontier_duplicates(summary, frontier_items):
     if not known <= rebuilt or not (visible_urls | duplicate_urls) <= linked:
         return summary, frontier_items, set()
     return MacroNewsSummary(html, footnotes, evidence), remaining, duplicate_urls
+
+
+def limit_publication(summary):
+    """Defend the final render boundary against legacy/oversized summaries.
+
+    Rebuild from verified originals so dropped topics cannot remain as sources
+    for a long-term judgment. Normal summaries have already passed this cap.
+    """
+    if not summary or len(re.findall(r"<p(?:\s|>)", summary.summary_html, re.I)) <= MAX_MACRO_PARAGRAPHS:
+        return summary
+    from src.processors.thesis.extractor import _verified_grounding_row
+
+    rows = [row for row in getattr(summary, "evidence", []) if _verified_grounding_row(summary, row)]
+    items = [SimpleNamespace(title=row["original_title"], summary=row.get("original_summary", ""),
+                             url=row["url"], source=row.get("source_name", ""),
+                             published_at=row.get("published_at"), source_excerpt=row["excerpt"],
+                             translated_excerpt=row.get("validated_text", row["output_text"])) for row in rows]
+    evidence = []
+    html, notes = _rebuild_safe_html("<p>" + "".join(f"[{i}]" for i in range(1, len(items)+1)) + "</p>", items, evidence)
+    return MacroNewsSummary(html, notes, evidence) if html else None

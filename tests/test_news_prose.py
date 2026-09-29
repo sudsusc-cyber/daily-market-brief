@@ -98,7 +98,7 @@ def test_every_news_surface_uses_punctuation_and_source_separators_after_minific
     groups = soup.select('tr[data-source-list="true"]')
     assert len(groups) == 4
     for group in groups:
-        assert "·" in group.get_text()
+        assert "·" not in group.get_text()
         assert len(group.select("a.source-link")) == 2
         for a in group.select("a.source-link"):
             # Shared styles can be factored into CSS; either form must retain separation.

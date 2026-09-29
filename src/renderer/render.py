@@ -465,8 +465,10 @@ def render_email(
     )
     # The final visible sources are authoritative; a caller-supplied old ledger
     # sentence or a changed source block cannot bypass publication validation.
+    from src.processors.macro_filter import limit_publication
     from src.processors.thesis.renderer import publication_sources, validate_publication
 
+    macro_news_summary = limit_publication(macro_news_summary)
     judgment_section = validate_publication(
         judgment_section, today=generated_at.date(),
         sources=publication_sources(

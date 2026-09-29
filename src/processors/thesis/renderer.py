@@ -84,7 +84,7 @@ _RULES = (
     WatchRule(
         "product-release-risk",
         r"model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
-        r"abandon|cancel|shelv|axes?|halt|delay|postpon|放弃|取消|搁置|砍掉|暂停|推迟|延后",
+        r"scrap|abandon|cancel|shelv|axes?|halt|delay|postpon|放弃|取消|搁置|砍掉|暂停|推迟|延后",
         "产品发布调整后的长期影响取决于后续安排",
         "调整原因、问题解决进度、后续发布安排与投入变化。",
     ),
@@ -163,7 +163,7 @@ def _rule_for(row: dict) -> WatchRule | None:
     if not _ENTITY.search(original) or not _ENTITY.search(text) or not re.search(r"[一-鿿]", text):
         return None
     # Denials of a cancellation must not be labelled as a release setback.
-    negated_change = r"(?:not|never|no longer)\s+(?:\w+\s+){0,2}(?:cancel|abandon|delay|shelv)|(?:并未|没有|不会|未)(?:放弃|取消|搁置|暂停|推迟)"
+    negated_change = r"(?:not|never|no longer)\s+(?:\w+\s+){0,2}(?:scrap|cancel|abandon|delay|shelv)|(?:并未|没有|不会|未)(?:放弃|取消|搁置|暂停|推迟)"
     return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)
                  and not (rule.key == "product-release-risk" and (
                      re.search(negated_change, original, re.I) or re.search(negated_change, text)))), None)

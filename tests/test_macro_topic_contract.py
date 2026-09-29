@@ -129,9 +129,10 @@ def test_actual_preview_unknown_topics_are_specific_and_only_same_topics_merge()
     evidence=[]
     html,notes=_rebuild_safe_html('<p>其他宏观。' + ''.join(f'[{i}]' for i in range(1,7)) + '</p>',items,evidence)
     soup=BeautifulSoup(html,'html.parser')
-    assert len(soup.select('p'))==5
-    assert [row['macro_topic'] for row in evidence]==['AI 安全','AI 安全','财政政策','选举与司法','资本市场','信用市场']
-    assert len(soup.select('p')[0].select('a'))==2
-    assert len(notes)==len(evidence)==6
-    assert all(title in soup.get_text() for title in titles)
+    assert len(soup.select('p'))==3
+    assert [row['macro_topic'] for row in evidence]==['财政政策','信用市场','AI 安全','AI 安全']
+    assert len(soup.select('p')[2].select('a'))==2
+    assert len(notes)==len(evidence)==4
+    assert all(titles[i] in soup.get_text() for i in [0,1,2,5])
+    assert all(titles[i] not in soup.get_text() for i in [3,4])
     assert '其他宏观' not in soup.get_text()
