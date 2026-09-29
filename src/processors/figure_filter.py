@@ -23,7 +23,7 @@ from datetime import datetime
 from src.collectors.figures import FigureBundle, FigureMention
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
-from src.processors.news_selection import meaningful_quote
+from src.processors.news_selection import meaningful_quote, plain_source
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
 from src.utils.secrets import redact_secrets
@@ -39,7 +39,7 @@ _QUOTE_MARKERS_RE = re.compile(
     r"|[「」]\s*[^「」]{6,}\s*[「」]"  # 中式引号
     r"|他说|她说|他表示|她表示|他认为|她认为|他指出|她指出"
     r"|表示称|声称|明确表示|公开表示|强调说"
-    r"|said|told|stated|told reporters|in an interview|argued|claimed"
+    r"|\bsaid\b|\bsays\b|told|stated|told reporters|in an interview|argued|claimed"
     r"|warned|cautioned|noted|admitted|added"
     r"|发声|发表演讲|演讲中|采访中|公开信|致股东信",
     re.IGNORECASE,
@@ -48,7 +48,13 @@ _QUOTE_MARKERS_RE = re.compile(
 
 def _has_quote_marker(item: FigureMention) -> bool:
     """规则层预筛:标题或摘要里含直接引语标记词才进入 LLM 层。"""
-    text = f"{item.title or ''} {item.snippet or ''}"
+    title = plain_source(item.title or "")
+    text = f"{title} {plain_source(item.snippet or '')}"
+    # A company statement is not the configured person's speech. HTML href /
+    # target attributes are not direct quotes either, even when RSS repeats it.
+    if re.match(r"(?:Nvidia|Microsoft|OpenAI|Anthropic|AMD|TSMC|Berkshire|Google|Alphabet|"
+                r"英伟达|微软|台积电|谷歌)\s*(?:says?\b|said\b|announces?\b|表示|宣布|称)", title, re.I):
+        return False
     return bool(_QUOTE_MARKERS_RE.search(text))
 
 

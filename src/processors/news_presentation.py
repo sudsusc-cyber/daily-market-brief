@@ -45,7 +45,7 @@ def publication_text(text: str, *, source_name: str = '') -> str:
         if source.casefold() in {name.casefold() for name in names}:
             aliases.update(names)
     for name in sorted(aliases, key=len, reverse=True):
-        text = re.sub(r'\s*[-–—|]+\s*' + re.escape(name) + r'[。.]?\s*$', '', text, flags=re.I)
+        text = re.sub(r'(?:\s*[-–—|]+\s*|\s{2,})' + re.escape(name) + r'[。.]?\s*$', '', text, flags=re.I)
     text = _LISTING.sub('', text)
     for name, ticker in _BARE_LISTINGS.items():
         text = re.sub(r'(?<![A-Za-z])(' + re.escape(name) + r')\s*[（(](?:' + ticker + r')[)）]',

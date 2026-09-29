@@ -80,3 +80,26 @@ presentation/state errors, so that preview was **not** accepted as the final res
   in the macro paragraph, revalidate the rebuilt mapping, and commit the frontier
   hash only after that source actually appears in an accepted email. Different
   facts, quantities or states remain separate candidates.
+
+## RSS wrapper follow-up (run 36509293133)
+
+Production preview on `46c350e` had 31 current verified observations, four retained
+valuations, zero missing observations and zero unresolved conflicts. HTML was
+97,606 bytes and SMTP calls remained zero. The release-adjustment judgment now
+matched the visible OpenAI cancellation news, and all 15 reference lines worked.
+
+The final text audit additionally caught two RSS parsing defects:
+
+- Figure quote screening inspected raw HTML. Quotes around `href`/`target`
+  incorrectly qualified a corporate Nvidia statement as Jensen Huang's speech.
+  Inspect rendered text only, reject explicitly corporate-attributed statements,
+  and preserve real named-person/direct-quote markers (including “says”).
+- Google News's rendered summary separated a known publisher with two NBSPs;
+  its translation retained two spaces instead of a dash. Strip that exact
+  publisher-tail form at presentation, preserving source fields and in-sentence
+  attribution. Unknown names or ordinary single-space prose are not removed.
+
+These exact archived wrappers and translation forms are regression fixtures.
+The corrected archive replay retains content/source bindings and final-render
+judgment validation. It is an offline revision of that preview's inputs, not a
+new SMTP send or a claim that arbitrary future translations are infallible.
