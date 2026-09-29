@@ -1,55 +1,9 @@
-"""
-持仓引言改写(M5 加工)。
-
-把固定的、教科书式的持仓数量说明段落,
-改写为简短、有哲学意味、文笔讲究的开场白(60-110 字,prompt 内硬约束)。
-
-设计要点:
-- 输入是当日全部 StockSignal(含 ticker/last_close/逐股 buy_lines/signal/error)
-- 输出是单段中文,直接渲染到模板
-- 行文基调:Berkshire 致股东信 / Howard Marks Memo / 巴菲特价值投资框架
-- 失败时返回 None,模板降级到原文案
-"""
-
+"""Source-derived position introduction; no generated market claims."""
 from __future__ import annotations
 
-import logging
-import re
 from typing import Any
 
 from src.processors.llm_client import LLMClient
-
-logger = logging.getLogger(__name__)
-
-_MAX_ATTEMPTS = 2
-
-
-_TASK_INSTRUCTION = """\
-任务:基于今日持仓的实际信号与偏离度,写**一段富有哲学韵味、文采斐然、发人深省**的中文开场白
-(60-110 字,1-2 句),作为晨报「持仓信号」章节的首句。
-
-【风格基调(必读)】
-- 取法 Berkshire 致股东信 / Howard Marks《Memo to Oaktree Clients》/
-  芒格《穷查理宝典》—— 那种节制、洗练、有古典文气、读完让人回味的语调
-- 可以化用古典意象、诗句意境、东西方哲学命题(如"潮水退去""时间的复利""逆水行舟"
-  "祸福相倚""大智若愚""曲突徙薪"等),但**不要直接引用名句**
-- 必须**与今日具体持仓信号有自然关联**——例如全是 NONE 的安静日子可写"喧嚣之外"的克制;
-  出现 DCA/Lump-sum 时可写"风起于青萍之末"或"折扣即馈赠"的耐心;价格普遍高于均线时
-  可写"潮高时不忘退潮"的清醒
-- 文采要"雅而不晦",一句话能让读者停下来思考一秒,而不是空泛的鸡汤
-
-【硬约束】
-- 只输出**那段开场白本身**的中文文字,不带前言、不带解释、不带 markdown、不带引号、不分点
-- 字数 60-110 字之间,1-2 句最佳;**绝不超过 110 字**
-- **不要 AI 腔**:不写"今日""让我们""在当前市场环境下""值得我们关注"
-- **不要重复**持仓总数、美股/港股数量这类结构性陈述(模板会动态生成)
-- **不要劝告**读者具体怎么操作("应该买入""建议加仓"全禁)
-- **不要堆砌**"耐心""纪律""安全边际"这些词;要让读者**感受到**这些品质而非看到这些字
-- 必须暗合今日实际:全 NONE / 多个 DCA / 多个 LUMP_SUM / 价格普遍高位 vs 普遍低位
-- 各股参考线不同，必须遵照输入逐股规则；不得笼统声称所有标的以 120/200 周线触发信号
-- 均线在邮件中统一称“参考线”，不要称“买入线”；名称调整不改变逐股信号规则
-- 信号表示每天持续显示的当前区间，不得写成首次跌破或新触发
-"""
 
 
 def _format_input(signals: list[Any]) -> str:
@@ -77,51 +31,28 @@ def _format_input(signals: list[Any]) -> str:
     return "\n".join(lines)
 
 
-def _intro_errors(text: str, signals: list[Any]) -> list[str]:
-    """Enforce observable prompt constraints; poetry cannot supply market facts."""
-    errors = []
-    if len(text) > 110:
-        errors.append("overlength")
-    if re.search(r"(?:\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百]+)\s*(?:只|艘|叶|支|档|美元|港元|元|[%％]|周|日)", text):
-        errors.append("unsupported_quantitative_claim")
-    if re.search(r"应该买入|建议(?:买入|加仓)|立即买入|首次跌破|新触发|刚刚跌破", text):
-        errors.append("action_or_new_trigger")
-    if (any(s.signal in {"DCA", "LUMP_SUM"} for s in signals)
-            and re.search(r"(?:全部|所有|全都|一律).*(?:无信号|NONE)", text, re.I)):
-        errors.append("signal_contradiction")
-    return errors
+def write_intro(signals: list[Any], *, client: LLMClient | None = None) -> str | None:
+    """Describe signal states only, never infer price/market facts from NONE.
 
-
-def write_intro(signals: list[Any], *, client: LLMClient) -> str | None:
-    """成功返回不超过 110 字的开场白,失败返回 None。"""
+    Keep the client keyword for callers; this small publication block needs no
+    model. Known prose plus actual counts cannot invent geography or buy lines.
+    """
     if not signals:
         return None
-    payload = _format_input(signals)
-    text = ""
-    last_error: str | None = None
-    for attempt in range(1, _MAX_ATTEMPTS + 1):
-        resp = client.chat(
-            payload,
-            task_extra=_TASK_INSTRUCTION,
-            max_tokens=800,
-            temperature=0.7,
-            timeout=20,
-            thinking=False,
-        )
-        text = (resp.text or "").strip().strip("\"'“”「」 ").strip()
-        if text.startswith("```"):
-            text = text.strip("` \n")
-        errors = _intro_errors(text, signals) if text else []
-        if text and not errors:
-            break
-        last_error = "UnsupportedIntro:" + ",".join(errors) if errors else resp.error or "EmptyOutput"
-        text = ""
-        logger.warning(
-            "holdings_intro.attempt_failed attempt=%d/%d reason=%s",
-            attempt, _MAX_ATTEMPTS, last_error,
-        )
-    if not text:
-        logger.warning("holdings_intro.failed reason=%s", last_error or "unknown")
-        return None
-    logger.info("holdings_intro.ok chars=%d", len(text))
-    return text
+    counts = {key: 0 for key in ("DCA", "LUMP_SUM", "NONE")}
+    pending = 0
+    for signal in signals:
+        if signal.error or signal.signal not in counts:
+            pending += 1
+        else:
+            counts[signal.signal] += 1
+    parts = []
+    if counts["DCA"]:
+        parts.append(f"{counts['DCA']}只处于小额区间")
+    if counts["LUMP_SUM"]:
+        parts.append(f"{counts['LUMP_SUM']}只处于大额区间")
+    if counts["NONE"]:
+        parts.append(f"{counts['NONE']}只暂无买入信号")
+    if pending:
+        parts.append(f"{pending}只信号待核验")
+    return "本期持仓中，" + "，".join(parts) + "。潮水自有起落，守候不必追逐每一道浪。"

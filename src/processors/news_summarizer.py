@@ -29,7 +29,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
-from src.processors.news_selection import company_candidate
+from src.processors.news_selection import _ROUNDUP, company_candidate, company_fact_matches
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
@@ -339,6 +339,10 @@ def _rebuild_safe_summary(
         claim = FOOTNOTE_RE.sub("", strip_all_tags(summary)).strip()
         supported, mapping = grounded_text(claim, cited)
         if not supported:
+            continue
+        if any(_ROUNDUP.search(item.title) for item in cited) and any(
+                not company_fact_matches(row['output_text'], ticker or '') for row in mapping):
+            logger.warning("news_summarizer.roundup_source_mismatch company=%r", company)
             continue
         evidence.extend(mapping)
         published_urls = {row["url"] for row in mapping}

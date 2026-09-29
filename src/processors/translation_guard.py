@@ -14,7 +14,7 @@ from decimal import Decimal
 
 # Match negative phrases before checking event states (e.g. not approved).
 _NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|未经|而非|并非|不是"
-_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled)\b|\bto\s+(?:pay|invest|acquire|launch|release|appoint)\b|将(?=支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
+_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled)\b|\bto\s+(?:pay|invest|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
 _EVENTS = {
     "approval": r"\b(?:approv\w*|clearance|greenlight\w*)\b|批准|获批|监管放行",
     "completion": r"\b(?:completed?|finalized?|closed the deal)\b|完成|已交割|已落地",

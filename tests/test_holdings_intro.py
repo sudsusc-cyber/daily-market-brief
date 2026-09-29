@@ -1,7 +1,4 @@
-"""单元测试:holdings_intro 的 _format_input 与 write_intro 容错路径。
-
-不调用真实 LLM(用 mock client)。补 Round 2 审计指出的盲点。
-"""
+"""Source-derived holdings introduction and audit input formatting."""
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -9,7 +6,6 @@ from unittest.mock import MagicMock
 from src.collectors.stocks import StockSignal
 from src.config import HOLDINGS
 from src.processors.holdings_intro import _format_input, write_intro
-from src.processors.llm_client import LLMResponse, LLMUsage
 
 
 def _signal(idx: int, *, signal: str = "NONE", error: str | None = None,
@@ -23,14 +19,6 @@ def _signal(idx: int, *, signal: str = "NONE", error: str | None = None,
         signal=signal,
         error=error,
     )
-
-
-def _ok_resp(text: str) -> LLMResponse:
-    return LLMResponse(text=text, usage=LLMUsage(), error=None)
-
-
-def _bad_resp(err: str = "rate limit") -> LLMResponse:
-    return LLMResponse(text=None, usage=LLMUsage(), error=err)
 
 
 class TestFormatInput:
@@ -73,41 +61,10 @@ class TestWriteIntro:
         assert write_intro([], client=client) is None
         client.chat.assert_not_called()
 
-    def test_llm_failure_returns_none(self) -> None:
+    def test_no_model_call_is_needed(self) -> None:
         client = MagicMock()
-        client.chat.return_value = _bad_resp("timeout")
+        client.chat.side_effect = RuntimeError("must not run")
         out = write_intro([_signal(0)], client=client)
-        assert out is None
-
-    def test_llm_empty_text_returns_none(self) -> None:
-        client = MagicMock()
-        client.chat.return_value = _ok_resp("")
-        assert write_intro([_signal(0)], client=client) is None
-
-    def test_llm_strips_quotes_and_markdown(self) -> None:
-        client = MagicMock()
-        client.chat.return_value = _ok_resp('"潮水退去,礁石毕现。"')
-        out = write_intro([_signal(0)], client=client)
-        assert out == "潮水退去,礁石毕现。"
-
-    def test_llm_strips_chinese_quotes(self) -> None:
-        client = MagicMock()
-        client.chat.return_value = _ok_resp("「市场如海,耐心如礁。」")
-        out = write_intro([_signal(0)], client=client)
-        assert out == "市场如海,耐心如礁。"
-
-    def test_llm_strips_code_fence(self) -> None:
-        client = MagicMock()
-        client.chat.return_value = _ok_resp("```\n潮水退去,礁石毕现。\n```")
-        out = write_intro([_signal(0)], client=client)
-        assert "```" not in out
-        assert "潮水退去" in out
-
-    def test_llm_rejects_overflow(self) -> None:
-        """LLM 超长输出重试后降级，不截断成不完整的正文。"""
-        long_text = "潮" * 300
-        client = MagicMock()
-        client.chat.return_value = _ok_resp(long_text)
-        out = write_intro([_signal(0)], client=client)
-        assert out is None
-        assert client.chat.call_count == 2
+        assert "1只暂无买入信号" in out
+        assert "参考线之上" not in out
+        client.chat.assert_not_called()
