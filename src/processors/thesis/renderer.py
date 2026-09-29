@@ -26,7 +26,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 1
+_VERSION = 2
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -80,6 +80,13 @@ _RULES = (
         r"launch|enable|switch(?:ed)? on|roll.?out|introduc|adopt|开通|推出|启用|采用|上线",
         "支付新业务的长期价值仍需真实交易规模验证",
         "实际交易量、客户采用、费用收入与合规成本。",
+    ),
+    WatchRule(
+        "product-release-risk",
+        r"model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
+        r"abandon|cancel|shelv|axes?|halt|delay|postpon|放弃|取消|搁置|砍掉|暂停|推迟|延后",
+        "产品发布调整后的长期影响取决于后续安排",
+        "调整原因、问题解决进度、后续发布安排与投入变化。",
     ),
     WatchRule(
         "product-commercialization",
@@ -155,7 +162,11 @@ def _rule_for(row: dict) -> WatchRule | None:
     original, text = row["excerpt"], row["output_text"]
     if not _ENTITY.search(original) or not _ENTITY.search(text) or not re.search(r"[一-鿿]", text):
         return None
-    return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)), None)
+    # Denials of a cancellation must not be labelled as a release setback.
+    negated_change = r"(?:not|never|no longer)\s+(?:\w+\s+){0,2}(?:cancel|abandon|delay|shelv)|(?:并未|没有|不会|未)(?:放弃|取消|搁置|暂停|推迟)"
+    return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)
+                 and not (rule.key == "product-release-risk" and (
+                     re.search(negated_change, original, re.I) or re.search(negated_change, text)))), None)
 
 
 def _publication_item(section: str, row: dict, today: date):
@@ -177,7 +188,7 @@ def _publication_item(section: str, row: dict, today: date):
         "marker": (
             "新变量"
             if rule.key
-            in {"payment-commercialization", "product-commercialization", "regulatory-access"}
+            in {"payment-commercialization", "product-commercialization", "product-release-risk", "regulatory-access"}
             else "新证据"
         ),
         "updated": True,

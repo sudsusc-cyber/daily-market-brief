@@ -156,7 +156,7 @@ def test_direct_chart_fallback_also_recovers_final_bar(monkeypatch, interval):
     calls = []
     def get(url, **kwargs):
         calls.append(kwargs["params"])
-        return response(deepcopy(result) if "range" in kwargs["params"] else daily_result("NVDA"))
+        return response(deepcopy(result) if kwargs["params"]["period2"] - kwargs["params"]["period1"] > 86400 else daily_result("NVDA"))
     monkeypatch.setattr(stocks.requests, "get", get)
     closes, last = stocks._yahoo_chart_history("NVDA", interval=interval, period="2y", minimum=120)
     assert closes[-1] == 509.22
@@ -194,7 +194,7 @@ def test_actual_september29_responses_restore_reference_lines_in_email(monkeypat
     fixture = json.loads((Path(__file__).parent / "fixtures/reference_line_null_tail.json").read_text())
     def get(url, **kwargs):
         params = kwargs["params"]
-        key = ("daily" if params["interval"] == "1d" else "weekly") if "range" in params else "target"
+        key = ("daily" if params["interval"] == "1d" else "weekly") if params["period2"] - params["period1"] > 86400 else "target"
         return response(deepcopy(fixture[key]))
     monkeypatch.setattr(stocks.requests, "get", get)
     def primary_unavailable(*args):

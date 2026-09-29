@@ -68,6 +68,7 @@ def chinese_prose(text: str) -> bool:
 _PRICE_EDITORIAL = re.compile(
     r'which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
     r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rallies|surges|jumps|slumps|edges? (?:higher|lower))'
+    r'|wish you (?:had )?bought|regret not buying|unloved .*stock|别错过|后悔没买'
     r'|哪.*股票|值得买|股价.*(?:上涨|下跌|飙升)', re.I)
 _BUSINESS_FACT = re.compile(
     r'\b(?:reported?.*(?:results|earnings|revenue)|earnings|revenue|sales|renew\w*.*(?:licen\w*|agreement)'
@@ -143,6 +144,14 @@ def factual_excerpt(item) -> str:
     title = plain_source(getattr(item, 'title', ''))
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '')
     eligible = []
+    # Mixed headlines often put a buying pitch before a complete reported fact.
+    # Extract only that complete fact, without joining clauses or rewriting it.
+    title_parts = sentences(title)
+    if len(title_parts) > 1 and _PRICE_EDITORIAL.search(title_parts[0]):
+        for part in title_parts[1:]:
+            if (complete_excerpt(part) and not _PRICE_EDITORIAL.search(part)
+                    and re.search(r'\b(?:bought|purchased|acquired|announced|reported)\b|买入|增持|收购|宣布|营收', part, re.I)):
+                return part
     for sentence in sentences(summary):
         if (complete_excerpt(sentence) and not old_event_excerpt(item, sentence)
                 and len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)

@@ -101,13 +101,25 @@ def _judge_signal(
     return "NONE"
 
 
+def _history_bounds(symbol: str, now: datetime, years: int) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Bound both daily and weekly requests to the last completed session.
+
+    A range ending 'now' can contain today's pre-open/intraday bar and current
+    week's live close. Never let those observations replace the morning close.
+    """
+    day = latest_closed_session(symbol, now)
+    end = pd.Timestamp(day, tz=calendar(symbol, now.year).tz) + pd.DateOffset(days=1)
+    return end - pd.DateOffset(years=years), end
+
+
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
 def _yf_history(ticker: yf.Ticker):
     """yfinance 周线拉取,带重试退避(限流时 2s/5s/12s 三次重试)。
 
     yfinance 偶尔返回空 DataFrame 而不抛异常（Yahoo 端间歇性问题）；
     此处显式 raise 让 @retry 退避重试，避免一次空响应就判为失败。"""
-    hist = ticker.history(period="5y", interval="1wk", auto_adjust=False, timeout=20)
+    start, end = _history_bounds(ticker.ticker, datetime.now(UTC), 5)
+    hist = ticker.history(start=start, end=end, interval="1wk", auto_adjust=False, timeout=20)
     if hist is None or hist.empty:
         raise RuntimeError(f"yfinance 返回空数据 for {ticker.ticker}")
     return hist
@@ -116,7 +128,8 @@ def _yf_history(ticker: yf.Ticker):
 @retry(max_attempts=3, base_delay=2.0, backoff=2.5)
 def _yf_daily_history(ticker: yf.Ticker):
     """250 日线使用 250 个真实交易日，不能用 50 周近似。"""
-    hist = ticker.history(period="2y", interval="1d", auto_adjust=False, timeout=20)
+    start, end = _history_bounds(ticker.ticker, datetime.now(UTC), 2)
+    hist = ticker.history(start=start, end=end, interval="1d", auto_adjust=False, timeout=20)
     if hist is None or hist.empty:
         raise RuntimeError(f"yfinance 返回空日线 for {ticker.ticker}")
     return hist
@@ -146,8 +159,10 @@ def _yahoo_chart_history(
     symbol: str, *, interval: str, period: str, minimum: int,
 ) -> tuple[list[float], float | None]:
     """直连 Yahoo Chart；与 yfinance 同源，不能视为独立来源核验。"""
-    result = _request_yahoo_chart(symbol, {"range": period, "interval": interval})
     now = datetime.now(UTC)
+    start, end = _history_bounds(symbol, now, int(period.removesuffix("y")))
+    result = _request_yahoo_chart(symbol, {"period1": int(start.timestamp()),
+                                          "period2": int(end.timestamp()), "interval": interval})
     stamps = result.get("timestamp") or []
     index = pd.to_datetime(stamps, unit="s", utc=True)
     observed = _validate_history_window(index, symbol=symbol, interval=interval, now=now)

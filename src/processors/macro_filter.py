@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
 from src.processors.html_safe import (
@@ -298,3 +299,49 @@ def summarize(
         _MAX_SUMMARY_ATTEMPTS, last_error or "unknown",
     )
     return None
+
+
+def merge_frontier_duplicates(summary, frontier_items):
+    """Show identical source facts once, preserving every validated source link.
+
+    Both the original excerpt and displayed fact must agree. Topic similarity,
+    shared lab names or model decisions alone cannot suppress an update.
+    """
+    from src.processors.news_presentation import publication_text
+    from src.processors.thesis.extractor import _verified_grounding_row
+
+    if not summary or not getattr(summary, "evidence", None):
+        return summary, frontier_items, set()
+
+    def key(row):
+        return (canonical_fact(publication_text(row["excerpt"], source_name=row.get("source_name", ""))),
+                canonical_fact(row["output_text"]))
+
+    visible_urls = {footnote.url for footnote in summary.footnotes}
+    rows = [row for row in summary.evidence if row.get("url") in visible_urls
+            and _verified_grounding_row(summary, row)]
+    known = {key(row) for row in rows}
+    remaining, duplicates = [], []
+    for point in frontier_items:
+        evidence = getattr(point, "evidence", [])
+        if evidence and all(_verified_grounding_row(point, row) and key(row) in known for row in evidence):
+            duplicates.append(point)
+        else:
+            remaining.append(point)
+    if not duplicates:
+        return summary, frontier_items, set()
+    for point in duplicates:
+        rows.extend(point.evidence)
+    items = [SimpleNamespace(title=row["original_title"], summary=row.get("original_summary", ""),
+                             url=row["url"], source=row.get("source_name", ""),
+                             published_at=row.get("published_at"), source_excerpt=row["excerpt"],
+                             translated_excerpt=row.get("validated_text", row["output_text"])) for row in rows]
+    evidence = []
+    html, footnotes = _rebuild_safe_html("<p>" + "".join(f"[{n}]" for n in range(1, len(items) + 1)) + "</p>", items, evidence)
+    # Reconstruction may not discard any original published source or fact.
+    rebuilt = {key(row) for row in evidence}
+    linked = {footnote.url for footnote in footnotes}
+    duplicate_urls = {point.source_url for point in duplicates}
+    if not known <= rebuilt or not (visible_urls | duplicate_urls) <= linked:
+        return summary, frontier_items, set()
+    return MacroNewsSummary(html, footnotes, evidence), remaining, duplicate_urls

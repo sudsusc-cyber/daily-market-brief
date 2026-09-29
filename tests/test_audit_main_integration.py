@@ -23,7 +23,7 @@ from src.valuation.models import ValuationDisplay
     (False, "partial_delivery"), (False, "thesis_publication"), (False, "valuation_timeout"),
     (False, "qqqm_retry"), (False, "qqqm_retry_fail"), (False, "qqqm_retry_timeout"),
     (False, "frontier_silent"), (False, "frontier_source"), (False, "frontier_rejected"),
-    (False, "frontier_partial"), (False, "frontier_processing"),
+    (False, "frontier_partial"), (False, "frontier_processing"), (False, "frontier_duplicate"),
     (False, "figure_silent"), (False, "figure_source"), (False, "figure_rejected"),
     (False, "figure_partial"), (False, "figure_processing"),
 ])
@@ -102,7 +102,7 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
                 "google_news", ["MSFT"])
         good = frontier_item("OpenAI 宣布新的企业云合作。", "good")
         bad = frontier_item("OpenAI announces a cloud agreement", "bad")
-        items = [good, bad] if scenario == "frontier_partial" else [bad]
+        items = [good, bad] if scenario == "frontier_partial" else [good] if scenario == "frontier_duplicate" else [bad]
         errors = ["RSS timeout"] if scenario == "frontier_source" else []
         if scenario == "frontier_source":
             items = []
@@ -117,6 +117,14 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         if scenario == "frontier_processing":
             output = None
         llm.chat.return_value = SimpleNamespace(text=output, error="timeout")
+    if scenario == "frontier_duplicate":
+        from src.processors.source_grounding import grounded_text
+        macro_item = main.macro_news.MacroNewsItem(good.title, now, "https://example.com/macro", "Reuters")
+        macro_bundles = [main.macro_news.MacroFeedBundle("Reuters", [macro_item])]
+        monkeypatch.setattr(main.macro_news, "fetch_all", lambda *a, **k: (macro_bundles, {}))
+        text, evidence = grounded_text(good.title, [macro_item])
+        summary = main.macro_filter.MacroNewsSummary(text, [main.macro_filter.Footnote(1, macro_item.url, "Reuters")], evidence)
+        monkeypatch.setattr(main.macro_filter, "summarize", lambda *a, **k: summary)
     if scenario.startswith("figure_"):
         good = main.figures.FigureMention("黄仁勋明确表示将投资100亿美元建设数据中心。", "", now,
                                           "https://example.com/good", "Reuters")
@@ -205,7 +213,7 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
     if scenario.startswith("frontier_"):
         expected = {"frontier_silent": "silent", "frontier_source": "source_unavailable",
                     "frontier_rejected": "content_rejected", "frontier_partial": "partial",
-                    "frontier_processing": "processing_failed"}[scenario]
+                    "frontier_processing": "processing_failed", "frontier_duplicate": "silent"}[scenario]
         assert health["frontier"]["state"] == expected
         body = sent[0]["html_body"]
         assert "前沿动态整理未完成" not in body
@@ -223,7 +231,12 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
             assert not health["frontier"]["silence"]
         saved_frontier = main.frontier_labs._load_pushed(tmp_path / "pushed_frontier_labs.json")
         assert set(saved_frontier) == (
-            {main.frontier_labs._content_hash("OpenAI", good)} if expected == "partial" else set())
+            {main.frontier_labs._content_hash("OpenAI", good)} if expected == "partial" or scenario == "frontier_duplicate" else set())
+    if scenario == "frontier_duplicate":
+        assert len(manifest["content"]["summary_mapping"]["macro"]) == 2
+        assert manifest["content"]["diagnostics"]["frontier"]["merged_into_macro"] == [good.url]
+        assert sent[0]["html_body"].count("宣布新的企业云合作。") == 1
+        assert good.url in sent[0]["html_body"] and macro_item.url in sent[0]["html_body"]
     if scenario.startswith("figure_"):
         body = sent[0]["html_body"]
         figures_health = health["figures"]

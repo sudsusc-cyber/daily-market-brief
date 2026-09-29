@@ -53,3 +53,30 @@ multilingual semantics. Unsupported candidates remain rejected. An externally
 blocked valuation source can still require a truthfully dated retained value;
 this audit does not relax data age, source validation or valuation rules. No real
 SMTP delivery is part of this audit. Production validation uses `preview_only`.
+
+## Production preview follow-up (run 36507985129)
+
+The merged preview ran on `7131405`, with `delivery.status=not_sent` and
+`smtp_calls=0`. Source/body/citation checks passed, but review found additional
+presentation/state errors, so that preview was **not** accepted as the final result:
+
+- Yahoo's unbounded requests started including September 29 pre-open/intraday HK
+  bars. Both primary and fallback rejected them as newer than the September 28
+  completed session. Bound both daily and weekly requests to local midnight
+  following the last completed exchange session; retain identity, continuity,
+  price and target-date checks. A server ignoring the requested end is still
+  rejected. Live follow-up returned all 15 complete price/reference-line signals
+  as of September 28, including Tencent and Pop Mart. No live quote/metadata
+  substitution or change to Close adjustment basis or strategy.
+- A Berkshire headline joined a buying pitch with an actual Lennar purchase.
+  Select the complete purchase sentence only; retain the immutable headline in
+  audit evidence and reject a pitch without an independent reporting sentence.
+- A cancelled model release matched the generic product-commercialization
+  watchpoint through the word “release”. Give cancelled/shelved/delayed launches
+  their own neutral monitoring question; denial of cancellation is not a setback.
+  The final rendering gate revalidates the selected watchpoint against the source.
+- An identical OpenAI fact appeared in macro and frontier. Merge only when both
+  original excerpt and displayed fact agree; preserve all validated source links
+  in the macro paragraph, revalidate the rebuilt mapping, and commit the frontier
+  hash only after that source actually appears in an accepted email. Different
+  facts, quantities or states remain separate candidates.
