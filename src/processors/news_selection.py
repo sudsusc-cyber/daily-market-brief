@@ -136,23 +136,10 @@ def meaningful_quote(item) -> bool:
 
 
 def neutral_macro_topic(items, *, supported_text: str = '') -> str:
-    # Prefer the actual published evidence, especially for rolling-page titles.
+    from src.processors.macro_topics import macro_topic
+
     text = supported_text or " ".join(plain_source(item.title) for item in items)
-    for topic, pattern in (
-        ("国防开支", r'(?:missile|defen[cs]e|military|导弹|国防|军工).*(?:contract|spending|合同|开支)'
-         r'|(?:contract|spending|合同|开支).*(?:missile|defen[cs]e|military|导弹|国防|军工)'),
-        ("能源市场", r'\boil\b|\bcrude\b|\benergy\b|油价|原油|石油|能源'),
-        ("财政政策", r'tax|Treasury threatens|避税|财政|税收'),
-        ("国际贸易", r"tariff|trade|关税|贸易"),
-        ("地缘政治", r"Russia|Ukraine|Iran|ceasefire|terror|suspects|战争|停火|俄乌|嫌疑人|恐怖"),
-        ("资本流动", r"capital flows|fund flows|foreign capital|资金流|外资"),
-        ("债券市场", r'\bbonds?\b|Treasuries|债券|国债'),
-        ("货币政策", r"\bFed\b|FOMC|美联储|降息|加息"),
-        ("通胀数据", r"inflation|\bCPI\b|通胀"),
-    ):
-        if re.search(pattern, text, re.I):
-            return topic
-    return "宏观动态"
+    return macro_topic(text)
 
 
 def macro_candidate(item) -> bool:

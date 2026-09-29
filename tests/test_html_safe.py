@@ -273,7 +273,7 @@ def test_macro_filter_keeps_safe_https_link() -> None:
     assert "color:#0563C1!important" in summary.summary_html
 
 
-def test_macro_filter_moves_leading_footnotes_to_each_supported_fact_end() -> None:
+def test_macro_filter_moves_leading_footnotes_to_topic_paragraph_end() -> None:
     bundle = MacroFeedBundle(
         source="Reuters",
         items=[
@@ -296,8 +296,8 @@ def test_macro_filter_moves_leading_footnotes_to_each_supported_fact_end() -> No
     assert summary is not None
     html = summary.summary_html
     assert html.index("能源市场") < html.index("[1]") < html.index("[2]")
-    assert html.endswith("</sup></span></p>")
-    assert html.index("油价上涨") < html.index("[1]") < html.index("油价下跌") < html.index("[2]")
+    assert html.endswith("</sup></p>")
+    assert html.index("油价上涨") < html.index("油价下跌") < html.index("[1]") < html.index("[2]")
 
 
 def test_macro_filter_strips_unknown_tags() -> None:
