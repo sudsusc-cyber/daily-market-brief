@@ -19,7 +19,7 @@ import requests
 import yfinance as yf
 
 from src.config import BuyLine, BuyStrategy, Holding, buy_strategy
-from src.utils.market_clock import validate_history
+from src.utils.market_clock import calendar, latest_closed_session, validate_history
 from src.utils.retry import retry
 from src.utils.secrets import redact_secrets
 
@@ -122,24 +122,12 @@ def _yf_daily_history(ticker: yf.Ticker):
     return hist
 
 
-def _yahoo_chart_history(
-    symbol: str, *, interval: str, period: str, minimum: int,
-) -> tuple[list[float], float | None]:
-    """yfinance 库路径故障时，直连 Yahoo Chart JSON 的备路径。
-
-    两者的底层数据同源，但认证/cookie/库版本链路不同；
-    这能覆盖 yfinance 包回归、crumb 故障和空 DataFrame，同时
-    保持与主路径一致的复权/交易所口径。
-    """
+def _request_yahoo_chart(symbol: str, params: dict) -> dict:
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
     resp = requests.get(
         url,
-        params={
-            "range": period,
-            "interval": interval,
-            "events": "history",
-            "includeAdjustedClose": "true",
-        },
+        params={"events": "history", "includeAdjustedClose": "true",
+                "includePrePost": "false", **params},
         headers={"User-Agent": "Mozilla/5.0 (compatible; daily-market-brief/0.1)"},
         timeout=(10, 20),
     )
@@ -151,7 +139,14 @@ def _yahoo_chart_history(
     results = chart.get("result") or []
     if not results:
         raise RuntimeError("Yahoo Chart 返回空 result")
-    result = results[0]
+    return results[0]
+
+
+def _yahoo_chart_history(
+    symbol: str, *, interval: str, period: str, minimum: int,
+) -> tuple[list[float], float | None]:
+    """直连 Yahoo Chart；与 yfinance 同源，不能视为独立来源核验。"""
+    result = _request_yahoo_chart(symbol, {"range": period, "interval": interval})
     now = datetime.now(UTC)
     stamps = result.get("timestamp") or []
     index = pd.to_datetime(stamps, unit="s", utc=True)
@@ -164,9 +159,10 @@ def _yahoo_chart_history(
     meta = result.get("meta") or {}
     _validate_identity(meta, symbol)
     closes = PriceHistory(closes, observed_at=observed.isoformat(), bar_date=observed.isoformat())
+    closes = _recover_final_close(closes, symbol=symbol, interval=interval, now=now)
     _checked_mean(closes, minimum)
-    # Both date and unadjusted Close are from this chart response. Never mix
-    # regularMarketPrice/fast_info with a different response's timestamp.
+    # Each price/date pair comes from its own verified chart response, including
+    # a recovered final bar. Never mix regularMarketPrice/fast_info with dates.
     return closes, closes[-1] if interval == "1d" else None
 
 
@@ -190,16 +186,78 @@ def _checked_mean(closes: list[float], periods: int) -> float:
 
 
 class PriceHistory(list):
-    def __init__(self, values, *, observed_at: str, bar_date: str | None = None):
+    def __init__(self, values, *, observed_at: str, bar_date: str | None = None,
+                 recovery_source: str = ""):
         super().__init__(values)
         self.observed_at = observed_at
         self.bar_date = bar_date or observed_at
+        self.recovery_source = recovery_source
+
+
+def _yahoo_session_close(symbol: str, *, now: datetime) -> PriceHistory:
+    """整段历史末尾为空时，重新取得目标交易日的一根真实日 K。
+
+    不使用 regularMarketPrice/fast_info，不以请求时间充当观测日期。
+    单日查询与长窗口查询可有不同的发布/缓存状态。
+    """
+    expected = latest_closed_session(symbol, now)
+    start = pd.Timestamp(expected, tz=calendar(symbol, now.year).tz)
+    end = start + pd.DateOffset(days=1)
+    result = _request_yahoo_chart(symbol, {
+        "period1": int(start.timestamp()), "period2": int(end.timestamp()),
+        "interval": "1d",
+    })
+    _validate_identity(result.get("meta") or {}, symbol)
+    stamps = result.get("timestamp") or []
+    values = (((result.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+    if len(stamps) != 1 or len(values) != 1 or isinstance(values[0], bool):
+        raise ValueError("目标交易日重取必须返回唯一日线及价格")
+    observed = validate_history(pd.to_datetime(stamps, unit="s", utc=True),
+                                symbol=symbol, interval="1d", now=now)
+    closes = PriceHistory([float(values[0]) if values[0] is not None else float("nan")],
+                          observed_at=observed.isoformat(), recovery_source="yahoo_session")
+    _checked_mean(closes, 1)
+    return closes
+
+
+def _history_periods(symbol: str, interval: str) -> int:
+    growth = buy_strategy(symbol).dca_line == "250d"
+    return (250 if growth else 1) if interval == "1d" else (120 if growth else 200)
+
+
+def _recover_final_close(closes: PriceHistory, *, symbol: str,
+                         interval: str, now: datetime) -> PriceHistory:
+    """仅修复已通过日期连续性核验的末尾空价，不删除或补齐中间缺项。"""
+    if not closes or (math.isfinite(closes[-1]) and closes[-1] > 0):
+        return closes
+    periods = _history_periods(symbol, interval)
+    if len(closes) < periods:
+        _checked_mean(closes, periods)
+    if periods > 1:
+        _checked_mean(closes[:-1], periods - 1)
+    expected = latest_closed_session(symbol, now).isoformat()
+    logger.warning("stocks.final_bar_invalid ticker=%s interval=%s bar_date=%s expected_date=%s",
+                   symbol, interval, closes.bar_date, expected)
+    try:
+        daily = _yahoo_session_close(symbol, now=now)
+    except Exception as exc:
+        raise ValueError(
+            f"末尾日/周线价格无效 bar_date={closes.bar_date} expected_date={expected}; "
+            f"目标日重取失败: {redact_secrets(str(exc))[:180]}"
+        ) from exc
+    # A current week's Close is the last completed session's daily Close.
+    # Earlier weekly closes and the existing unadjusted Close basis stay intact.
+    repaired = PriceHistory([*closes[:-1], daily[-1]], observed_at=daily.observed_at,
+                            bar_date=closes.bar_date, recovery_source=daily.recovery_source)
+    logger.info("stocks.final_bar_recovered ticker=%s interval=%s observed_at=%s source=%s",
+                symbol, interval, daily.observed_at, daily.recovery_source)
+    return repaired
 
 
 def _validate_history_window(index, *, symbol: str, interval: str, now: datetime):
     # Missing rows outside this strategy's active window cannot affect its
     # averages. In particular, growth holdings need 120 weeks, not 200 weeks.
-    periods = (250 if buy_strategy(symbol).dca_line == "250d" else 1) if interval == "1d" else (120 if buy_strategy(symbol).dca_line == "250d" else 200)
+    periods = _history_periods(symbol, interval)
     return validate_history(index[-periods:], symbol=symbol, interval=interval, now=now)
 
 
@@ -230,9 +288,11 @@ def _yf_verified_daily(symbol: str) -> list[float]:
 def _history_closes(hist, *, symbol: str, interval: str = "1wk") -> list[float]:
     if hist is None or hist.empty or "Close" not in hist:
         raise ValueError("yfinance 返回空行情")
-    observed = _validate_history_window(hist.index, symbol=symbol, interval=interval, now=datetime.now(UTC))
-    return PriceHistory([float(value) if value is not None else float("nan")
-                         for value in hist["Close"].tolist()], observed_at=observed.isoformat())
+    now = datetime.now(UTC)
+    observed = _validate_history_window(hist.index, symbol=symbol, interval=interval, now=now)
+    closes = PriceHistory([float(value) if value is not None else float("nan")
+                           for value in hist["Close"].tolist()], observed_at=observed.isoformat())
+    return _recover_final_close(closes, symbol=symbol, interval=interval, now=now)
 
 
 def _build_signal(
@@ -243,6 +303,10 @@ def _build_signal(
     data_source: str,
     daily_closes: list[float] | None = None,
 ) -> StockSignal:
+    for label, history in (("daily", daily_closes), ("weekly", closes)):
+        recovery = getattr(history, "recovery_source", "")
+        if recovery:
+            data_source += f"+{label}_recovery:{recovery}"
     strategy = buy_strategy(holding.ticker)
     needs_daily = strategy.dca_line == "250d"
     _checked_mean(closes, 120 if needs_daily else 200)
@@ -309,13 +373,16 @@ def fetch_one(holding: Holding) -> StockSignal:
         _checked_mean(daily_closes, minimum)
         daily_source = "+daily:yfinance"
     except Exception as exc:
-        logger.warning("stocks.daily_primary_failed ticker=%s type=%s", holding.ticker, type(exc).__name__)
+        logger.warning("stocks.daily_primary_failed ticker=%s type=%s reason=%s",
+                       holding.ticker, type(exc).__name__, redact_secrets(str(exc))[:240])
         try:
             daily_closes, _ = _yahoo_chart_daily(symbol)
             _checked_mean(daily_closes, minimum)
             daily_source = "+daily:yahoo_chart"
         except Exception as daily_exc:
-            return _failed(holding, f"收盘日线主备链路均失败: {redact_secrets(str(daily_exc))[:180]}")
+            return _failed(holding, "收盘日线主备链路均失败: "
+                           f"yfinance {redact_secrets(str(exc))[:240]}; "
+                           f"Yahoo Chart {redact_secrets(str(daily_exc))[:240]}")
     primary_error: Exception | None = None
     try:
         ticker = yf.Ticker(symbol)
