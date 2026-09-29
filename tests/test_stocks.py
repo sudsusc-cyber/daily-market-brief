@@ -158,7 +158,9 @@ def test_daily_history_request_is_daily_and_unadjusted():
         return pd.DataFrame({"Close": [150.0] * 300})
 
     stocks._yf_daily_history(SimpleNamespace(ticker="NVDA", history=history))
-    assert calls == [{"period": "2y", "interval": "1d", "auto_adjust": False, "timeout": 20}]
+    assert calls == [{"start": pd.Timestamp("2024-09-04", tz="America/New_York"),
+                      "end": pd.Timestamp("2026-09-04", tz="America/New_York"),
+                      "interval": "1d", "auto_adjust": False, "timeout": 20}]
 
 
 def test_growth_daily_primary_failure_uses_daily_backup(monkeypatch):

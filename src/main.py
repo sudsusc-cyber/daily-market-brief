@@ -554,6 +554,9 @@ def main() -> int:
         frontier_labs_bundles,
         client=llm,
     )
+    macro_news_summary, frontier_report.items, frontier_merged_urls = macro_filter.merge_frontier_duplicates(
+        macro_news_summary, frontier_report.items,
+    )
     frontier_labs_items = frontier_report.items
     frontier_labs_fallback_note = frontier_report.fallback_note
     if frontier_report.failures:
@@ -735,6 +738,7 @@ def main() -> int:
             "source_failures": frontier_report.source_failures,
             "processing_failures": frontier_report.processing_failures,
             "content_rejections": frontier_report.content_rejections,
+            "merged_into_macro": sorted(frontier_merged_urls),
         }, "figures": {summary.person: summary.content_rejections for summary in figure_results
                         if summary.content_rejections}},
         expected_tickers=[holding.ticker for holding in HOLDINGS] if settings.valuation_enabled else [],
@@ -852,7 +856,7 @@ def main() -> int:
     try:
         frontier_labs.commit_pushed(frontier_labs_state_path, published_pending(
             frontier_labs_pending_pushed, publication_candidates["frontier"],
-            {item.source_url for item in frontier_labs_items[:2]},
+            {item.source_url for item in frontier_labs_items[:2]} | frontier_merged_urls,
         ))
     except Exception as exc:  # noqa: BLE001
         logger.warning("frontier_labs.commit_pushed_failed exc=%r", exc)
