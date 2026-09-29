@@ -1,7 +1,7 @@
 """
 宏观新闻头条 → 主题分段叙述(模块 4 加工,M4 内修复后版本)。
 
-每个独立事实单独成段,每段一个主题词开头,段末 <sup>[N]</sup>。
+同主题的独立事实同段展示,每条事实紧跟自己的 <sup>[N]</sup>。
 返回 dict { summary_html, footnotes } 或 None。
 """
 
@@ -166,7 +166,7 @@ def _rebuild_safe_html(
 
     - LLM 标签全部丢弃(只信任脚注标记 [N] 与段落分隔)
     - 段落识别:按 `<p>...</p>` 拆,失败则按双换行拆
-    - 逐来源核验后按事实拆段,仅相同事实合并来源
+    - 逐来源核验后按具体主题分段,仅相同事实合并来源
     - 只给实际刊出的事实分配脚注,主题由来源确定,文本转义后构造 HTML
     - URL scheme 白名单:非 http(s) URL 的脚注被丢弃
     """
@@ -187,8 +187,8 @@ def _rebuild_safe_html(
         paragraphs_raw = [strip_all_tags(raw_text).strip()]
 
     # A model grouping/citation is not proof that two articles describe one
-    # event. Rebuild one fact per paragraph; merge only literally equivalent
-    # supported facts, keeping all of their actual source links.
+    # event. Only literally equivalent facts share source links. Related facts
+    # may share a theme paragraph, but each retains its own evidence and citation.
     groups = {}
     seen = set()
     for para in paragraphs_raw:
@@ -211,19 +211,32 @@ def _rebuild_safe_html(
             group["items"].append(item)
             group["evidence"].extend(mapping)
 
-    parts, footnotes = [], []
+    themes = {}
     for group in groups.values():
-        citations = []
-        for item in group["items"]:
-            index = len(footnotes) + 1
-            footnotes.append(Footnote(index=index, url=item.url, source=item.source or ""))
-            citations.append("<sup>" + safe_anchor(item.url, f"[{index}]", style=FOOTNOTE_ANCHOR_STYLE) + "</sup>")
-        if evidence is not None:
-            evidence.extend(group["evidence"])
-        topic = neutral_macro_topic(group["items"])
+        topic = neutral_macro_topic(group["items"], supported_text=group["text"])
+        # Unknown topics are not a relationship: do not lump unrelated facts
+        # together merely because both received the fallback label.
+        key = (topic, canonical_fact(group["text"]) if topic == "宏观动态" else "")
+        themes.setdefault(key, []).append(group)
+
+    parts, footnotes = [], []
+    for (topic, _), related in themes.items():
+        facts = []
+        for group in related:
+            citations = []
+            for item in group["items"]:
+                index = len(footnotes) + 1
+                footnotes.append(Footnote(index=index, url=item.url, source=item.source or ""))
+                citations.append("<sup>" + safe_anchor(item.url, f"[{index}]", style=FOOTNOTE_ANCHOR_STYLE) + "</sup>")
+            if evidence is not None:
+                evidence.extend(group["evidence"])
+            text = group["text"].rstrip()
+            if text[-1:] not in '。！？!?':
+                text = text.rstrip('.') + '。'
+            facts.append(f'<span data-macro-fact="true">{escape_text(text)}{"".join(citations)}</span>')
         parts.append(f'<p style="{_PARAGRAPH_STYLE}">'
                      f'<span style="{_THEME_STYLE}">{escape_text(topic)}。</span>'
-                     f'{escape_text(group["text"])}{"".join(citations)}</p>')
+                     f'{" ".join(facts)}</p>')
     return "".join(parts), footnotes
 
 

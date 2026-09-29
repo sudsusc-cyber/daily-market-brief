@@ -30,7 +30,10 @@ _BARE_LISTINGS = {
     'Mastercard': 'MA', 'Alphabet': 'GOOG|GOOGL', 'NVIDIA': 'NVDA',
     'Berkshire Hathaway': r'BRK[.-][AB]', 'Costco': 'COST',
     '高通': 'QCOM', '苹果': 'AAPL', '微软': 'MSFT', '万事达': 'MA',
+    '泡泡玛特': r'0?9992\.HK', 'POP MART': r'0?9992\.HK',
+    '腾讯': r'0?0700\.HK|700\.HK', 'Tencent': r'0?0700\.HK|700\.HK',
 }
+_FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Treasuries': '美国国债'}
 
 
 def publication_text(text: str, *, source_name: str = '') -> str:
@@ -49,6 +52,8 @@ def publication_text(text: str, *, source_name: str = '') -> str:
                       r'\1', text, flags=re.I)
     for name, short_name in _LEGAL_NAMES.items():
         text = re.sub(r'(?<![A-Za-z])' + re.escape(name) + r'(?![A-Za-z])', short_name, text, flags=re.I)
+    for name, translation in _FINANCIAL_TERMS.items():
+        text = re.sub(r'\b' + re.escape(name) + r'\b', translation, text)
     # These commas separate prose, not digits in a financial quantity.
     text = re.sub(r'(?<!\d),|,(?!\d)', '，', text)
     text = re.sub(r'[ \t]+', ' ', text)
