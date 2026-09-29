@@ -218,13 +218,13 @@ def _rebuild_safe_html(
 
     themes = {}
     topics = macro_topics([group["text"] for group in groups.values()])
-    for group, topic in zip(groups.values(), topics, strict=True):
+    for position, (group, topic) in enumerate(zip(groups.values(), topics, strict=True)):
         # Every publication path goes through this one canonical-topic map.
-        # There is no per-source, original-paragraph or catch-all exception.
-        themes.setdefault(topic, []).append(group)
+        # Group known topics across sources; an unknown label proves no relation.
+        themes.setdefault((topic, position if topic == "其他宏观" else None), []).append(group)
 
     parts, footnotes = [], []
-    for topic, related in themes.items():
+    for (topic, _), related in themes.items():
         facts, paragraph_citations = [], []
         for group in related:
             citations = []
@@ -239,8 +239,9 @@ def _rebuild_safe_html(
             if text[-1:] not in '。！？!?':
                 text = text.rstrip('.') + '。'
             facts.append(f'<span data-macro-fact="true">{escape_text(text)}</span>')
+        heading = f'<span style="{_THEME_STYLE}">{escape_text(topic)}。</span>' if topic != "其他宏观" else ""
         parts.append(f'<p style="{_PARAGRAPH_STYLE}">'
-                     f'<span style="{_THEME_STYLE}">{escape_text(topic)}。</span>'
+                     f'{heading}'
                      f'{" ".join(facts)}{"".join(paragraph_citations)}</p>')
     return "".join(parts), footnotes
 

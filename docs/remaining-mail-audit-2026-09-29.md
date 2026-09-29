@@ -80,3 +80,46 @@ presentation/state errors, so that preview was **not** accepted as the final res
   in the macro paragraph, revalidate the rebuilt mapping, and commit the frontier
   hash only after that source actually appears in an accepted email. Different
   facts, quantities or states remain separate candidates.
+
+## RSS wrapper follow-up (run 36509293133)
+
+Production preview on `46c350e` had 31 current verified observations, four retained
+valuations, zero missing observations and zero unresolved conflicts. HTML was
+97,606 bytes and SMTP calls remained zero. The release-adjustment judgment now
+matched the visible OpenAI cancellation news, and all 15 reference lines worked.
+
+The final text audit additionally caught two RSS parsing defects:
+
+- Figure quote screening inspected raw HTML. Quotes around `href`/`target`
+  incorrectly qualified a corporate Nvidia statement as Jensen Huang's speech.
+  Inspect rendered text only, reject explicitly corporate-attributed statements,
+  and preserve real named-person/direct-quote markers (including “says”).
+- Google News's rendered summary separated a known publisher with two NBSPs;
+  its translation retained two spaces instead of a dash. Strip that exact
+  publisher-tail form at presentation, preserving source fields and in-sentence
+  attribution. Unknown names or ordinary single-space prose are not removed.
+
+These exact archived wrappers and translation forms are regression fixtures.
+The corrected archive replay retains content/source bindings and final-render
+judgment validation. It is an offline revision of that preview's inputs, not a
+new SMTP send or a claim that arbitrary future translations are infallible.
+
+Visual review of the same archive also showed six unrelated facts grouped under
+“其他宏观”. Add concrete AI safety, elections/judicial, IPO/capital-market and
+credit-market rules, plus Chinese tax-policy synonyms. Same recognized topics
+remain one paragraph; unclassified facts remain independent, without a made-up
+shared heading. Preserve each fact, source and citation through reconstruction.
+
+The same preview's poetic holdings introduction invented “eleven boats” despite
+the actual signal set. Enforce the existing no-quantity/no-trade-advice/no-new-
+trigger prompt constraints in code, retry unsupported text once, and use the
+existing deterministic holding-count introduction on failure. Reject overlong
+text instead of cutting a sentence. These are bounded checks, not a general
+semantic proof of every possible metaphor.
+
+Final verification: 1,807 tests passed on each of Python 3.11 and 3.12; Ruff and
+`git diff --check` passed. The changed-block replay of run 36509293133 is 95,787
+HTML bytes, preserves all 15 price/reference-line rows and four dated retained
+valuations, and passes original-excerpt/body/source mapping checks. Browser review
+confirmed separated macro topics, grouped same-topic facts and readable source
+footers. This remains an explicitly marked offline artifact with zero SMTP calls.

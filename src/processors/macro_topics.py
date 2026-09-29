@@ -32,8 +32,13 @@ def macro_topic(text: str) -> str:
         ('国防开支', r'(?:missile|defen[cs]e|military|导弹|国防|军工).*(?:contract|spending|合同|开支)'
          r'|(?:contract|spending|合同|开支).*(?:missile|defen[cs]e|military|导弹|国防|军工)'),
         ('能源市场', r'\boil\b|\bcrude\b|\benergy\b|natural gas|油价|原油|石油|能源|天然气'),
-        ('财政政策', r'\btax\w*\b|fiscal|government spending|避税|财政|税收|政府支出'),
+        ('财政政策', r'\btax\w*\b|\bIRS\b|fiscal|government spending|避税|财政|税收|减税|加税|税务|政府支出'),
         ('货币政策', r'\bFed\b|FOMC|Federal Reserve|central bank|\bECB\b|美联储|央行|降息|加息'),
+        ('AI 安全', r'(?:\bAI\b|OpenAI|Anthropic|人工智能|模型).*(?:safety|安全|失控|存在性风险|生存风险)'
+         r'|(?:safety|安全).*(?:\bAI\b|OpenAI|Anthropic|人工智能|模型)'),
+        ('选举与司法', r'election|electoral|选举|选务'),
+        ('资本市场', r'\bIPO\b|listing|上市|招股|首次公开募股'),
+        ('信用市场', r'subprime|credit risk|auto loans?|borrowers|次级|信贷|信用风险|汽车贷款|借款人'),
         ('债券市场', r'\bbonds?\b|债券|国债'),
         ('通胀数据', r'inflation|\bCPI\b|\bPCE\b|通胀|物价指数'),
         ('就业市场', r'payroll|unemployment|labor market|非农|失业|就业'),
@@ -47,7 +52,8 @@ def macro_topic(text: str) -> str:
             return topic
     if _has(_CHINA, text):
         return '中国经济'
-    # A neutral catch-all is one section, not repeated fake-specific headings.
+    # Unclassified is not evidence that unrelated facts share a topic. The
+    # renderer keeps these independent without inventing specific headings.
     return '其他宏观'
 
 
