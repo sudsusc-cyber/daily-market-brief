@@ -32,9 +32,9 @@ _BARE_LISTINGS = {
     'Berkshire Hathaway': r'BRK[.-][AB]', 'Costco': 'COST',
     '高通': 'QCOM', '苹果': 'AAPL', '微软': 'MSFT', '万事达': 'MA',
     '泡泡玛特': r'0?9992\.HK', 'POP MART': r'0?9992\.HK',
-    '腾讯': r'0?0700\.HK|700\.HK', 'Tencent': r'0?0700\.HK|700\.HK',
+    '腾讯控股': r'0?0700\.HK|700\.HK', '腾讯': r'0?0700\.HK|700\.HK', 'Tencent': r'0?0700\.HK|700\.HK',
 }
-_FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Treasuries': '美国国债',
+_FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Fed': '美联储', 'Treasuries': '美国国债',
                     'Strait of Hormuz': '霍尔木兹海峡', 'Hormuz': '霍尔木兹海峡',
                     'European Union': '欧盟', 'EU': '欧盟', 'Germany': '德国',
                     'Saudi Arabia': '沙特阿拉伯', 'Australia': '澳大利亚', 'Iran': '伊朗', 'Satya Nadella': '萨提亚·纳德拉'}
@@ -57,6 +57,9 @@ def publication_text(text: str, *, source_name: str = '') -> str:
             text = re.sub(r'(?:\s*[-–—|]+\s*|\s{2,})' + re.escape(name) + r'[。.]?\s*$', '', text, flags=re.I)
         if text == before:
             break
+    # A standalone read-on teaser adds no fact and promises content absent from the brief.
+    # Remove only an exact terminal sentence, never a clause followed by actual details.
+    text = re.sub(r'(?:[。.!?]\s*|^)(?:以下是预期情况|以下是你需要了解的内容)[。.!?]?$', '', text).strip()
     text = _LISTING.sub('', text)
     for name, ticker in _BARE_LISTINGS.items():
         text = re.sub(r'(?<![A-Za-z])(' + re.escape(name) + r')\s*[（(](?:' + ticker + r')[)）]',
