@@ -57,6 +57,9 @@ def publication_text(text: str, *, source_name: str = '') -> str:
             text = re.sub(r'(?:\s*[-–—|]+\s*|\s{2,})' + re.escape(name) + r'[。.]?\s*$', '', text, flags=re.I)
         if text == before:
             break
+    # A standalone read-on teaser adds no fact and promises content absent from the brief.
+    # Remove only an exact terminal sentence, never a clause followed by actual details.
+    text = re.sub(r'(?:[。.!?]\s*|^)(?:以下是预期情况|以下是你需要了解的内容)[。.!?]?$', '', text).strip()
     text = _LISTING.sub('', text)
     for name, ticker in _BARE_LISTINGS.items():
         text = re.sub(r'(?<![A-Za-z])(' + re.escape(name) + r')\s*[（(](?:' + ticker + r')[)）]',

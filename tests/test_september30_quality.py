@@ -201,3 +201,8 @@ def test_quality_alert_has_specific_subject_and_no_credential_troubleshooting(mo
     assert "邮件已发送" in sent[0]["subject"]
     assert "PAT 过期" not in sent[0]["html_body"] and "SMTP 授权码" not in sent[0]["html_body"]
     assert "<script>" not in sent[0]["html_body"] and "&lt;script&gt;" in sent[0]["html_body"]
+
+
+def test_terminal_read_on_teaser_is_removed_without_dropping_forecast_details():
+    assert publication_text('Fed 指标将于周三发布。以下是预期情况。') == '美联储指标将于周三发布'
+    assert publication_text('以下是预期情况：通胀可能为3%。') == '以下是预期情况：通胀可能为3%。'
