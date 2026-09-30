@@ -24,7 +24,7 @@ import os
 import re
 import sys
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 # 让脚本能找到 src/
@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.sender.smtp_sender import send_html_email
 from src.settings import load_email_settings
-from src.utils.action_evidence import candidate_run, run_evidence, workflow_runs
+from src.utils.action_evidence import bjt_date, candidate_run, pages, run_evidence, workflow_runs
 from src.utils.dates import BEIJING
 from src.utils.holidays import should_send_today
 
@@ -57,7 +57,7 @@ def _bjt_date_of_iso(iso_str: str) -> str | None:
     return dt.astimezone(BEIJING).date().isoformat()
 
 
-def _github_json(url: str, token: str) -> dict:
+def _github_json(url: str, token: str) -> dict | list:
     """调用 GitHub REST API 并返回 JSON。"""
     if not url.startswith("https://api.github.com/"):
         raise ValueError("GitHub API URL must use the official HTTPS endpoint")
@@ -73,6 +73,43 @@ def _run_has_delivery_confirmation(*, repo: str, token: str, run_id: int) -> boo
     """Jobs API 中存在成功的 Confirm email delivery 步骤才算实际送达。"""
     return run_evidence(lambda url: _github_json(url, token), repo, run_id,
                         today=_today_beijing_iso())["full"]
+
+
+def _quality_annotation_details(repo: str, token: str, run_id: int, today: str) -> str:
+    """Read only our quality annotation from the job for the affected edition.
+
+    Diagnostics failure must never erase confirmed SMTP acceptance. Bound pages
+    and text; never embed arbitrary workflow log output in a recipient email.
+    """
+    try:
+        jobs = pages(lambda url: _github_json(url, token),
+                     f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/jobs?filter=all&per_page=100", "jobs")
+        messages = []
+        for job in jobs:
+            relevant = any(step.get('conclusion') == 'success' and
+                           step.get('name', '').partition(' | ')[0] == 'Report content quality warning' and
+                           (step['name'].partition(' | ')[2] or bjt_date(step.get('completed_at'))) == today
+                           for step in job.get('steps', []))
+            if not relevant:
+                continue
+            check_url = job.get('check_run_url', '')
+            if not re.fullmatch(re.escape(f'https://api.github.com/repos/{repo}/check-runs/') + r'\d+', check_url):
+                continue
+            for page in range(1, 11):
+                rows = _github_json(f'{check_url}/annotations?per_page=100&page={page}', token)
+                if not isinstance(rows, list):
+                    raise ValueError('invalid annotation response')
+                for row in rows:
+                    if row.get('title') == 'Daily brief content quality':
+                        message = str(row.get('message', ''))[:6000]
+                        message = re.sub(r'[\w.+-]+@[\w.-]+', '[email]', message)
+                        messages.append(message)
+                if len(rows) < 100:
+                    break
+        return '\n'.join(dict.fromkeys(messages))[:6000] or '质量明细暂不可读取，请查看本次运行归档。'
+    except Exception as exc:
+        logger.warning('monitor.quality_details_unavailable type=%s', type(exc).__name__)
+        return '质量明细读取失败；SMTP 已接受的结论不变，请查看本次运行归档。'
 
 
 def check_today_status() -> tuple[bool, str]:
@@ -117,7 +154,9 @@ def check_today_status() -> tuple[bool, str]:
                 if not evidence["full"]:
                     return False, f"SMTP 部分接受 run_id={run_id}；禁止自动整封重发，请核对拒收状态"
                 if evidence["degraded"]:
-                    return False, f"邮件已全体 SMTP 接受，但内容降级 run_id={run_id}；仅质量告警，禁止整封重发"
+                    details = _quality_annotation_details(repo, token, run_id, today)
+                    return False, (f"邮件已全体 SMTP 接受，但内容降级 run_id={run_id}；仅质量告警，禁止整封重发\n"
+                                   f"运行：https://github.com/{repo}/actions/runs/{run_id}\n{details}")
                 return True, f"今日邮件已确认送达 run_id={run_id} edition={today}"
 
         except Exception as exc:  # noqa: BLE001
@@ -154,12 +193,14 @@ def send_alert(reason: str) -> None:
     cronjob_url = "https://console.cron-job.org/jobs"
     safe_reason = _html.escape(reason or "未知原因")
 
-    subject = "⚠️ 朝闻录监控告警 — 投递或内容质量异常"
+    quality_only = reason.startswith("邮件已全体 SMTP 接受，但内容降级")
+    subject = "⚠️ 朝闻录内容质量提醒 — 邮件已发送" if quality_only else "⚠️ 朝闻录监控告警 — 投递异常"
+    heading = "内容质量提醒（邮件已发送）" if quality_only else "监控告警"
     body = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 640px; margin: 0 auto; padding: 24px; color: #1a1a1a;">
-      <h2 style="color: #c0392b; margin-top: 0;">⚠️ 朝闻录监控告警</h2>
-      <p><strong>检测时间:</strong>{datetime.now(UTC).isoformat(timespec='seconds')} UTC</p>
-      <p><strong>原因:</strong>{safe_reason}</p>
+      <h2 style="color: #c0392b; margin-top: 0;">⚠️ 朝闻录{heading}</h2>
+      <p><strong>检测时间:</strong>{datetime.now(BEIJING).strftime('%Y-%m-%d %H:%M:%S')} 北京时间</p>
+      <p style="white-space:pre-line"><strong>原因:</strong>{safe_reason}</p>
 
       <hr style="border: 0; border-top: 1px solid #e0e0e0; margin: 24px 0;">
 
@@ -184,6 +225,10 @@ def send_alert(reason: str) -> None:
     </div>
     """
 
+    if quality_only:
+        start = body.index('      <p><strong>排查步骤:')
+        end = body.index('      <p style="color: #888;', start)
+        body = body[:start] + '<p>邮件已获得 SMTP 接受。请按上述有效沿用、加工状态及摘要形式分别检查内容；不要因此重新发送整封邮件。</p>' + body[end:]
     result = send_html_email(
         sender=settings.qq_email_address,
         sender_display_name="朝闻录监控",

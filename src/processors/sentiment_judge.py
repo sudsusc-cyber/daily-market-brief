@@ -314,14 +314,15 @@ def _deterministic_argument(bundle: SentimentBundle, verdict: str) -> str:
     return "、".join(parts) + f"，按确定性规则综合为{verdict}；留意指标分歧，按既定纪律执行。"
 
 
-def _argument_supported(text: str, bundle: SentimentBundle, verdict: str) -> bool:
+def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[str]:
     # A small explanatory sentence has no need for unsupported historical claims
     # or novel numbers. Check every metric clause against that metric, not a bag
     # of numbers from unrelated rows.
+    errors = []
     if not text or len(text) > 110 or re.search(r"历史(?:极|新|最|高位|低位)|泡沫|今日|今天", text):
-        return False
+        errors.append("length_or_unsupported_claim")
     if any(label in text for _, label in VERDICT_THRESHOLDS if label != verdict):
-        return False
+        errors.append("verdict_mismatch")
     aliases = {"CNN Fear & Greed": r"CNN|恐惧.*?贪婪", "VIX": r"VIX",
                "DXY": r"DXY|美元指数", "高收益债利差": r"高收益债|信用利差", "Shiller PE": r"Shiller|席勒"}
     mentioned = False
@@ -329,21 +330,28 @@ def _argument_supported(text: str, bundle: SentimentBundle, verdict: str) -> boo
         numbers = re.findall(r"[+-]?\d+(?:\.\d+)?", clause)
         metrics = [m for m in bundle.metrics if re.search(aliases.get(m.name, r"(?!)"), clause, re.I)]
         if numbers and len(metrics) != 1:
-            return False
+            errors.append("ambiguous_metric_numbers")
         for m in metrics:
             mentioned = True
             if m.error or _finite_float(m.current) is None:
-                return False
+                errors.append("unavailable_metric")
+                continue
             if m.stale_from and ("参考" not in clause and "沿用" not in clause):
-                return False
+                errors.append("missing_carried_label")
             allowed = [m.current, m.prior, m.delta]
             if any(not any(v is not None and abs(float(n) - v) <= .011 for v in allowed) for n in numbers):
-                return False
+                errors.append("unsupported_number")
             if re.search(r"回落|下降|下跌|收窄", clause) and (m.delta is None or m.delta >= 0):
-                return False
+                errors.append("wrong_down_direction")
             if re.search(r"上升|上涨|走高|扩大|攀升", clause) and (m.delta is None or m.delta <= 0):
-                return False
-    return mentioned
+                errors.append("wrong_up_direction")
+    if not mentioned:
+        errors.append("no_metric")
+    return list(dict.fromkeys(errors))
+
+
+def _argument_supported(text: str, bundle: SentimentBundle, verdict: str) -> bool:
+    return not _argument_errors(text, bundle, verdict)
 
 
 def judge(
@@ -363,10 +371,13 @@ def judge(
     payload = _format_input(bundle, verdict_label, score)
     argument = ""
     last_error: str | None = None
+    rejections = []
     for attempt in range(1, _MAX_ARGUMENT_ATTEMPTS + 1):
         task_instruction = _TASK_INSTRUCTION
         if attempt > 1:
             task_instruction += "\n上一次输出无效；这次只输出包含 argument 的 JSON 对象。"
+        if rejections:
+            task_instruction += "\n上次校验失败：" + ", ".join(rejections[-1]["reasons"]) + "。每个分句只说明一个指标，引用输入中的数值及涨跌方向，不添加其他档位或历史判断。"
         resp = client.chat(
             payload,
             task_extra=task_instruction,
@@ -379,11 +390,14 @@ def judge(
             data = _parse_json(resp.text)
             if data and "argument" in data and str(data["argument"]).strip():
                 candidate = one_sentence_summary(data["argument"])
-                if _argument_supported(candidate, bundle, verdict_label):
+                reasons = _argument_errors(candidate, bundle, verdict_label)
+                if not reasons:
                     argument = candidate
                     break
                 last_error = "UnsupportedArgument"
-                logger.warning("sentiment_judge.unsupported_argument attempt=%d", attempt)
+                safe_candidate = re.sub(r"[\w.+-]+@[\w.-]+", "[email]", candidate)[:300]
+                rejections.append({"attempt": attempt, "reasons": reasons, "candidate": safe_candidate})
+                logger.warning("sentiment_judge.unsupported_argument attempt=%d reasons=%s", attempt, reasons)
                 continue
             last_error = "InvalidJSONOrEmptyArgument"
             logger.warning(
@@ -413,4 +427,5 @@ def judge(
         "coverage": scored["coverage"],
         "argument_fallback": argument_fallback,
         "argument_error": last_error if argument_fallback else None,
+        "argument_rejections": rejections,
     }

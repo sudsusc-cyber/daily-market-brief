@@ -791,11 +791,15 @@ def main() -> int:
         "judgment_error": judgment_error,
         "stage_timeouts": stage_timeouts,
     }
+    from src.utils.quality_details import quality_details
+    report["html_bytes"] = len(html.encode())
+    report["quality_details"] = quality_details(report)
     report["judgment_mapping"] = judgment_section.items if judgment_section else []
     report["judgment_selection"] = judgment_audit
     audit_directory = archive_publication(html, generated_at=now_bj, report=report, inline_images=inline_images)
     if report["status"] == "degraded" or len(html.encode()) > 98304:
-        _record_quality_alert("内容存在沿用、缺失、来源冲突或原文摘录降级；详见结构化审计。")
+        for detail in report["quality_details"] or ["内容核验降级；详见结构化审计"]:
+            _record_quality_alert(detail)
 
     if os.environ.get("BRIEF_PREVIEW_ONLY", "").lower() == "true":
         logger.info("preview.done audit=%s smtp_calls=0", audit_directory)

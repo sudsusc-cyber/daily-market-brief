@@ -32,9 +32,9 @@ _BARE_LISTINGS = {
     'Berkshire Hathaway': r'BRK[.-][AB]', 'Costco': 'COST',
     '高通': 'QCOM', '苹果': 'AAPL', '微软': 'MSFT', '万事达': 'MA',
     '泡泡玛特': r'0?9992\.HK', 'POP MART': r'0?9992\.HK',
-    '腾讯': r'0?0700\.HK|700\.HK', 'Tencent': r'0?0700\.HK|700\.HK',
+    '腾讯控股': r'0?0700\.HK|700\.HK', '腾讯': r'0?0700\.HK|700\.HK', 'Tencent': r'0?0700\.HK|700\.HK',
 }
-_FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Treasuries': '美国国债',
+_FINANCIAL_TERMS = {'Federal Reserve': '美联储', 'Fed': '美联储', 'Treasuries': '美国国债',
                     'Strait of Hormuz': '霍尔木兹海峡', 'Hormuz': '霍尔木兹海峡',
                     'European Union': '欧盟', 'EU': '欧盟', 'Germany': '德国',
                     'Saudi Arabia': '沙特阿拉伯', 'Australia': '澳大利亚', 'Iran': '伊朗', 'Satya Nadella': '萨提亚·纳德拉'}

@@ -9,7 +9,7 @@ def _has(pattern: str, text: str) -> bool:
 
 _CHINA = r'China|Chinese|Xi Jinping|中国|中方|对华|习近平'
 _US = r'\bUS\b(?!\$|\s*dollars?)|U\.S\.(?!\s*dollars?)|United States|America\w*|Trump|美国|美方|特朗普'
-_MIDDLE_EAST = r'Iran|Saudi|Israel|Gaza|Hormuz|Middle East|伊朗|沙特|以色列|加沙|霍尔木兹|中东|美伊|红海'
+_MIDDLE_EAST = r'Iran|Saudi|Israel|Gaza|Hormuz|Middle East|伊朗|沙特|以色列|加沙|霍尔木兹|中东|美伊|红海|Persian Gulf|波斯湾'
 _US_TREASURY = r'Treasuries|Treasury (?:yields?|bonds?|debt|selloff)|U\.?S\.? (?:government )?(?:bonds?|yields?|debt)|美债|美国国债'
 
 
@@ -24,7 +24,8 @@ def macro_topic(text: str) -> str:
     if _has(r'中美|美中|Sino[ -]American|U\.?S\.?[ -]China|China[ -]U\.?S\.?', text) or (
             _has(_CHINA, text) and _has(_US, text)):
         return '中美关系'
-    if _has(_MIDDLE_EAST, text):
+    if _has(_MIDDLE_EAST, text) or (_has(r'\bGulf\b|海湾', text) and
+            _has(r'crude|oil|原油|石油', text) and not _has(r'Mexico|America|墨西哥|美国', text)):
         return '中东局势'
     if _has(r'Russia|Ukraine|俄乌|俄罗斯|乌克兰', text):
         return '俄乌局势'
@@ -32,6 +33,11 @@ def macro_topic(text: str) -> str:
     if (_has(r'\bbudgets?\b|预算', text) and
             _has(r'\b(?:EU|government|federal|national|state)\s+(?:\w+\s+){0,2}budgets?\b|European Union.{0,20}budget|(?:欧盟|政府|联邦|国家|财政).{0,8}预算', text)):
         return '财政政策'
+    # A named central bank does not turn its inflation release into a policy decision.
+    if (_has(r'inflation|\bCPI\b|\bPCE\b|通胀|物价指数', text) and
+            _has(r'measure|index|data|release|report|指标|指数|数据|发布|公布', text) and
+            not _has(r'rate (?:cut|hike)|(?:cuts?|raises?|hikes?|lowers?).{0,30}rates?|降息|加息|(?:上调|下调|维持).{0,8}(?:利率|政策)', text)):
+        return '通胀数据'
     for topic, pattern in (
         ('科技监管', r'(?:AI|人工智能|科技|人才).*(?:travel|出行|出境|限制|禁令)|(?:travel curbs|出行限制|出境限制).*(?:AI|人工智能|人才)'),
         ('经济增长', r'pro.growth|促增长|增长政策'),

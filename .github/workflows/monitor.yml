@@ -18,6 +18,7 @@ concurrency:
 
 permissions:
   contents: read
+  checks: read   # 读取具体内容质量告警明细
   actions: read   # 查询 daily.yml 的 workflow runs 必需
 
 jobs:
