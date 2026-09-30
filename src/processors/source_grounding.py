@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 
 from src.processors.editorial_evidence import analysis_source, editorial_issue
 from src.processors.html_safe import is_safe_url
-from src.processors.news_presentation import publication_text
+from src.processors.news_presentation import PRESENTATION_VERSION, present
 from src.processors.news_selection import (
     chinese_prose,
     complete_excerpt,
@@ -47,7 +47,8 @@ class SourceEvidence:
     mode: str
     validated_text: str
     source_name: str
-    presentation_version: int = 1
+    presentation_version: int = PRESENTATION_VERSION
+    presentation_operations: tuple[str, ...] = ()
     publication_path: str = "selected_excerpt"
     source_kind: str = "reported"
     source_body: str = ""
@@ -128,7 +129,8 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
             continue
         validated = checked_excerpt(item)[1] if mode == "checked_translation" else excerpt
         source_name = str(getattr(item, "source", "") or "")
-        displayed = publication_text(validated, source_name=source_name)
+        presentation = present(validated, source_name=source_name)
+        displayed = presentation.text
         if not chinese_prose(displayed) or not complete_excerpt(displayed) or promotional_prose(displayed) or editorial_issue(displayed):
             logger.warning("news.publication_rejected reason=not_complete_chinese")
             continue
@@ -153,6 +155,7 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
                     mode=mode,
                     validated_text=validated,
                     source_name=source_name,
+                    presentation_operations=presentation.operations,
                     publication_path="source_fallback" if fallback else "selected_excerpt",
                     source_kind="analysis" if analysis_source(item.title, str(getattr(item, "summary", "") or "")) else "reported",
                 )

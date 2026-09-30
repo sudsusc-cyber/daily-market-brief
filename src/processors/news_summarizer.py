@@ -30,6 +30,7 @@ from src.processors.html_safe import (
 )
 from src.processors.llm_client import LLMClient
 from src.processors.news_selection import _ROUNDUP, company_candidate, company_fact_matches
+from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
@@ -57,22 +58,8 @@ class CompanyNewsSummary:
 
 
 # 中文公司名映射(prompt 里展示给 LLM 让它选用,不是 enforce)
-_CN_NAME_HINT: dict[str, str] = {
-    "MSFT": "微软",
-    "COST": "好市多",
-    "AAPL": "苹果",
-    "NVDA": "英伟达",
-    "TSM": "台积电",
-    "MCO": "穆迪",
-    "GOOG": "谷歌",
-    "BRK.B": "伯克希尔",
-    "KO": "可口可乐",
-    "AXP": "运通",
-    "0700.HK": "腾讯",
-    "9992.HK": "泡泡玛特",
-    "MA": "万事达",
-    "LIN": "林德",
-}
+# Alias retained for existing callers; display metadata has one owner.
+_CN_NAME_HINT = COMPANY_DISPLAY_NAMES
 
 
 _TASK_INSTRUCTION = """\

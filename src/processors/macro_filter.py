@@ -23,7 +23,8 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
-from src.processors.macro_topics import macro_importance, macro_topics
+from src.processors.macro_events import edition_events
+from src.processors.macro_topics import macro_importance
 from src.processors.news_selection import macro_candidate
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
@@ -220,7 +221,10 @@ def _rebuild_safe_html(
             group["evidence"].extend(mapping)
 
     themes = {}
-    topics = macro_topics([group["text"] for group in groups.values()])
+    events = edition_events([group["text"] for group in groups.values()])
+    topics = [event.topic for event in events]
+    for group, event in zip(groups.values(), events, strict=True):
+        group["event"] = event.audit()
     for position, (group, topic) in enumerate(zip(groups.values(), topics, strict=True)):
         # Every publication path goes through this one canonical-topic map.
         # Group known topics across sources; an unknown label proves no relation.
@@ -243,7 +247,7 @@ def _rebuild_safe_html(
                 citations.append("<sup>" + safe_anchor(item.url, f"[{index}]", style=FOOTNOTE_ANCHOR_STYLE) + "</sup>")
             paragraph_citations.extend(citations)
             if evidence is not None:
-                evidence.extend({**row, "macro_topic": topic} for row in group["evidence"])
+                evidence.extend({**row, "macro_topic": topic, "macro_event": group["event"]} for row in group["evidence"])
             text = group["text"].rstrip()
             if text[-1:] not in '。！？!?':
                 text = text.rstrip('.') + '。'
