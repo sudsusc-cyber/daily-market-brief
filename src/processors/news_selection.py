@@ -43,7 +43,7 @@ def sentences(text: str) -> list[str]:
     text = reporting_text(text)
     # Split only where the next sentence begins; keep decimal points, initials,
     # month abbreviations and company suffixes within their complete sentence.
-    return [s.strip() for s in re.split(r'(?<=[。！？])|(?<=[.!?])\s+(?=[A-Z])', text) if s.strip()]
+    return [s.strip() for s in re.split(r"(?<=[。！？])|(?<=[.!?])\s+(?=[A-Z])|\s+[—–]\s+(?=Here[’']s\b)", text) if s.strip()]
 
 
 def complete_excerpt(text: str, source_name: str = '') -> bool:
@@ -233,7 +233,7 @@ def factual_excerpt(item) -> str:
     if eligible:
         return eligible[0]
     title_sentences = sentences(title)
-    if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s why|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
+    if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s (?:why|the|what)|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
         return title_sentences[0] if publishable_excerpt(item, title_sentences[0]) else ''
     # A rolling news-page title is navigation, not a fact. Prefer its actual
     # complete summary sentence even if it is not a company earnings item.
