@@ -23,7 +23,7 @@ from datetime import datetime
 from src.collectors.figures import FigureBundle, FigureMention
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
-from src.processors.news_presentation import voice_text
+from src.processors.news_presentation import PRESENTATION_VERSION, voice_text
 from src.processors.news_selection import meaningful_quote, plain_source
 from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
 from src.utils.news_facts import content_key, equivalent
@@ -363,8 +363,11 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
         for point in kept:
             point.history_text = point.text
             for row in point.evidence:
-                row['output_text'] = voice_text(row['output_text'], bundle.person)
-                row['presentation_version'] = 2
+                displayed = voice_text(row['output_text'], bundle.person)
+                if displayed != row['output_text']:
+                    row['presentation_operations'] = (*row.get('presentation_operations', ()), 'speaker_attribution')
+                row['output_text'] = displayed
+                row['presentation_version'] = PRESENTATION_VERSION
                 row['presentation_speaker'] = bundle.person
             point.text = '；'.join(dict.fromkeys(row['output_text'] for row in point.evidence))
         errors = [redact_secrets(str(error))[:240] for error in [bundle.error, processing_error, *rejected] if error]
