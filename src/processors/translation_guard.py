@@ -13,7 +13,7 @@ from collections import Counter
 from decimal import Decimal
 
 # Match negative phrases before checking event states (e.g. not approved).
-_NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|未经|而非|并非|不是"
+_NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|未经|而非|并非|不是|未(?=上调|下调|提高|降低|增加|减少|批准|支付|完成|推出|发布|收购|暂停|取消|维持)"
 _MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled|looms?)\b|\bto\s+(?:pay|invest|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
 _EVENTS = {
     "approval": r"\b(?:approv\w*|clearance|greenlight\w*)\b|批准|获批|监管放行",
@@ -44,6 +44,14 @@ _EVENTS["person_release"] = r"\bperson_release\b|释放"
 _EVENTS["pause"] = r"\b(?:paus\w*|suspend\w*|halt\w*)\b|暂停|中止"
 _EVENTS["delay"] = r"\b(?:delay\w*|postpon\w*|defer(?:s|red|ring)?)\b|推迟|延期|延后"
 _EVENTS["cancel"] = r"\b(?:cancel\w*|scrap\w*|abandon\w*|shelv\w*)\b|取消|放弃|搁置"
+_EVENTS["raise"] += r"|\b(?:scal(?:es|ed|ing)|powers?)\s+to\b|\b(?:intensif\w*|enhanc\w*)\b|\bfans?\s+(?:[\w-]+\s+){0,2}(?:fears?|concerns?|inflation)\b|扩展|提振|增强|加剧|劲升"
+_EVENTS["fall"] += r"|\bslips?\b"
+# Maintaining control/resilience is not a rate/price hold. Bind this polysemous
+# verb to a financial state instead of requiring its Chinese word everywhere.
+_HOLD_OBJECT = r"rates?|prices?|guidance|outlook|ratings?|dividends?|revenue|profit|production|利率|价格|指引|展望|评级|分红|营收|利润|产量"
+_EVENTS["hold"] = (r"\bunchanged\b|不变|持平(?=$|[，。；、！？,.;!?\s]|于|在|至|的|状态|水平)|\b(?:holds?|maintains?)\s+(?:\w+\s+){0,3}(?:" + _HOLD_OBJECT
+                   + r")|(?:" + _HOLD_OBJECT + r").{0,12}(?:保持|维持)|(?:保持|维持).{0,8}(?:" + _HOLD_OBJECT + r")")
+_MODALITY += r"|\bawait(?:s|ed)?\b|将(?=对|向|提供|给予|补贴|调整|进行)"
 _ENTITIES = {
     "Microsoft": ("Microsoft", "微软"), "Google": ("Google", "谷歌"),
     "Alphabet": ("Alphabet",), "Apple": ("Apple", "苹果"),
@@ -58,10 +66,26 @@ _ENTITIES = {
     "TSMC": ("TSMC", "Taiwan Semiconductor", "台积电"),
     "Tencent": ("Tencent", "腾讯"), "Berkshire": ("Berkshire", "伯克希尔"),
     "New York": ("New York", "纽约"),
+    "EU": ("EU", "European Union", "欧盟"),
 }
 _SCALE = {"thousand": 1000, "million": 10**6, "billion": 10**9,
           "trillion": 10**12, "b": 10**9, "bn": 10**9, "m": 10**6, "mn": 10**6, "千": 1000, "万": 10**4, "亿": 10**8, "万亿": 10**12}
 _NUMBER = re.compile(r"(?P<n>[+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?P<scale>trillion|billion|million|thousand|bn\b|mn\b|b\b|m\b|万亿|亿|万|千)?(?:\s*-\s*|\s*)(?P<unit>%|percent(?:age points?)?|basis points?|bps?|基点|个百分点|美元|港元|欧元|dollars?|USD|HKD|EUR|years?|months?|days?|weeks?|decades?|年|个月|天|周)?", re.I)
+
+_MONTH = r"Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?"
+_MONTH_VALUES = {name: i for i, name in enumerate(
+    ('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
+
+
+def _calendar_months(text: str):
+    for match in re.finditer(r"\b(?:" + _MONTH + r")\b", text, re.I):
+        # May and March are also verbs. Require calendar syntax for them.
+        if match[0].lower() in ('may', 'march') and not (
+            re.search(r"\b(?:in|since|during|by|after|before|until|from|of|this|last|next)\s*$", text[:match.start()], re.I)
+            or re.match(r"\s+(?:\d|estimates?\b|results?\b|data\b|figures?\b|forecasts?\b|earnings\b|looms?\b)", text[match.end():], re.I)
+        ):
+            continue
+        yield match
 
 
 def _quantities(text: str) -> Counter:
@@ -76,6 +100,21 @@ def _quantities(text: str) -> Counter:
         return " "
     text = re.sub(r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\b", english_date, text, flags=re.I)
     text = re.sub(r"(?:(\d{4})\s*年)?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]", chinese_date, text)
+    for match in reversed(list(_calendar_months(text))):
+        result[("month", _MONTH_VALUES[match[0][:3].lower()])] += 1
+        text = text[:match.start()] + ' ' + text[match.end():]
+    def month_number(match):
+        result[("month", int(match[1]))] += 1
+        return ' '
+    calendar_counts = dict(zip(('一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'), range(1, 13), strict=True))
+    text = re.sub(r"(?<![一二三四五六七八九十])(十二|十一|十|[一二三四五六七八九])(?=月)",
+                  lambda m: str(calendar_counts[m[1]]), text)
+    text = re.sub(r"(?<!\d)(1[0-2]|[1-9])\s*月", month_number, text)
+    def quarter(match):
+        raw = match[1] or match[2]
+        result[("quarter", int(raw) if raw.isdigit() else '一二三四'.index(raw) + 1)] += 1
+        return ' '
+    text = re.sub(r"\bQ([1-4])\b|第?([一二三四1-4])季度", quarter, text, flags=re.I)
     # Standalone calendar years match English "by 2030"; full dates were handled above.
     text = re.sub(r"(?<!\d)([12]\d{3})\s*年", r"\1", text)
     # Normalize written durations only, never arbitrary words or company names.
@@ -92,7 +131,8 @@ def _quantities(text: str) -> Counter:
             tens, ones = raw.split("十")
             return str((zh_counts[tens] if tens else 1) * 10 + (zh_counts[ones] if ones else 0))
         return str(zh_counts[raw])
-    text = re.sub(r"[一二三四五六七八九]?十[一二三四五六七八九]?(?=年|个月|天|周)|[一二三四五六七八九](?=年|个月|天|周)", chinese_count, text)
+    text = re.sub(r"[一二三四五六七八九]?十[一二三四五六七八九]?(?=多?年|个月|天|周)|[一二三四五六七八九](?=多?年|个月|天|周)", chinese_count, text)
+    text = re.sub(r"(\d+)多年", r" more than \1年", text)
     for match in _NUMBER.finditer(text):
         value = Decimal(match['n'].replace(',', '')) * _SCALE.get((match['scale'] or '').lower(), 1)
         unit = (match['unit'] or '').lower()
@@ -125,6 +165,16 @@ def _quantities(text: str) -> Counter:
         elif prefix.endswith('€'):
             unit = 'EUR'
         result[(value, unit)] += 1
+        before = text[max(0, match.start() - 20):match.start()]
+        before = re.sub(r"(?:US\$|HK\$|\$|€)\s*$", "", before).rstrip()
+        # "over seven years" is a service period, unlike "over $7 billion".
+        greater = r"(?:\bmore than|超过|逾)\s*$"
+        if unit not in ('years', 'months', 'weeks', 'days'):
+            greater = r"(?:\bmore than|\bover|超过|逾)\s*$"
+        if re.search(greater, before, re.I):
+            result[("bound", value, unit, "gt")] += 1
+        elif re.search(r"(?:\bless than|\bunder|不足|少于|不到)\s*$", before, re.I):
+            result[("bound", value, unit, "lt")] += 1
     return result
 
 
@@ -231,6 +281,19 @@ def translation_errors(original: str, translated: str) -> list[str]:
     bindings = _financial_bindings(original)
     if len(bindings) > 1 and bindings != _financial_bindings(translated):
         errors.append('financial_metric_binding')
+    # Full and standalone calendar dates were checked above; their month names
+    # must not become modal verbs (May estimates -> 5 月估算).
+    for match in reversed(list(_calendar_months(original))):
+        original = original[:match.start()] + 'calendar_month' + original[match.end():]
+    # Adjectival "paid plans/workflows" describes pricing, not a completed
+    # payment. Keep actual "has paid" and monetary transactions untouched.
+    original = re.sub(r"(?<!has )(?<!have )(?<!had )\bpaid\s+(?=workflows?\b|plans?\b|services?\b|subscriptions?\b|tiers?\b|features?\b)",
+                      "fee_based ", original, flags=re.I)
+    # Noun downturns are states, unlike the directional verb "sales slump".
+    original = re.sub(r"\b(?:a|the)\s+(?:[\w-]+\s+){0,2}slump\b", "downturn", original, flags=re.I)
+    # A dated participial launch is a scheduled event, not an assertion that it
+    # has already launched. Scope this to the explicit calendar construction.
+    original = re.sub(r"\bLaunching\s+(?=calendar_month\s+\d)", "will launch ", original, flags=re.I)
     for condition, pattern in {
         "until": r"\buntil\b|直到|直至|(?:推迟|延后|延期)至",
         "unless": r"\bunless\b|除非",
@@ -257,7 +320,9 @@ def translation_errors(original: str, translated: str) -> list[str]:
     tokens = re.findall(r'\b(?:[A-Za-z]+[-.]\d[\w.-]*|[A-Z]{2,}[A-Z0-9-]*s?)\b', original + ' ' + translated)
     identifiers = {token[:-1] if re.fullmatch(r"[A-Z]{2,}s", token) else token for token in tokens}
     location_tokens = {'NEW', 'YORK'} if _contains(original, 'New York') else set()
-    for identifier in identifiers - {'USD', 'HKD', 'EUR', 'CEO', 'US', 'UK', 'OS', 'UN', 'IP'} - location_tokens:
+    aliased_identifiers = {alias for aliases in _ENTITIES.values() if len(aliases) > 1
+                          for alias in aliases if re.fullmatch(r'[A-Z]{2,}', alias)}
+    for identifier in identifiers - {'USD', 'HKD', 'EUR', 'CEO', 'US', 'UK'} - location_tokens - aliased_identifiers:
         if _contains(original, identifier) != _contains(translated, identifier):
             errors.append('identifier:' + identifier)
     if len(translated) > max(100, len(original) * 2):
