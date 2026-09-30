@@ -17,7 +17,12 @@ from src.config import HOLDINGS
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
 from src.processors.news_selection import frontier_candidate
-from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
+from src.processors.source_grounding import (
+    INSTRUCTION,
+    grounded_text,
+    recover_selected_translations,
+    source_prompt,
+)
 from src.utils.news_facts import content_key, equivalent
 from src.utils.secrets import redact_secrets
 
@@ -46,6 +51,7 @@ class FrontierFilterReport:
     source_failures: list[str] = field(default_factory=list)
     processing_failures: list[str] = field(default_factory=list)
     content_rejections: list[str] = field(default_factory=list)
+    selection_audit: list[dict] = field(default_factory=list)
 
     @property
     def failures(self) -> list[str]:
@@ -347,6 +353,7 @@ def _filter_one_report(
         return report
 
     last_error: str | None = None
+    recovery_attempted = False
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
         instruction = _TASK_INSTRUCTION + INSTRUCTION
         if attempt > 1:
@@ -380,6 +387,12 @@ def _filter_one_report(
             continue
 
         parsed = _parse_output_result(resp.text, items, bundle.lab)
+        if parsed.is_complete(len(items)) and not recovery_attempted:
+            selected = [items[i - 1] for i, reason in parsed.rejected_indexes.items()
+                        if reason == "no_verified_chinese_excerpt"]
+            recovery_attempted = recover_selected_translations(selected, client=client, audit=report.selection_audit)
+            if recovery_attempted:
+                parsed = _parse_output_result(resp.text, items, bundle.lab)
         # A rejected source is a per-candidate publication decision, not a
         # malformed model response. Never discard its verified neighbours.
         if parsed.covered_indexes:
@@ -470,6 +483,7 @@ def filter_all_report(
         report.source_failures.extend(result.source_failures)
         report.processing_failures.extend(result.processing_failures)
         report.content_rejections.extend(result.content_rejections)
+        report.selection_audit.extend(result.selection_audit)
     report.items = select_frontier_items(report.items)
     logger.info("frontier_labs_filter.publication health=%s", report.health())
     return report

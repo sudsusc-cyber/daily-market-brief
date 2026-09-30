@@ -25,7 +25,7 @@ from src.valuation.models import ValuationDisplay
     (False, "frontier_silent"), (False, "frontier_source"), (False, "frontier_rejected"),
     (False, "frontier_partial"), (False, "frontier_processing"), (False, "frontier_duplicate"),
     (False, "figure_silent"), (False, "figure_source"), (False, "figure_rejected"),
-    (False, "figure_partial"), (False, "figure_processing"),
+    (False, "figure_partial"), (False, "figure_processing"), (False, "intro_success"),
 ])
 def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(monkeypatch, tmp_path, exhausted, scenario):
     main = importlib.import_module("src.main")
@@ -163,13 +163,16 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         summary = SimpleNamespace(summary_html=fact, evidence=[row],
                                   footnotes=[SimpleNamespace(index=1, url=row["url"], source="Reuters")])
         monkeypatch.setattr(main.news_summarizer, "summarize", lambda *a, **k: summary)
-    monkeypatch.setattr(main.holdings_intro, "write_intro", lambda *a, **k: None)
+    intro = "持仓尚未出现既定买入信号。思想的分量，要在时间中慢慢衡量。" if scenario in {"intro_success", "failed_delivery", "preview"} else None
+    monkeypatch.setattr(main.holdings_intro, "write_intro", lambda *a, **k: intro)
     monkeypatch.setattr(main.header_image, "pick_header_image", lambda *a: main.header_image._tier3_local())
     monkeypatch.setattr(main, "_load_logo_assets", lambda *a: ({}, []))
     monkeypatch.setattr(subject, "generate_subject", lambda *a, **k: "测试晨报")
     sent = []
     def send(**kwargs):
         sent.append(kwargs)
+        if intro:
+            assert not (tmp_path / "published_editorial.json").exists()
         if publication_scenario:
             assert not main.thesis_renderer.load_publications(tmp_path)
         if scenario == "failed_delivery":
@@ -186,13 +189,17 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
             main.main()
         assert not main.thesis_renderer.load_publications(tmp_path)
         assert not (tmp_path / "pushed_company_news.json").exists()
+        assert not (tmp_path / "published_editorial.json").exists()
         return
     assert main.main() == 0
     manifest = json.loads(next((tmp_path / "audit").glob("*/manifest.json")).read_text())
     assert manifest["content"]["status"] == "degraded"
     health = manifest["content"]["section_health"]
     assert health["sentiment"]["fallback"] is True
-    assert health["holdings_intro"]["fallback"] is True
+    assert health["holdings_intro"]["fallback"] is (intro is None)
+    if scenario == "intro_success":
+        history_rows = json.loads((tmp_path / "published_editorial.json").read_text())
+        assert any(r["section"] == "holdings_intro" and r["text"] == intro for r in history_rows)
     if not exhausted and not publication_scenario:
         assert health["company"]["processing_failures"] == 1
     if exhausted:
@@ -201,6 +208,7 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         assert health["macro"]["source_failures"] > 0
     if scenario == "preview":
         assert not sent
+        assert not (tmp_path / "published_editorial.json").exists()
         assert not main.thesis_renderer.load_publications(tmp_path)
         assert not (tmp_path / "receipt.json").exists()
         assert not (tmp_path / "pushed_company_news.json").exists()

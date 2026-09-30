@@ -61,10 +61,9 @@ class TestWriteIntro:
         assert write_intro([], client=client) is None
         client.chat.assert_not_called()
 
-    def test_no_model_call_is_needed(self) -> None:
+    def test_model_failure_uses_template_fallback(self) -> None:
         client = MagicMock()
         client.chat.side_effect = RuntimeError("must not run")
         out = write_intro([_signal(0)], client=client)
-        assert "1只暂无买入信号" in out
-        assert "参考线之上" not in out
-        client.chat.assert_not_called()
+        assert out is None
+        assert client.chat.call_count == 2

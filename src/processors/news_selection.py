@@ -73,7 +73,7 @@ def chinese_prose(text: str) -> bool:
 
 _PRICE_EDITORIAL = re.compile(
     r'which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
-    r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rallies|surges|jumps|slumps|edges? (?:higher|lower))'
+    r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rises?|falls?|rall(?:y|ies)|surges?|jumps?|slumps?|edges? (?:higher|lower))'
     r'|wish you (?:had )?bought|regret not buying|unloved .*stock|别错过|后悔没买'
     r'|哪.*股票|值得买|股价.*(?:上涨|下跌|飙升)', re.I)
 _BUSINESS_FACT = re.compile(
@@ -86,6 +86,15 @@ _RATING_SERVICE = re.compile(
 _PARTNER_PROMOTION = re.compile(
     r'\b(?:inner circle|partner of the year|partner award|partner status|partner designation)\b'
     r'|合作伙伴(?:奖|称号|认证)|年度合作伙伴|内圈奖', re.I)
+
+# Price colour or an award in the same headline must not erase an actual
+# operating announcement. Require an event/metric relation, not a company name.
+_OPERATING_EVENT = re.compile(
+    r'\b(?:reports?|reported|raises?|raised|cuts?|cut|announces?|announced)\b.{0,60}'
+    r'\b(?:earnings|revenue|profit|guidance|dividend|buyback|acquisition)\b|'
+    r'\b(?:signs?|signed|renews?|renewed|wins?|won)\b.{0,45}\b(?:contract|agreement)\b|'
+    r'(?:公布|发布|上调|下调).{0,20}(?:业绩|营收|利润|指引|分红)|'
+    r'(?:签署|续签|获得).{0,20}(?:合同|协议)', re.I)
 
 
 
@@ -199,9 +208,9 @@ def factual_excerpt(item) -> str:
     title_parts = sentences(title)
     if promotional_prose(title):
         return next((part for part in title_parts if not promotional_prose(part)
-                     and complete_excerpt(part) and re.search(
-                         r'Anthropic|OpenAI', part, re.I)
-                     and re.search(r'go public|IPO|fil(?:e|ed|ing)|launch|release|上市|招股|提交|发布', part, re.I)), '')
+                     and publishable_excerpt(item, part)
+                     and (_BUSINESS_FACT.search(part) or re.search(
+                         r'go public|IPO|fil(?:e|ed|ing)|上市|招股|提交', part, re.I))), '')
     if len(title_parts) > 1 and _PRICE_EDITORIAL.search(title_parts[0]):
         for part in title_parts[1:]:
             if (complete_excerpt(part) and not _PRICE_EDITORIAL.search(part)
@@ -243,7 +252,7 @@ def company_candidate(item, ticker: str) -> bool:
         return bool(roundup_excerpt(item, ticker))
     # A vendor winning a platform's badge is not operating news about that platform.
     # Keep substantive partner contracts, capacity and investments eligible.
-    if _PARTNER_PROMOTION.search(title):
+    if _PARTNER_PROMOTION.search(title) and not _OPERATING_EVENT.search(title):
         return False
     # A newly published investing commentary can merely recycle last week's
     # launch. Do not turn its undated follow-up clauses into fresh company news.
@@ -254,7 +263,7 @@ def company_candidate(item, ticker: str) -> bool:
             and not re.search(r'earnings|revenue|profit|营收|盈利|利润|业绩', title, re.I)):
         return False
     return publishable_excerpt(item, factual_excerpt(item)) and (
-        not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title)
+        not _PRICE_EDITORIAL.search(title) or factual_excerpt(item) != title or bool(_OPERATING_EVENT.search(title)))
 
 
 def frontier_candidate(item) -> bool:
@@ -280,11 +289,10 @@ def neutral_macro_topic(items, *, supported_text: str = '') -> str:
 def macro_candidate(item) -> bool:
     # Symbolic summit colour is not a market/policy development on its own.
     title = plain_source(item.title)
-    if re.search(r"panda diplomacy|熊猫外交", title, re.I):
-        return False
     text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
     local_colour = re.search(r'\b(?:small .*town|village|locals|neighbou?rhood)\b|小镇|村庄|社区居民', title, re.I)
     crime = re.search(r'terror plot|murder|burglary|alleged plot|恐怖阴谋|谋杀|入室盗窃', text, re.I)
     wider_impact = re.search(r'sanctions?|trade|oil|shipping|supply|interest rates?|markets? (?:fall|drop|close)'
                             r'|制裁|贸易|石油|航运|供应|利率|市场(?:下跌|关闭)', text, re.I)
-    return not (local_colour and crime and not wider_impact)
+    symbolic_colour = re.search(r"panda diplomacy|熊猫外交", title, re.I)
+    return not ((local_colour and crime or symbolic_colour) and not wider_impact)

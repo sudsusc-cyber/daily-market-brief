@@ -92,7 +92,7 @@ def test_untranslated_candidate_is_rejected_without_poisoning_verified_neighbor(
     bad = item("OpenAI announces new cloud agreement", suffix="untranslated")
     llm = client(yes() + "\n" + yes(2))
     report = frontier.filter_all_report([bundle([item(), bad])], client=llm)
-    assert llm.chat.call_count == 1  # Repeating selection cannot fix missing source evidence.
+    assert llm.chat.call_count == 2  # One selection plus one bounded translation recovery.
     assert report.state == "partial"
     assert len(report.items) == 1 and report.items[0].text == FACT
     assert not report.processing_failures
@@ -176,9 +176,10 @@ def test_eight_candidates_per_lab_reproduces_formal_failure_shape_without_whole_
         data[6].title = f"{lab} announces model release"
         bundles.append(bundle(data, lab=lab))
         responses.append("\n".join(yes(i) for i in range(1, 9)))
+        responses.append(None)  # Translation outage does not consume the next lab's selection.
     llm = client(responses=responses)
     report = frontier.filter_all_report(bundles, client=llm)
-    assert llm.chat.call_count == 2
+    assert llm.chat.call_count == 4
     assert {p.lab for p in report.items} == {"OpenAI", "Anthropic"}
     assert len(report.content_rejections) == 4 and not report.processing_failures
     assert report.state == "partial" and not report.fallback_note
