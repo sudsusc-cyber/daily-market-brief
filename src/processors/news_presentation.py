@@ -16,7 +16,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 4
+PRESENTATION_VERSION = 5
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -151,13 +151,20 @@ def present(text: str, *, source_name: str = "", _version: int = PRESENTATION_VE
         # direction, comparison period and extreme. Do not normalize partial
         # matches, qualifiers, forecasts, levels or additional clauses.
         compact = re.sub(r"\s+", "", text).rstrip('。.')
+        move = r"攀升至|升至|跌至|降至"
+        if _version >= 5:
+            # Record highs/lows can also be expressed with neutral reach verbs.
+            # Normalize only a complete, unqualified record; the extreme fixes
+            # direction. Version 4 replay retains its exact historical rules.
+            move += r"|触及|达到"
         record_pattern = (r"(?P<country1>[一-鿿]{2,8})?(?P<tenor>\d+(?:\.\d+)?)年期"
                           r"(?P<country2>[一-鿿]{2,8})?国债收益率"
-                          r"(?P<move>攀升至|升至|跌至|降至)(?P<year>\d{4})年以来"
+                          r"(?P<move>" + move + r")(?P<year>\d{4})年以来"
                           r"(?P<extreme>最高|最低)(?:水平)?")
         match = re.fullmatch(record_pattern, compact)
         if match and bool(match['country1']) != bool(match['country2']):
-            rising = match['move'] in ('攀升至', '升至')
+            rising = (match['extreme'] == '最高' if match['move'] in ('触及', '达到')
+                      else match['move'] in ('攀升至', '升至'))
             if rising == (match['extreme'] == '最高'):
                 country = match['country1'] or match['country2']
                 record("bond_record_word_order", country + match['tenor'] + '年期国债收益率'
@@ -217,8 +224,8 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", ""))) if row.get("presentation_speaker") else output
-    if version == PRESENTATION_VERSION:
-        output = publication_text(validated, source_name=str(row.get("source_name", "")))
+    if version in (4, PRESENTATION_VERSION):
+        output = present(validated, source_name=str(row.get("source_name", "")), _version=version).text
         return (
             voice_text(output, str(row.get("presentation_speaker", "")))
             if row.get("presentation_speaker")

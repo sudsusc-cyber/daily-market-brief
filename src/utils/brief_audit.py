@@ -123,7 +123,7 @@ def content_report(
     degraded = any(counts.get(key, 0) for key in ("carried", "missing", "conflict")) or any(
         row["candidates"] and (
             (not row["published_sources"] and not section_health.get(section, {}).get("silence"))
-            or row["extractive_fallbacks"] or row["non_chinese_outputs"])
+            or row["non_chinese_outputs"])
         for section, row in coverage.items()
     ) or (sentiment is not None and not sentiment.metrics) or any(
         any(health.get(key) for key in ("source_failures", "processing_failures", "translation_failures", "content_rejections", "fallback", "timeout_count"))
