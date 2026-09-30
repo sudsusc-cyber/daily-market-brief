@@ -18,7 +18,8 @@ from src.processors.figure_filter import filter_all, filter_one
 from src.processors.source_grounding import grounded_text, publication_diagnostic
 from src.processors.thesis.extractor import _verified_grounding_row
 from src.processors.translation_guard import translation_errors
-from src.processors.translator import translate_in_place_news
+from src.processors.translator import translate_in_place_news, translate_titles
+from src.utils.quality_details import quality_details
 
 
 class Client:
@@ -146,7 +147,7 @@ def test_selected_translation_recovers_once_and_preserves_failed_observation():
     assert "identifier:GPU" in client.calls[1][0]
     assert client.calls[1][1]["timeout"] == 20
     assert (item.title, item.snippet, item.url, item.published_at) == raw
-    assert result.verification_audit[0]["rejected_indexes"] == {1: "no_verified_chinese_excerpt"}
+    assert result.verification_audit[0]["rejected_indexes"] == {1: "translation_unavailable"}
     repair = result.verification_audit[1]
     assert repair["before"][0]["errors"] and repair["after"][0]["errors"] == []
     assert repair["recovered"] == 1
@@ -200,3 +201,52 @@ def test_unpublishable_source_is_not_retranslated_and_audit_is_bounded_redacted(
     result = filter_one(bundle([item]), client=client)
     assert not result.items and result.content_rejections
     assert len(client.calls) == 1
+    assert result.failure_kind == "evidence" and result.translation_failure_count == 0
+
+
+@pytest.mark.parametrize("original,translated", [
+    ("李明 says GPUs are useful.", "李明表示 GPU 有用。"),
+    ("Jane says GPUs are useful - 科技", "Jane 表示 GPU 有用 - 科技"),
+    ("王明 says APIs are useful.", "王明表示 API 有用。"),
+])
+def test_chinese_name_or_publisher_does_not_skip_english_translation(original, translated):
+    client = Client(f"▦ 1: {translated}")
+    assert translate_titles([original], client=client) == [translated]
+    assert len(client.calls) == 1
+    assert original in client.calls[0][0]
+
+
+def test_existing_chinese_with_english_names_needs_no_translation():
+    original = "Jane 表示 GPU 的实际需求仍取决于客户的部署进度。"
+    client = Client()
+    assert translate_titles([original], client=client) == [original]
+    assert not client.calls
+
+
+def test_english_selection_is_translated_after_selection_without_chinese_source():
+    original = "Sam Altman says GPUs are useful."
+    item = mention(original)
+    client = Client(f"▦ 1: yes | score=5 | {original}", "▦ 1: Sam Altman 表示 GPU 有用。")
+    result = filter_one(bundle([item]), client=client)
+    assert result.items and not result.error and result.failure_kind == ""
+    assert result.items[0].text == "GPU 有用。"
+    assert _verified_grounding_row(result.items[0], result.items[0].evidence[0])
+    assert item.title == original
+    assert result.items[0].evidence[0]["excerpt"] == original
+    assert len(client.calls) == 2
+    selection_prompt, options = client.calls[0]
+    assert "待翻译；请按原文选稿" in selection_prompt
+    assert "英文不可直接刊出" not in selection_prompt + options["task_extra"]
+    assert "英文原文同样可以选为 yes" in options["task_extra"]
+
+
+def test_translation_outage_is_reported_as_processing_not_bad_source_evidence():
+    item = mention("Sam Altman says GPUs are useful.")
+    client = Client("▦ 1: yes | score=5 | Sam Altman says GPUs are useful.", None)
+    result = filter_one(bundle([item]), client=client)
+    assert result.failure_kind == "translation" and result.translation_failure_count == 1
+    assert result.verification_audit[0]["rejected_indexes"] == {1: "translation_unavailable"}
+    details = quality_details({"section_health": {"figures": {
+        "translation_failures": result.translation_failure_count, "content_rejections": 0,
+    }}})
+    assert details == ["加工状态·人物观点：翻译处理失败 1"]

@@ -101,7 +101,12 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
             if sentence == plain_source(item.title) and factual_excerpt(item) != sentence:
                 continue
             if canonical_fact(sentence) == canonical_fact(claim):
-                selected = [(item, sentence, "verified_extract")]
+                excerpt, translated = checked_excerpt(item)
+                # Selection may quote the English original. Use its independently
+                # checked translation; an exact original match must not bypass
+                # that translation and fail the final Chinese presentation gate.
+                mode = "checked_translation" if translated and excerpt == sentence else "verified_extract"
+                selected = [(item, sentence, mode)]
                 break
         excerpt, translated = checked_excerpt(item)
         if not selected and translated and canonical_fact(translated) == canonical_fact(claim):

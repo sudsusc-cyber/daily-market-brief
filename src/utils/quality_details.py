@@ -35,6 +35,7 @@ def quality_details(report: dict) -> list[str]:
             ("source_failures", "来源失败"),
             ("processing_failures", "加工失败"),
             ("content_rejections", "候选核验拒绝"),
+            ("translation_failures", "翻译处理失败"),
             ("timeout_count", "超时"),
         ]:
             if health.get(key):
