@@ -36,7 +36,7 @@ _EVENTS = {
 # repeat twice ("revenue rose" and "revenue increased" both mean 营收增长).
 _EVENTS["raise"] += "|" + _EVENTS.pop("rise") + r"|\bexpanding\b"
 _EVENTS["cut"] += r"|\blayoffs?\b|走低"
-_EVENTS["launch"] += r"|\bintroduc(?:e|es|ed|ing)\b|\bgoes live\b|上线"
+_EVENTS["launch"] += r"|\bintroduc(?:e|es|ed|ing)\b|\bgoes live\b|上线|出台"
 _EVENTS["payment"] += r"|\bpayments?\b|\bpayable\b"
 _EVENTS["payment_completed"] = r"\b(?:has|have|had|already)\s+paid\b|已(?:经)?支付|已付"
 _EVENTS["payment_order"] = r"\b(?:orders?|ordered|requires?|required)\b.*\bpay\b|命令.*支付|责令.*支付|判令.*支付|判赔"
@@ -44,8 +44,8 @@ _EVENTS["person_release"] = r"\bperson_release\b|释放"
 _EVENTS["pause"] = r"\b(?:paus\w*|suspend\w*|halt\w*)\b|暂停|中止"
 _EVENTS["delay"] = r"\b(?:delay\w*|postpon\w*|defer(?:s|red|ring)?)\b|推迟|延期|延后"
 _EVENTS["cancel"] = r"\b(?:cancel\w*|scrap\w*|abandon\w*|shelv\w*)\b|取消|放弃|搁置"
-_EVENTS["raise"] += r"|\b(?:scal(?:es|ed|ing)|powers?)\s+to\b|\b(?:intensif\w*|enhanc\w*)\b|\bfans?\s+(?:[\w-]+\s+){0,2}(?:fears?|concerns?|inflation)\b|扩展|提振|增强|加剧|劲升"
-_EVENTS["fall"] += r"|\bslips?\b"
+_EVENTS["raise"] += r"|\b(?:scal(?:es|ed|ing)|powers?)\s+to\b|\b(?:intensif\w*|enhanc\w*)\b|\bfans?\s+(?:[\w-]+\s+){0,2}(?:fears?|concerns?|inflation)\b|扩展|提振|增强|加剧|劲升|激增|\b(?:sales|revenues?|profits?|earnings)\s+up\b|\bscal(?:e|es|ed|ing)\s+(?:energy|power|capacity|production|compute|computing|operations?|business)\b"
+_EVENTS["fall"] += r"|\bslips?\b|跌幅"
 # Maintaining control/resilience is not a rate/price hold. Bind this polysemous
 # verb to a financial state instead of requiring its Chinese word everywhere.
 _HOLD_OBJECT = r"rates?|prices?|guidance|outlook|ratings?|dividends?|revenue|profit|production|利率|价格|指引|展望|评级|分红|营收|利润|产量"
@@ -133,6 +133,7 @@ def _quantities(text: str) -> Counter:
         return str(zh_counts[raw])
     text = re.sub(r"[一二三四五六七八九]?十[一二三四五六七八九]?(?=多?年|个月|天|周)|[一二三四五六七八九](?=多?年|个月|天|周)", chinese_count, text)
     text = re.sub(r"(\d+)多年", r" more than \1年", text)
+    text = re.sub(r"(\d+)(年|个月|天|周)多", r" more than \1\2", text)
     for match in _NUMBER.finditer(text):
         value = Decimal(match['n'].replace(',', '')) * _SCALE.get((match['scale'] or '').lower(), 1)
         unit = (match['unit'] or '').lower()
@@ -294,6 +295,9 @@ def translation_errors(original: str, translated: str) -> list[str]:
     # A dated participial launch is a scheduled event, not an assertion that it
     # has already launched. Scope this to the explicit calendar construction.
     original = re.sub(r"\bLaunching\s+(?=calendar_month\s+\d)", "will launch ", original, flags=re.I)
+    # Reported results beating a benchmark are not an uncertain forecast.
+    if re.search(r"\b(?:beat\w*|above|exceed\w*).{0,70}(?:expectations|estimates)\b", original, re.I):
+        translated = re.sub(r"((?:超过|超出|高于).{0,20})(?:预期|预估)", r"\1市场基准", translated)
     for condition, pattern in {
         "until": r"\buntil\b|直到|直至|(?:推迟|延后|延期)至",
         "unless": r"\bunless\b|除非",

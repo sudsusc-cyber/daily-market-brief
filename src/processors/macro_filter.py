@@ -178,6 +178,7 @@ _THEME_SPLIT_RE = re.compile(r"^([^。.::]+)[。.::]\s*(.+)$", re.DOTALL)
 def _rebuild_safe_html(
     raw_text: str, flat_items: list[MacroNewsItem], evidence: list[dict] | None = None,
     *, editorial_order: bool = False, rejections: list[str] | None = None,
+    selection_audit: list[dict] | None = None,
 ) -> tuple[str, list[Footnote]]:
     """LLM 输出 → 安全 HTML + 脚注列表。
 
@@ -233,7 +234,9 @@ def _rebuild_safe_html(
             group["evidence"].extend(mapping)
 
     themes = {}
-    events = edition_events([group["text"] for group in groups.values()])
+    # Translation may move a causal clause before the main event. Classify the
+    # immutable evidence so Chinese word order cannot change editorial grouping.
+    events = edition_events([group["evidence"][0]["excerpt"] for group in groups.values()])
     topics = [event.topic for event in events]
     for group, event in zip(groups.values(), events, strict=True):
         group["event"] = event.audit()
@@ -247,8 +250,27 @@ def _rebuild_safe_html(
         selected.sort(key=lambda entry: (
             min(g["rank"] for g in entry[1]) if editorial_order else 0,
             -macro_importance(entry[0][0], [group["text"] for group in entry[1]])))
+        if editorial_order:
+            # Splitting one model paragraph into several verified themes must
+            # not consume all three slots before its second/third chosen story.
+            # First keep a representative of each ranked paragraph; additional
+            # themes from that paragraph compete only for remaining slots.
+            used_ranks = set()
+            representatives, extras = [], []
+            for entry in selected:
+                rank = min(g["rank"] for g in entry[1])
+                (extras if rank in used_ranks else representatives).append(entry)
+                used_ranks.add(rank)
+            selected = representatives + extras
         logger.info("macro_filter.topic_limit candidates=%d published=%d", len(selected), MAX_MACRO_PARAGRAPHS)
         selected = selected[:MAX_MACRO_PARAGRAPHS]
+    if selection_audit is not None:
+        kept = {key for key, _ in selected}
+        selection_audit.append({"phase": "theme_selection", "themes": [
+            {"topic": key[0], "paragraph_rank": min(g["rank"] for g in related),
+             "published": key in kept, "urls": [i.url for g in related for i in g["items"]]}
+            for key, related in themes.items()
+        ][:60]})
     parts, footnotes = [], []
     for (topic, _), related in selected:
         facts, paragraph_citations = [], []
@@ -317,7 +339,7 @@ def summarize(
         if not recovery_attempted:
             recovery_attempted = recover_selected_translations(selected, client=client, audit=audit)
         body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items, evidence,
-                                                editorial_order=True, rejections=rejections)
+                                                editorial_order=True, rejections=rejections, selection_audit=audit)
         if body_html:
             logger.info(
                 "macro_filter.ok footnotes=%d attempt=%d (sanitized)",
