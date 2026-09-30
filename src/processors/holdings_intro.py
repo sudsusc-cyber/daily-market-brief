@@ -102,7 +102,7 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
         except Exception as exc:
             logger.warning("holdings_intro.failed type=%s", type(exc).__name__)
             raw = ""
-        text = raw.replace(_MARKER, context, 1) if raw.startswith(_MARKER) and raw.count(_MARKER) == 1 else ""
+        text = context + raw[len(_MARKER):].lstrip(" ,，。:：;；") if raw.startswith(_MARKER) and raw.count(_MARKER) == 1 else ""
         errors = _intro_errors(text, context, recent) if text else ["missing_context_marker"]
         if not errors:
             logger.info("holdings_intro.ok chars=%d attempt=%d", len(text), attempt + 1)

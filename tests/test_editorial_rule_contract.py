@@ -119,3 +119,9 @@ def test_model_event_ranking_not_replaced_by_permanent_topic_priority():
     assert result and result.summary_html.count("<p ") == 3
     assert facts[0] in result.summary_html and facts[-1] not in result.summary_html
     assert {r['url'] for r in result.evidence} == {r.url for r in rows[:3]}
+
+
+@pytest.mark.parametrize("separator", ["，", ", ", "。", "；"])
+def test_intro_placeholder_does_not_double_sentence_punctuation(separator):
+    text = holdings_intro.write_intro([signal()], client=Client("{信号背景}" + separator + PROSE))
+    assert text == holdings_intro.signal_context([signal()]) + PROSE

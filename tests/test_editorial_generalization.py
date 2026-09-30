@@ -173,7 +173,7 @@ def test_grouping_preserves_changed_numbers_states_dates_and_each_source():
     for row in evidence:
         assert row["macro_event"]["text"] == row["output_text"]
         assert row["macro_topic"] == row["macro_event"]["topic"]
-        assert row["presentation_version"] == 3
+        assert row["presentation_version"] == news_presentation.PRESENTATION_VERSION
         assert _verified_grounding_row(SimpleNamespace(summary_html=html), row)
     assert "编造" not in html
 
@@ -185,7 +185,7 @@ def test_original_source_and_versioned_replay_survive_new_cleanup():
     row = rows[0]
     assert item.title == row["original_title"] == row["excerpt"] == raw
     assert row["output_text"] == output != raw
-    assert row["presentation_version"] == 3
+    assert row["presentation_version"] == news_presentation.PRESENTATION_VERSION
     assert "qualified_listing" in row["presentation_operations"]
     obj = SimpleNamespace(summary_html=output)
     assert _verified_grounding_row(obj, row)
