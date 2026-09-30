@@ -528,6 +528,7 @@ def main() -> int:
         if figure_failures:
             figure_fallback_note = (
                 _FIGURE_PROCESSING_FALLBACK_NOTE if any(s.processing_error for s in figure_failures)
+                else "关键发言翻译处理未完成，本期暂未刊出。" if all(s.failure_kind == "translation" for s in figure_failures)
                 else "关键发言候选内容未通过核验，本期暂不刊载。" if any(s.content_rejections for s in figure_failures)
                 else "关键发言来源读取失败，本期暂不刊载。"
             )
@@ -753,7 +754,9 @@ def main() -> int:
         }, "figures": {summary.person: summary.content_rejections for summary in figure_results
                         if summary.content_rejections},
                         "figure_verification": {summary.person: summary.verification_audit
-                                                for summary in figure_results if summary.verification_audit}},
+                                                for summary in figure_results if summary.verification_audit},
+                        "figure_failure_kinds": {summary.person: summary.failure_kind
+                                                 for summary in figure_results if summary.failure_kind}},
         expected_tickers=[holding.ticker for holding in HOLDINGS] if settings.valuation_enabled else [],
         expected_prices=[holding.ticker for holding in HOLDINGS],
         expected_metrics=sentiment.METRIC_NAMES,
@@ -769,7 +772,8 @@ def main() -> int:
                       "fallback": bool(macro_news_fallback_note), "silence": bool(macro_news_silence_note)},
             "figures": {"source_failures": sum(bool(b.error) for b in fig_bundles),
                         "processing_failures": sum(bool(s.processing_error) for s in figure_results),
-                        "content_rejections": sum(len(s.content_rejections) for s in figure_results),
+                        "content_rejections": sum(len(s.content_rejections) - s.translation_failure_count for s in figure_results),
+                        "translation_failures": sum(s.translation_failure_count for s in figure_results),
                         "fallback": bool(figure_fallback_note),
                         "silence": not figure_summaries and not figure_failures},
             "frontier": frontier_report.health(),

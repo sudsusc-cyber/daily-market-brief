@@ -31,12 +31,10 @@ from src.processors.news_selection import (
     plain_source,
 )
 from src.processors.source_grounding import (
-    INSTRUCTION,
     checked_excerpt,
     diagnostic_text,
     grounded_text,
     publication_diagnostic,
-    source_prompt,
 )
 from src.utils.news_facts import content_key, equivalent
 from src.utils.secrets import redact_secrets
@@ -103,6 +101,11 @@ class FigureSummary:
     processing_error: str | None = None
     content_rejections: list[str] = field(default_factory=list)
     verification_audit: list[dict] = field(default_factory=list)
+    failure_kind: str = ""
+
+    @property
+    def translation_failure_count(self) -> int:
+        return sum(reason.endswith("reason=translation_unavailable") for reason in self.content_rejections)
 
 
 def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
@@ -142,8 +145,9 @@ _TASK_INSTRUCTION = """\
    - **不是{PERSON}的发言**(标题里出现别人的名字,主要内容是别人说的)
 2. **跨媒体合并(重要)**:不同媒体(如第一财经、搜狐、Reuters、Bloomberg、CNBC)
    报道同一场演讲/采访/正式声明,即使措辞略有差异也必须**合并为一条**。
-3. 对通过 1-2 的条目,**打分 + 提炼 1-2 句中文关键观点**(优先用 LLM 看到的双引号原话,
-   忠实原文,去标题党语气)。
+3. 对通过 1-2 的条目打分，并摘取对应的完整原文或已有译文。这里仅选稿；
+   程序随后单独翻译并核验。原文语言、是否已有中文译文，不得影响 yes/no 或分数。
+   英文原文同样可以选为 yes，不得因“无合格中文片段”淘汰。
 
 【发言质量评分(1-5 分,必须打!)】
 - **5 分**:重大判断,直接影响产业趋势、资本配置、长期投资假设或监管/竞争格局。
@@ -174,14 +178,12 @@ _TASK_INSTRUCTION = """\
 - 股价涨跌评论、花边、人物传记、排行榜、语录合集
 
 输出严格按以下行格式,不要解释、不要前言:
-▦ N: yes | score=5 | <关键观点中文>             # 单条
-▦ N,M[,K]: yes | score=5 | <关键观点中文>       # 合并,M、K 与 N 是同一件事
+▦ N: yes | score=5 | <完整原文或已有译文>             # 单条
+▦ N,M[,K]: yes | score=5 | <完整原文或已有译文>       # 合并,M、K 与 N 是同一件事
 ▦ N: no  | score=2 | <淘汰原因>                  # 不合格,score 说明原因
 
 【关键要求】
-- **绝对不要在观点开头加人名前缀**(如"黄仁勋说""巴菲特表示"),人物姓名已作为小标题
-- 直接输出观点本身,如:"AI 推理需求增长远超预期,数据中心投资仍处早期"
-- 忠实原文,不引申、不解读
+- 保留完整原句及其否定、数字、对象和条件，不改写、不补充；程序负责统一行文及人物署名。
 - score 必须打数字 1-5;score 1-2 必须打 no(即使本人原话,内容不够格也不展示)
 
 【跨媒体合并规则(重中之重!)】
@@ -232,7 +234,9 @@ def _format_input(items: list[FigureMention]) -> str:
         # 摘要太长会污染 prompt,裁到 200 字
         if len(snippet) > 200:
             snippet = snippet[:200].rstrip() + "…"
-        line = f"▦ {i}: 标题={it.title} / {source_prompt(it)}"
+        excerpt, translated = checked_excerpt(it)
+        line = (f"▦ {i}: 标题={it.title} / 完整原文={excerpt or factual_excerpt(it)}"
+                f" / 译文参考={translated or '待翻译；请按原文选稿'}")
         if snippet:
             line += f" / 摘要={snippet}"
         line += f" / 来源={it.source}"
@@ -323,7 +327,12 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
                 continue
             supported, mapping = grounded_text(body, [src_item])
             if not supported:
-                rejected_indexes[source_index] = "no_verified_chinese_excerpt"
+                excerpt = factual_excerpt(src_item)
+                rejected_indexes[source_index] = (
+                    "source_evidence_unavailable" if not excerpt
+                    else "translation_unavailable" if not chinese_prose(excerpt) and not checked_excerpt(src_item)[1]
+                    else "publication_quality_rejected"
+                )
                 continue
             kept.append((source_index, FigureKeyPoint(
                 text=supported, evidence=mapping,
@@ -368,7 +377,7 @@ def _recover_selected(items, parsed, *, client, budget, audit):
     for index in sorted(parsed.rejected_indexes):
         item = items[index - 1]
         excerpt = factual_excerpt(item)
-        if (parsed.rejected_indexes[index] == "no_verified_chinese_excerpt" and excerpt
+        if (parsed.rejected_indexes[index] == "translation_unavailable" and excerpt
                 and not chinese_prose(excerpt) and not checked_excerpt(item)[1]
                 and len(retry) < budget.items):
             retry.append(item)
@@ -427,13 +436,16 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
                 row['presentation_speaker'] = bundle.person
             point.text = '；'.join(dict.fromkeys(row['output_text'] for row in point.evidence))
         errors = [redact_secrets(str(error))[:240] for error in [bundle.error, processing_error, *rejected] if error]
+        failure_kind = ("processing" if processing_error else "source" if bundle.error
+                        else "translation" if rejected and all(r.endswith("reason=translation_unavailable") for r in rejected)
+                        else "evidence" if rejected else "")
         summary = FigureSummary(person=bundle.person, person_en=bundle.person_en, items=kept,
                                 error="; ".join(errors) or None, processing_error=processing_error,
-                                content_rejections=rejected, verification_audit=audit)
+                                content_rejections=rejected, verification_audit=audit, failure_kind=failure_kind)
         return history.filter_figure(summary) if history is not None else summary
 
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
-        instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person) + INSTRUCTION
+        instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person)
         if history is not None:
             instruction += history.context("figures", bundle.person)
         if attempt > 1:

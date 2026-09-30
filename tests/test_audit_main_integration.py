@@ -241,7 +241,8 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         body = sent[0]["html_body"]
         figures_health = health["figures"]
         assert figures_health["processing_failures"] == int(scenario == "figure_processing")
-        assert figures_health["content_rejections"] == int(scenario in {"figure_rejected", "figure_partial"})
+        assert figures_health["content_rejections"] == 0
+        assert figures_health["translation_failures"] == int(scenario in {"figure_rejected", "figure_partial"})
         assert figures_health["source_failures"] == int(scenario == "figure_source")
         assert figures_health["silence"] == (scenario == "figure_silent")
         assert "关键发言整理未完成" not in body
@@ -258,6 +259,10 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
             assert not figures_health["fallback"]
             assert manifest["content"]["diagnostics"]["figures"]
             assert len(manifest["content"]["summary_mapping"]["figures"]) == 1
+        elif scenario == "figure_rejected":
+            assert "关键发言翻译处理未完成" in body
+            assert "关键发言候选内容未通过核验" not in body
+            assert manifest["content"]["diagnostics"]["figure_failure_kinds"]["黄仁勋"] == "translation"
         elif scenario != "figure_silent":
             assert "本期暂不刊载" in body
         saved = main.figures._load_pushed(tmp_path / "pushed_figures.json")

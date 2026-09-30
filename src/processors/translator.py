@@ -12,13 +12,12 @@ import re
 from collections.abc import Iterable
 
 from src.processors.llm_client import LLMClient
-from src.processors.news_selection import factual_excerpt, plain_source
+from src.processors.news_selection import chinese_prose, factual_excerpt, plain_source
 from src.processors.translation_guard import translation_errors
 
 logger = logging.getLogger(__name__)
 
 
-_HAS_CJK = re.compile(r"[一-鿿]")
 _LINE_RE = re.compile(r"^▦\s*(\d+)\s*:\s*(.+?)\s*$")
 _MAX_ATTEMPTS = 2
 
@@ -37,7 +36,9 @@ _TASK_INSTRUCTION = """\
 
 
 def _is_chinese(text: str) -> bool:
-    return bool(_HAS_CJK.search(text))
+    # Use the publication language rule too: a Chinese name/publisher inside an
+    # English report does not make the whole report an already translated item.
+    return chinese_prose(text)
 
 
 def _parse_lines(text: str) -> dict[int, str]:
