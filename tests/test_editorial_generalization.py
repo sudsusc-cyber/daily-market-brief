@@ -230,9 +230,24 @@ def test_existing_chinese_display_metadata_uses_the_same_listing_grammar(name, t
     assert publication_text(f"{name}（{ticker}）尚未批准计划。") == f"{name}尚未批准计划。"
 
 
-
 def test_currency_and_quantity_cannot_become_country_or_observation_date():
     event = extract_event("China discusses an economic plan costing 2000 US dollars.")
     assert event.topic == "中国经济"
     assert "us" not in event.geography
     assert event.time == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "中国与阿根廷讨论经济与谈判策略。",
+        "China discusses bargaining strategy with China-based firms.",
+        "China and Brazil discuss economic bargaining strategy.",
+        "中国公司的谈判策略发生变化。",
+        "中国工资谈判继续。",
+    ],
+)
+def test_unrelated_negotiation_cannot_borrow_another_articles_counterpart(text):
+    events = edition_events(["美国与中国举行贸易峰会。", text])
+    assert events[0].topic == "中美关系"
+    assert events[1].topic != "中美关系"

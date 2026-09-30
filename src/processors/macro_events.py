@@ -309,6 +309,20 @@ def edition_events(texts: list[str]) -> list[MacroEvent]:
                 event.topic in {"中国经济", "其他宏观"}
                 and "china" in event.geography
                 and "other_partner" not in event.geography
+                # Only elliptical negotiating-position follow-ups borrow the
+                # edition context. An explicit counterpart (even an unknown
+                # country) or a corporate negotiation must remain independent.
+                and not re.search(
+                    r"(?:China|中国|中方)\s*(?:and\b|with\b|与|和|同)|(?:with\s+|and\s+|与|和)China\b|与中国",
+                    event.text,
+                    re.I,
+                )
+                and not any(s.kind == "actor" and s.value == "corporate" for s in event.spans)
+                and re.search(
+                    r"谈判(?:盘算|策略|空间|地位)|(?:negotiating|bargaining) (?:position|strategy|leverage|calculus)",
+                    event.text,
+                    re.I,
+                )
                 and any(s.value == "negotiation" for s in event.spans)
             ):
                 events[i] = replace(event, topic="中美关系", decision="edition_bilateral_followup")
