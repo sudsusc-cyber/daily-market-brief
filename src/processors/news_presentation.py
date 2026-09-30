@@ -16,7 +16,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 3
+PRESENTATION_VERSION = 4
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -63,7 +63,9 @@ def _known_bare_listing(match: re.Match, text: str) -> str:
     # already present in the configured holding, next to that issuer's name.
     symbol = match[1].replace("-", ".")
     for holding in HOLDINGS:
-        if symbol == holding.ticker:
+        same_hk = (symbol.isdigit() and holding.ticker.endswith('.HK')
+                   and int(symbol) == int(holding.ticker[:-3]))
+        if symbol == holding.ticker or same_hk:
             prefix = text[: match.start()].rstrip()
             normalized = _issuer_key(prefix)
             for alias in (holding.name, COMPANY_DISPLAY_NAMES.get(holding.ticker, "")):
@@ -78,7 +80,7 @@ def _known_bare_listing(match: re.Match, text: str) -> str:
     return match[0]
 
 
-def present(text: str, *, source_name: str = "") -> Presentation:
+def present(text: str, *, source_name: str = "", _version: int = PRESENTATION_VERSION) -> Presentation:
     text = plain_source(text)
     operations = []
 
@@ -106,12 +108,20 @@ def present(text: str, *, source_name: str = "") -> Presentation:
             )
         if text == before:
             break
+    if _version >= 4 and source:
+        # A known publisher following a completed sentence/percentage is footer
+        # metadata. Ordinary attribution ("与 Publisher 合作") remains prose.
+        record("publisher_tail", re.sub(
+            r"(?<=[。.!?！？%％])\s+" + re.escape(source) + r"[。.]?\s*$", "", text, flags=re.I))
     pieces = re.split(r"(?<=[。!?！？])", text)
     tail = pieces[-1].strip() or (pieces[-2].strip() if len(pieces) > 1 else "")
     if tail and _TEASER.fullmatch(tail):
         record("read_on_teaser", text[: text.rfind(tail)].rstrip("。.!? "))
     record("qualified_listing", _QUALIFIED.sub("", text))
     record("issuer_listing", _PARENS.sub(lambda m: _known_bare_listing(m, text), text))
+    if _version >= 4:
+        record("issuer_listing", re.sub(r"\s*[（(](\d{4,5})[)）]",
+               lambda m: _known_bare_listing(m, text), text))
     for name, short in _LEGAL_NAMES.items():
         record(
             "entity_display_name",
@@ -136,7 +146,23 @@ def present(text: str, *, source_name: str = "") -> Presentation:
             re.sub(r"[ \t]+", " ", re.sub(r"(?<!\d),|,(?!\d)", "，", text)),
         ),
     )
-    return Presentation(text.strip(), tuple(dict.fromkeys(operations)))
+    if _version >= 4:
+        # A fully parsed bond-yield record has an identical instrument, tenor,
+        # direction, comparison period and extreme. Do not normalize partial
+        # matches, qualifiers, forecasts, levels or additional clauses.
+        compact = re.sub(r"\s+", "", text).rstrip('。.')
+        record_pattern = (r"(?P<country1>[一-鿿]{2,8})?(?P<tenor>\d+(?:\.\d+)?)年期"
+                          r"(?P<country2>[一-鿿]{2,8})?国债收益率"
+                          r"(?P<move>攀升至|升至|跌至|降至)(?P<year>\d{4})年以来"
+                          r"(?P<extreme>最高|最低)(?:水平)?")
+        match = re.fullmatch(record_pattern, compact)
+        if match and bool(match['country1']) != bool(match['country2']):
+            rising = match['move'] in ('攀升至', '升至')
+            if rising == (match['extreme'] == '最高'):
+                country = match['country1'] or match['country2']
+                record("bond_record_word_order", country + match['tenor'] + '年期国债收益率'
+                       + ('升至' if rising else '降至') + match['year'] + '年以来' + match['extreme'] + '。')
+    return Presentation(text.strip(), tuple(dict.fromkeys(operations)), _version)
 
 
 def publication_text(text: str, *, source_name: str = "") -> str:
@@ -188,6 +214,9 @@ def replay_presentation(validated: str, row: dict) -> str:
         return (
             old_voice(output, str(row.get("presentation_speaker", ""))) if version == 2 else output
         )
+    if version == 3:
+        output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
+        return voice_text(output, str(row.get("presentation_speaker", ""))) if row.get("presentation_speaker") else output
     if version == PRESENTATION_VERSION:
         output = publication_text(validated, source_name=str(row.get("source_name", "")))
         return (
