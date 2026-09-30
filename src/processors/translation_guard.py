@@ -42,6 +42,7 @@ _EVENTS["payment_completed"] = r"\b(?:has|have|had|already)\s+paid\b|已(?:经)?
 _EVENTS["payment_order"] = r"\b(?:orders?|ordered|requires?|required)\b.*\bpay\b|命令.*支付|责令.*支付|判令.*支付|判赔"
 _EVENTS["person_release"] = r"\bperson_release\b|释放"
 _EVENTS["pause"] = r"\b(?:paus\w*|suspend\w*|halt\w*)\b|暂停|中止"
+_EVENTS["delay"] = r"\b(?:delay\w*|postpon\w*|defer(?:s|red|ring)?)\b|推迟|延期|延后"
 _EVENTS["cancel"] = r"\b(?:cancel\w*|scrap\w*|abandon\w*|shelv\w*)\b|取消|放弃|搁置"
 _ENTITIES = {
     "Microsoft": ("Microsoft", "微软"), "Google": ("Google", "谷歌"),
@@ -130,6 +131,10 @@ def _quantities(text: str) -> Counter:
 def _contains(text: str, alias: str) -> bool:
     pattern = re.escape(alias)
     if alias.isascii():
+        # English acronym plurals are grammar, not a new identifier: GPUs/GPU.
+        # Only a lowercase plural suffix is optional; AWS and GPT-6 stay exact.
+        if re.fullmatch(r"[A-Z]{2,}", alias):
+            pattern += r"(?-i:s)?"
         pattern = rf"(?<![A-Za-z0-9_]){pattern}(?![A-Za-z0-9_])"
     return bool(re.search(pattern, text, re.I))
 
@@ -141,6 +146,8 @@ def _entity_order(text: str) -> list[str]:
         for alias in aliases:
             pattern = re.escape(alias)
             if alias.isascii():
+                if re.fullmatch(r"[A-Z]{2,}", alias):
+                    pattern += r"(?-i:s)?"
                 pattern = rf"(?<![A-Za-z0-9_]){pattern}(?![A-Za-z0-9_])"
             hits.extend(m.start() for m in re.finditer(pattern, text, re.I))
         if hits:
@@ -153,7 +160,7 @@ def _scoped_states(text: str) -> set[tuple]:
     # Bind polarity/modality to the event clause so a 'not' elsewhere cannot
     # bless a reversed approval/completion assertion.
     for clause in re.split(r"[，,；;。!?]|\bbut\b|但是|但", text, flags=re.I):
-        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release", "pause", "cancel"):
+        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release", "pause", "cancel", "delay"):
             if re.search(_EVENTS[event], clause, re.I):
                 states.add((event, bool(re.search(_NEGATION, clause, re.I)),
                             bool(re.search(_MODALITY, clause, re.I))))
@@ -224,6 +231,12 @@ def translation_errors(original: str, translated: str) -> list[str]:
     bindings = _financial_bindings(original)
     if len(bindings) > 1 and bindings != _financial_bindings(translated):
         errors.append('financial_metric_binding')
+    for condition, pattern in {
+        "until": r"\buntil\b|直到|直至|(?:推迟|延后|延期)至",
+        "unless": r"\bunless\b|除非",
+    }.items():
+        if bool(re.search(pattern, original, re.I)) != bool(re.search(pattern, translated, re.I)):
+            errors.append("condition:" + condition)
     for name, pattern in {'negation': _NEGATION, 'modality': _MODALITY, **_EVENTS}.items():
         source_present = bool(re.search(pattern, original, re.I))
         translated_present = bool(re.search(pattern, translated, re.I))
@@ -239,7 +252,10 @@ def translation_errors(original: str, translated: str) -> list[str]:
     if _scoped_states(original) != _scoped_states(translated):
         errors.append('event_scope')
     # Preserve identifiers, model names and acronyms literally (including unknown ones).
-    identifiers = set(re.findall(r'\b(?:[A-Z]{2,}[A-Z0-9-]*|[A-Za-z]+[-.]\d[\w.-]*)\b', original + ' ' + translated))
+    # Match versioned model names first and greedily; a grammatical acronym
+    # plural must not erase a model suffix (e.g. Claude-3-Sonnet -> Claude-3-Opus).
+    tokens = re.findall(r'\b(?:[A-Za-z]+[-.]\d[\w.-]*|[A-Z]{2,}[A-Z0-9-]*s?)\b', original + ' ' + translated)
+    identifiers = {token[:-1] if re.fullmatch(r"[A-Z]{2,}s", token) else token for token in tokens}
     location_tokens = {'NEW', 'YORK'} if _contains(original, 'New York') else set()
     for identifier in identifiers - {'USD', 'HKD', 'EUR', 'CEO', 'US', 'UK', 'OS', 'UN', 'IP'} - location_tokens:
         if _contains(original, identifier) != _contains(translated, identifier):

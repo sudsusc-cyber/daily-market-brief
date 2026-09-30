@@ -33,9 +33,49 @@ def analysis_source(title: str, summary: str = '') -> bool:
         r'political asset|wish you.*bought)\b|投资逻辑|值得买|分析师博客', title + ' ' + summary, re.I))
 
 
+# Event objects, not the issuer name, determine whether model-scope evidence is
+# required. An AI company can also delay financing, a meeting or a building.
+_STATUS_ACTION = re.compile(r"\b(?:paus\w*|cancel\w*|scrap\w*|halt\w*|suspend\w*|abandon\w*|axes?|shelv\w*|postpon\w*|delay\w*|defer\w*)\b|暂停|取消|搁置|终止|砍掉|放弃|推迟|延后|延期", re.I)
+_STATUS_OBJECTS = {
+    "model": r"\b(?:models?|GPT[- .]?\d[\w.-]*|API|training|evaluation|inference|deployment|services?|subscriptions?)\b|模型|训练|评估|推理|部署|服务|订阅",
+    "corporate": r"\b(?:IPOs?|financing|funding|fundrais\w*|offerings?|listings?|budgets?|meetings?|conferences?|construction|factories|factory|contracts?|acquisitions?|mergers?)\b|上市|融资|募资|预算|会议|大会|建设|工厂|合同|收购|并购",
+}
+
+
 def model_status_claim(text: str) -> bool:
-    return bool(re.search(r'OpenAI|Anthropic|GPT[- .]?\d|模型|model', text, re.I) and re.search(
-        r'\b(?:paus\w*|cancel\w*|scrap\w*|halt\w*|suspend\w*|abandon\w*|axes?|shelv\w*|postpon\w*|delay\w*)\b|暂停|取消|搁置|终止|砍掉|放弃|推迟|延后', text, re.I))
+    # Separate causal context: "delays its IPO because models are unsafe" is a
+    # financing event, whereas "delays its model launch" is a product event.
+    for clause in re.split(r"[，,；;。!?]|\b(?:after|before|because|amid|while|until|due to)\b|由于|因为|此前", text, flags=re.I):
+        objects = sorted((m.start(), m.end(), kind) for kind, pattern in _STATUS_OBJECTS.items()
+                         for m in re.finditer(pattern, clause, re.I))
+        for action in _STATUS_ACTION.finditer(clause):
+            before = [o for o in objects if o[1] <= action.start()]
+            after = [o for o in objects if o[0] >= action.end()]
+            prior = before[-1] if before else None
+            following = after[0] if after else None
+            # Passive headlines: "IPO was delayed" / "模型暂停". Do not bind
+            # an object's background mention past the first actual object.
+            passive = prior and re.fullmatch(r"\s*(?:(?:is|was|are|were|has|have|had|been|being|will|be|gets?|got)\s+)*", clause[prior[1]:action.start()], re.I)
+            bound = prior if passive else following or prior
+            if bound:
+                if bound[2] == "model":
+                    return True
+                # Coordinated objects share the action: cancelling an IPO AND
+                # a model still contains a model-status claim. A financing
+                # object must not exempt a second affected product.
+                next_action = _STATUS_ACTION.search(clause, action.end())
+                stop = next_action.start() if next_action else len(clause)
+                if any(o[2] == "model" and bound[1] <= o[0] < stop
+                       and re.search(r"\b(?:and|as well as)\b|以及|及|与|和", clause[bound[1]:o[0]], re.I)
+                       for o in objects):
+                    return True
+                continue
+            # An explicitly mentioned model issuer with an unspecified paused
+            # release remains ambiguous and must still satisfy the scope gate.
+            if (re.search(r"OpenAI|Anthropic|人工智能|\bAI\b", clause, re.I)
+                    and re.search(r"launch|release|rollout|发布|推出|上线", clause, re.I)):
+                return True
+    return False
 
 
 def status_has_scope(item, excerpt: str) -> bool:

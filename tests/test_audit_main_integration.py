@@ -245,6 +245,14 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         assert figures_health["source_failures"] == int(scenario == "figure_source")
         assert figures_health["silence"] == (scenario == "figure_silent")
         assert "关键发言整理未完成" not in body
+        if scenario in {"figure_partial", "figure_rejected", "figure_silent"}:
+            audit = manifest["content"]["diagnostics"]["figure_verification"]["黄仁勋"]
+            assert audit and audit[0]["decisions"] and audit[0]["candidates"]
+            assert audit[0]["candidates"][0]["title"]
+            if scenario in {"figure_partial", "figure_rejected"}:
+                assert audit[0]["rejected_indexes"]
+            # Internal source diagnostics must not leak into the email body.
+            assert "translation_recovery" not in body and "rejected_indexes" not in body
         if scenario == "figure_partial":
             assert "投资100亿美元建设数据中心。" in re.sub(r"\s", "", BeautifulSoup(body, "html.parser").get_text())
             assert not figures_health["fallback"]

@@ -751,7 +751,9 @@ def main() -> int:
             "content_rejections": frontier_report.content_rejections,
             "merged_into_macro": sorted(frontier_merged_urls),
         }, "figures": {summary.person: summary.content_rejections for summary in figure_results
-                        if summary.content_rejections}},
+                        if summary.content_rejections},
+                        "figure_verification": {summary.person: summary.verification_audit
+                                                for summary in figure_results if summary.verification_audit}},
         expected_tickers=[holding.ticker for holding in HOLDINGS] if settings.valuation_enabled else [],
         expected_prices=[holding.ticker for holding in HOLDINGS],
         expected_metrics=sentiment.METRIC_NAMES,

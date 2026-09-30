@@ -24,8 +24,20 @@ from src.collectors.figures import FigureBundle, FigureMention
 from src.processors.html_safe import is_safe_url
 from src.processors.llm_client import LLMClient
 from src.processors.news_presentation import PRESENTATION_VERSION, voice_text
-from src.processors.news_selection import meaningful_quote, plain_source
-from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
+from src.processors.news_selection import (
+    chinese_prose,
+    factual_excerpt,
+    meaningful_quote,
+    plain_source,
+)
+from src.processors.source_grounding import (
+    INSTRUCTION,
+    checked_excerpt,
+    diagnostic_text,
+    grounded_text,
+    publication_diagnostic,
+    source_prompt,
+)
 from src.utils.news_facts import content_key, equivalent
 from src.utils.secrets import redact_secrets
 
@@ -90,6 +102,7 @@ class FigureSummary:
     error: str | None = None
     processing_error: str | None = None
     content_rejections: list[str] = field(default_factory=list)
+    verification_audit: list[dict] = field(default_factory=list)
 
 
 def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
@@ -245,6 +258,7 @@ class _FigureParseResult:
     duplicate_indexes: set[int]
     invalid_yes: bool = False
     rejected_indexes: dict[int, str] = field(default_factory=dict)
+    decisions: list[dict] = field(default_factory=list)
 
     def is_complete(self, expected_count: int) -> bool:
         return (
@@ -259,6 +273,7 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
     index_counts: dict[int, int] = {}
     invalid_yes = False
     rejected_indexes = {}
+    decisions = []
     for line in text.splitlines():
         m = _LINE_RE.match(line.strip())
         if not m:
@@ -280,6 +295,8 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
             if verdict == "yes":
                 invalid_yes = True
             continue
+        decisions.extend({"index": index, "verdict": verdict, "score": score_str,
+                          "reason_or_claim": diagnostic_text(body, 600)} for index in valid_indexes)
         if verdict != "yes":
             continue
         # score 必须显式存在且为 1-5;缺失/格式错/越界一律丢弃
@@ -327,6 +344,7 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
         duplicate_indexes=duplicates,
         invalid_yes=invalid_yes,
         rejected_indexes=rejected_indexes,
+        decisions=decisions,
     )
 
 
@@ -335,7 +353,42 @@ def _parse_output(text: str, items: list[FigureMention]) -> list[FigureKeyPoint]
     return _parse_output_result(text, items).items
 
 
-def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, history=None) -> FigureSummary:
+@dataclass
+class _RecoveryBudget:
+    # Shared by the whole voices section, not reset for every person. LLMClient
+    # additionally enforces the production global token/time and wall cutoff.
+    items: int = 6
+    calls: int = 2
+
+
+def _recover_selected(items, parsed, *, client, budget, audit):
+    from src.processors.translator import translate_in_place_news
+
+    retry = []
+    for index in sorted(parsed.rejected_indexes):
+        item = items[index - 1]
+        excerpt = factual_excerpt(item)
+        if (parsed.rejected_indexes[index] == "no_verified_chinese_excerpt" and excerpt
+                and not chinese_prose(excerpt) and not checked_excerpt(item)[1]
+                and len(retry) < budget.items):
+            retry.append(item)
+    if not retry or budget.calls <= 0:
+        return False
+    budget.calls -= 1
+    budget.items -= len(retry)
+    record = {"phase": "translation_recovery", "before": [publication_diagnostic(i) for i in retry]}
+    audit.append(record)
+    try:
+        translate_in_place_news(retry, client=client, max_attempts=1, timeout=20)
+    except Exception as exc:
+        record["error"] = diagnostic_text(f"{type(exc).__name__}: {exc}", 240)
+    record["after"] = [publication_diagnostic(i) for i in retry]
+    record["recovered"] = sum(bool(checked_excerpt(i)[1]) for i in retry)
+    logger.info("figure_filter.translation_recovery candidates=%d recovered=%d", len(retry), record["recovered"])
+    return True
+
+
+def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, history=None, recovery_budget: _RecoveryBudget | None = None) -> FigureSummary:
     """加工单个人物。
     流程:
       1. 规则层:候选必须含直接引语标记(双引号包句、说/表示、said/told 等)
@@ -358,6 +411,9 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
     last_error: str | None = None
     kept = []
     rejected = []
+    audit = []
+    recovery_budget = recovery_budget or _RecoveryBudget()
+    recovery_attempted = False
 
     def result(processing_error=None):
         for point in kept:
@@ -373,7 +429,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
         errors = [redact_secrets(str(error))[:240] for error in [bundle.error, processing_error, *rejected] if error]
         summary = FigureSummary(person=bundle.person, person_en=bundle.person_en, items=kept,
                                 error="; ".join(errors) or None, processing_error=processing_error,
-                                content_rejections=rejected)
+                                content_rejections=rejected, verification_audit=audit)
         return history.filter_figure(summary) if history is not None else summary
 
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
@@ -401,6 +457,17 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
             continue
 
         parsed = _parse_output_result(resp.text, qualified)
+        audit.append({"phase": "selection", "attempt": attempt, "decisions": parsed.decisions,
+                      "rejected_indexes": dict(parsed.rejected_indexes),
+                      "candidates": [{"index": index, **publication_diagnostic(item)}
+                                     for index, item in enumerate(qualified, 1)]})
+        if parsed.is_complete(len(qualified)) and parsed.rejected_indexes and not recovery_attempted:
+            recovery_attempted = _recover_selected(qualified, parsed, client=client,
+                                                   budget=recovery_budget, audit=audit)
+            if recovery_attempted:
+                # Revalidate the same selection; a new translation never changes
+                # its score/identity or bypasses original source binding.
+                parsed = _parse_output_result(resp.text, qualified)
         if parsed.covered_indexes:
             kept = parsed.items
             rejected = [f"index={index} reason={reason}" for index, reason in sorted(parsed.rejected_indexes.items())]
@@ -431,7 +498,8 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
 def filter_all(
     bundles: list[FigureBundle], *, client: LLMClient, max_items: int = 5, history=None
 ) -> list[FigureSummary]:
-    return [filter_one(b, client=client, max_items=max_items, history=history) for b in bundles]
+    budget = _RecoveryBudget()
+    return [filter_one(b, client=client, max_items=max_items, history=history, recovery_budget=budget) for b in bundles]
 
 
 # ── 版面限流:质量评分后选择最优 3 位人物进入日报 ──
