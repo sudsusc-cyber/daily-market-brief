@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from src.processors.holdings_intro import write_intro
+from src.processors.holdings_intro import signal_context, write_intro
 
 
 def test_actual_below_reference_none_and_two_hk_positions_cannot_invent_claims():
@@ -11,15 +11,15 @@ def test_actual_below_reference_none_and_two_hk_positions_cannot_invent_claims()
     client=Mock()
     client.chat.return_value=SimpleNamespace(text='两地各有一处，其余均在参考线之上。',error=None)
     text=write_intro(signals,client=client)
-    assert '2只处于小额区间' in text and '1只暂无买入信号' in text
-    assert '两地' not in text and '参考线之上' not in text
-    client.chat.assert_not_called()
+    assert text is None
+    assert signal_context(signals) == '持仓信号有所分化，部分标的处于既定买入区间。'
+    assert client.chat.call_count == 2
 
 
 def test_failed_and_unknown_observations_are_not_counted_as_no_signal():
     signals = [SimpleNamespace(signal='NONE',error='missing'),
                SimpleNamespace(signal='unexpected',error=None),
                SimpleNamespace(signal='LUMP_SUM',error=None)]
-    text=write_intro(signals)
-    assert '2只信号待核验' in text and '1只处于大额区间' in text
+    text=signal_context(signals)
+    assert '待核验' in text
     assert '暂无买入信号' not in text

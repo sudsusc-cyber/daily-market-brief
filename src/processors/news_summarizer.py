@@ -31,7 +31,12 @@ from src.processors.html_safe import (
 from src.processors.llm_client import LLMClient
 from src.processors.news_selection import _ROUNDUP, company_candidate, company_fact_matches
 from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
-from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
+from src.processors.source_grounding import (
+    INSTRUCTION,
+    grounded_text,
+    recover_selected_translations,
+    source_prompt,
+)
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
 logger = logging.getLogger(__name__)
@@ -55,6 +60,7 @@ class CompanyNewsSummary:
     evidence: list[dict] = field(default_factory=list)
     is_silence: bool = False
     content_rejections: list[str] = field(default_factory=list)
+    selection_audit: list[dict] = field(default_factory=list)
 
 
 # 中文公司名映射(prompt 里展示给 LLM 让它选用,不是 enforce)
@@ -185,7 +191,7 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
         cn_name = _CN_NAME_HINT.get(b.holding.ticker, b.holding.name)
         head = f"【{cn_name}({b.holding.ticker})】"
         lines.append(head)
-        for it in [item for item in b.items if company_candidate(item, b.holding.ticker)][:5]:
+        for it in [item for item in b.items if company_candidate(item, b.holding.ticker)][:15]:
             it.holding_ticker = b.holding.ticker
             it.related_holding_tickers = tuple(sorted(source_companies.get(it.url, {b.holding.ticker})))
             flat_items.append(it)
@@ -404,6 +410,9 @@ def summarize(
     if not flat_items:
         return CompanyNewsSummary(summary_html="", is_silence=True) if any(b.items and not b.error for b in bundles) else None
     last_error: str | None = None
+    recovery_attempted = False
+    audit = [{"phase": "candidate_window", "available": sum(len(b.items) for b in bundles if not b.error),
+              "considered": len(flat_items), "per_company_limit": 15}]
     for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
         task_instruction = _TASK_INSTRUCTION + INSTRUCTION
         if history is not None:
@@ -434,8 +443,13 @@ def summarize(
             logger.info("news_summarizer.silence attempt=%d", attempt)
             return CompanyNewsSummary(summary_html="", is_silence=True)
 
+        indexes = list(dict.fromkeys(footnote_idx(m) for m in FOOTNOTE_RE.finditer(raw_text)))
+        selected = [flat_items[i - 1] for i in indexes if 1 <= i <= len(flat_items)]
+        if not recovery_attempted:
+            recovery_attempted = recover_selected_translations(selected, client=client, audit=audit)
         summary = _rebuild_safe_summary(raw_text, flat_items)
         if summary is not None:
+            summary.selection_audit = audit
             if history is not None:
                 summary = history.filter_company(summary)
             logger.info(

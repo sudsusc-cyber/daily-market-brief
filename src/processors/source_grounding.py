@@ -32,7 +32,7 @@ from src.processors.translation_guard import translation_errors
 from src.utils.news_facts import canonical_fact, source_text
 
 logger = logging.getLogger(__name__)
-INSTRUCTION = "\n事实约束：正文选用所引来源的完整片段译文，或完整中文原文句子；可组合多条，但不要自由改写或补充结论。保留否定、数字、单位、日期、对象和状态。片段译文与不可变原文单独提供，引用编号必须匹配。"
+INSTRUCTION = "\n选稿与语言分开：按原文事实及重要性选稿，不能因尚无中文译文淘汰。可引用完整原句或已核验译文，程序负责翻译和刊发核验。不要自由改写或补充结论；保留否定、数字、单位、日期、对象和状态，引用编号必须匹配。"
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ def checked_excerpt(item) -> tuple[str, str]:
 def source_prompt(item) -> str:
     excerpt, translated = checked_excerpt(item)
     raw = excerpt or factual_excerpt(item)
-    return f"完整证据片段={raw} / 可刊发译文={translated or '无（仅完整中文原文可刊；英文不可直接刊出，不得编造）'}"
+    return f"完整证据片段={raw} / 译文参考={translated or '待翻译；请按原文选稿'}"
 
 
 def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
@@ -213,3 +213,28 @@ def publication_diagnostic(item) -> dict:
         "translation_rejection": diagnostic_text(getattr(item, "translation_diagnostic", {}), 1000),
         "truncated": any(len(str(value or "")) > 1800 for value in (excerpt, translated, getattr(item, "title", ""), getattr(item, "snippet", ""))),
     }
+
+
+def recover_selected_translations(items, *, client, audit: list, limit=8) -> bool:
+    """One bounded translation batch for selected originals, never new selection."""
+    from src.processors.translator import translate_in_place_news
+
+    pending = []
+    seen = set()
+    for item in items:
+        excerpt = factual_excerpt(item)
+        if (id(item) not in seen and excerpt and not chinese_prose(excerpt)
+                and not checked_excerpt(item)[1] and is_safe_url(item.url)):
+            pending.append(item)
+            seen.add(id(item))
+    pending = pending[:limit]
+    if not pending:
+        return False
+    record = {"phase": "selected_translation", "before": [publication_diagnostic(i) for i in pending]}
+    audit.append(record)
+    try:
+        translate_in_place_news(pending, client=client, max_attempts=1, timeout=20)
+    except Exception as exc:
+        record["error"] = diagnostic_text(type(exc).__name__, 100)
+    record["after"] = [publication_diagnostic(i) for i in pending]
+    return True

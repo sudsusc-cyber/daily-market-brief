@@ -244,10 +244,11 @@ def test_sentiment_keeps_only_one_sentence_from_llm() -> None:
 def test_holdings_intro_and_subject_disable_thinking() -> None:
     intro_client = _SequenceClient([
         _response(None, "timeout"),
-        _response("潮水未至，持仓仍守其位。"),
+        _response("{信号背景}衡量一段旅程，不只看眼前走了多远，也看脚下的路是否值得长行；时间不会替人作答，却能让扎实的判断慢慢显出分量。"),
     ])
-    assert "暂无买入信号" in write_intro([_signal()], client=intro_client)
-    assert intro_client.calls == []
+    assert "尚未出现既定买入信号" in write_intro([_signal()], client=intro_client)
+    assert len(intro_client.calls) == 2
+    assert intro_client.calls[0]["thinking"] is False
 
     subject_client = _SequenceClient([_response("风清云定")])
     text, error = _call_deepseek(subject_client, "生成主题")

@@ -601,7 +601,7 @@ def main() -> int:
         judgment_section = None
 
     logger.info("processors.holdings_intro")
-    holdings_intro_text = holdings_intro.write_intro(signals, client=llm)
+    holdings_intro_text = holdings_intro.write_intro(signals, client=llm, history=editorial_history)
     if signals and holdings_intro_text is None:
         _record_quality_alert("持仓引言加工失败：已使用确定性说明。")
 
@@ -746,10 +746,12 @@ def main() -> int:
             for item in bundle.items if getattr(item, "context_diagnostic", "")
         ][:20], "company": {
             "content_rejections": getattr(company_news_summary, "content_rejections", []),
-        }, "frontier": {
+            "selection": getattr(company_news_summary, "selection_audit", []),
+        }, "macro_selection": getattr(macro_news_summary, "selection_audit", []), "frontier": {
             "source_failures": frontier_report.source_failures,
             "processing_failures": frontier_report.processing_failures,
             "content_rejections": frontier_report.content_rejections,
+            "selection": frontier_report.selection_audit,
             "merged_into_macro": sorted(frontier_merged_urls),
         }, "figures": {summary.person: summary.content_rejections for summary in figure_results
                         if summary.content_rejections},
@@ -767,6 +769,7 @@ def main() -> int:
                                                    or bool(company_news_fallback_note and any(b.items for b in cn_bundles))),
                         "fallback": bool(company_news_fallback_note), "silence": bool(company_news_silence_note)},
             "macro": {"source_failures": macro_source_failures,
+                      "content_rejections": len(getattr(macro_news_summary, "content_rejections", [])),
                       "processing_failures": int(bool(getattr(macro_news_summary, "error", None))
                                                  or bool(macro_news_fallback_note and any(b.items for b in macro_bundles))),
                       "fallback": bool(macro_news_fallback_note), "silence": bool(macro_news_silence_note)},
@@ -861,6 +864,8 @@ def main() -> int:
 
     try:
         editorial_history.capture(company_news_summary, figure_summaries)
+        if holdings_intro_text:
+            editorial_history.remember("holdings_intro", "", holdings_intro_text)
         editorial_history.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("editorial_history.commit_failed type=%s", type(exc).__name__)

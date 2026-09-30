@@ -26,7 +26,12 @@ from src.processors.llm_client import LLMClient
 from src.processors.macro_events import edition_events
 from src.processors.macro_topics import macro_importance
 from src.processors.news_selection import macro_candidate
-from src.processors.source_grounding import INSTRUCTION, grounded_text, source_prompt
+from src.processors.source_grounding import (
+    INSTRUCTION,
+    grounded_text,
+    recover_selected_translations,
+    source_prompt,
+)
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 from src.utils.news_facts import canonical_fact
 
@@ -48,6 +53,8 @@ class MacroNewsSummary:
     summary_html: str
     footnotes: list[Footnote] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)
+    selection_audit: list[dict] = field(default_factory=list)
+    content_rejections: list[str] = field(default_factory=list)
 
 
 _TASK_INSTRUCTION = """\
@@ -149,7 +156,7 @@ def _format_input(bundles: list[MacroFeedBundle]) -> tuple[str, list[MacroNewsIt
         if b.error or not b.items:
             continue
         lines.append(f"【{b.source}】")
-        for it in [item for item in b.items if macro_candidate(item)][:8]:
+        for it in [item for item in b.items if macro_candidate(item)][:24]:
             flat_items.append(it)
             n = len(flat_items)
             lines.append(f"  #{n}. 原始标题={it.title} {source_prompt(it)}\n原始摘要={it.summary}")
@@ -169,7 +176,8 @@ _THEME_SPLIT_RE = re.compile(r"^([^。.::]+)[。.::]\s*(.+)$", re.DOTALL)
 
 
 def _rebuild_safe_html(
-    raw_text: str, flat_items: list[MacroNewsItem], evidence: list[dict] | None = None
+    raw_text: str, flat_items: list[MacroNewsItem], evidence: list[dict] | None = None,
+    *, editorial_order: bool = False, rejections: list[str] | None = None,
 ) -> tuple[str, list[Footnote]]:
     """LLM 输出 → 安全 HTML + 脚注列表。
 
@@ -200,7 +208,7 @@ def _rebuild_safe_html(
     # may share a theme paragraph, but each retains its own evidence and citation.
     groups = {}
     seen = set()
-    for para in paragraphs_raw:
+    for editorial_rank, para in enumerate(paragraphs_raw):
         claim = FOOTNOTE_RE.sub("", para).strip()
         split = _THEME_SPLIT_RE.match(claim)
         claim = split.group(2).strip() if split else claim
@@ -211,12 +219,16 @@ def _rebuild_safe_html(
             seen.add(index)
             item = flat_items[index - 1]
             if not is_safe_url(item.url):
+                if rejections is not None:
+                    rejections.append(f"index={index} reason=unsafe_url")
                 continue
             supported, mapping = grounded_text(claim, [item])
             if not supported or not mapping:
+                if rejections is not None:
+                    rejections.append(f"index={index} reason=no_verified_excerpt")
                 continue
             key = canonical_fact(supported)
-            group = groups.setdefault(key, {"text": supported, "items": [], "evidence": []})
+            group = groups.setdefault(key, {"text": supported, "items": [], "evidence": [], "rank": editorial_rank})
             group["items"].append(item)
             group["evidence"].extend(mapping)
 
@@ -232,8 +244,9 @@ def _rebuild_safe_html(
 
     selected = list(themes.items())
     if len(selected) > MAX_MACRO_PARAGRAPHS:
-        selected.sort(key=lambda entry: macro_importance(
-            entry[0][0], [group["text"] for group in entry[1]]), reverse=True)
+        selected.sort(key=lambda entry: (
+            min(g["rank"] for g in entry[1]) if editorial_order else 0,
+            -macro_importance(entry[0][0], [group["text"] for group in entry[1]])))
         logger.info("macro_filter.topic_limit candidates=%d published=%d", len(selected), MAX_MACRO_PARAGRAPHS)
         selected = selected[:MAX_MACRO_PARAGRAPHS]
     parts, footnotes = [], []
@@ -271,6 +284,9 @@ def summarize(
     if not payload.strip():
         return None
     last_error: str | None = None
+    recovery_attempted = False
+    audit = [{"phase": "candidate_window", "available": sum(len(b.items) for b in bundles if not b.error),
+              "considered": len(flat_items), "per_source_limit": 24}]
     for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
         task_instruction = _TASK_INSTRUCTION + INSTRUCTION
         if attempt > 1:
@@ -295,13 +311,20 @@ def summarize(
             continue
 
         evidence = []
-        body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items, evidence)
+        rejections = []
+        indexes = list(dict.fromkeys(footnote_idx(m) for m in FOOTNOTE_RE.finditer(resp.text)))
+        selected = [flat_items[i - 1] for i in indexes if 1 <= i <= len(flat_items)]
+        if not recovery_attempted:
+            recovery_attempted = recover_selected_translations(selected, client=client, audit=audit)
+        body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items, evidence,
+                                                editorial_order=True, rejections=rejections)
         if body_html:
             logger.info(
                 "macro_filter.ok footnotes=%d attempt=%d (sanitized)",
                 len(footnotes), attempt,
             )
-            return MacroNewsSummary(summary_html=body_html, footnotes=footnotes, evidence=evidence)
+            return MacroNewsSummary(summary_html=body_html, footnotes=footnotes, evidence=evidence,
+                                    selection_audit=audit, content_rejections=rejections)
 
         last_error = "AllParagraphsDroppedWithoutValidSources"
         logger.warning(
@@ -359,7 +382,8 @@ def merge_frontier_duplicates(summary, frontier_items):
     duplicate_urls = {point.source_url for point in duplicates}
     if not known <= rebuilt or not (visible_urls | duplicate_urls) <= linked:
         return summary, frontier_items, set()
-    return MacroNewsSummary(html, footnotes, evidence), remaining, duplicate_urls
+    return MacroNewsSummary(html, footnotes, evidence, selection_audit=summary.selection_audit,
+                            content_rejections=summary.content_rejections), remaining, duplicate_urls
 
 
 def limit_publication(summary):
