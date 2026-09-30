@@ -9,6 +9,18 @@ from urllib.parse import urlsplit
 
 def editorial_issue(text: str) -> str | None:
     text = text.strip()
+    # A headline about an undisclosed "part/thing/detail" contains no event
+    # that can be checked against its source. A concrete reporting sentence in
+    # the article body remains eligible through factual_excerpt().
+    if (
+        re.match(
+            r"^(?:the|a|an)\s+(?:scary|surprising|shocking|overlooked|little[- ]known|hidden)\s+"
+            r"(?:part|thing|detail|truth)\s+(?:about|in|behind|of)\b",
+            text, re.I,
+        )
+        and not re.search(r"\b(?:is|are|was|were|shows?|reveals?|means?)\b", text, re.I)
+    ) or re.search(r"(?:鲜为人知|少有人注意|令人震惊|可怕)的?(?:可怕的?)?(?:部分|细节|真相)[。.!?！？]?$", text):
+        return 'teaser_without_fact'
     if re.search(r'[?？](?:[”\"\']|\s*[-—|].*)?$', text):
         return 'question_not_event'
     if re.match(r'(?:this|that|these|those|it|its)\b|此次|这次|上述|该(?:举措|诉讼)|该(?=.{0,12}(?:产品|组合))|这一(?:发布|举措|增长)|此举', text, re.I):
