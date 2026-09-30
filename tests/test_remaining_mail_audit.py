@@ -145,11 +145,13 @@ YES = f'▦ 1: yes | score=5 | {FACT}'
 
 
 def test_figure_content_rejection_keeps_verified_neighbor_and_does_not_retry_selection():
-    client = llm(YES + '\n▦ 2: yes | score=5 | 没有原文支持的断言')
+    client = llm(YES + '\n▦ 2: yes | score=5 | 没有原文支持的断言', None)
     result = filter_one(figure_bundle([mention(FACT), mention('Jensen said a cloud deal was announced', '2')]), client=client)
     assert [row.text for row in result.items] == [FACT]
     assert result.error and result.content_rejections and not result.processing_error
-    assert client.chat.call_count == 1
+    assert client.chat.call_count == 2
+    assert "逐条翻译" in client.chat.call_args_list[1].kwargs["task_extra"]
+    assert client.chat.call_args_list[1].kwargs["timeout"] == 20
 
 
 def test_figure_partial_protocol_then_timeout_preserves_supported_item_and_marks_processing_error():

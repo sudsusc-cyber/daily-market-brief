@@ -59,6 +59,8 @@ def translate_titles(
     client: LLMClient,
     batch_size: int = 30,
     diagnostics: dict | None = None,
+    max_attempts: int = _MAX_ATTEMPTS,
+    timeout: float | None = None,
 ) -> list[str]:
     """翻译一批标题。已是中文的跳过,失败的位置回退原文。"""
     if not titles:
@@ -76,9 +78,11 @@ def translate_titles(
         }
         pending = set(indexed_chunk)
         translated: dict[int, str] = {}
-        rejected: dict[int, list[str]] = {}
+        rejected: dict[int, list[str]] = {position: diagnostics[pair[0]].get("errors", [])
+                                        for position, pair in indexed_chunk.items()
+                                        if diagnostics and pair[0] in diagnostics}
 
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
+        for attempt in range(1, max_attempts + 1):
             numbered = "\n".join(
                 f"▦ {position}: {indexed_chunk[position][1]}" + (f"\n上次译文未保留: {rejected[position]}；保留原始缩写、数字/日期、主体顺序及限定语。" if position in rejected else "")
                 for position in sorted(pending)
@@ -89,6 +93,7 @@ def translate_titles(
                 max_tokens=3500,
                 temperature=0.0,
                 thinking=False,
+                **({"timeout": timeout} if timeout is not None else {}),
             )
             if not resp.text:
                 logger.warning(
@@ -113,7 +118,7 @@ def translate_titles(
 
             if not pending:
                 break
-            if attempt < _MAX_ATTEMPTS:
+            if attempt < max_attempts:
                 logger.warning(
                     "translate.batch_retry start=%d size=%d missing=%d attempt=%d",
                     start, len(chunk), len(pending), attempt + 1,
@@ -136,12 +141,14 @@ def translate_titles(
     return out
 
 
-def translate_in_place_news(items: Iterable, *, client: LLMClient) -> None:
+def translate_in_place_news(items: Iterable, *, client: LLMClient, max_attempts: int = _MAX_ATTEMPTS, timeout: float | None = None) -> None:
     """保留原文，单独保存核验用完整译文；邮件行文由 grounded_text 整理。"""
     items_list = list(items)
     excerpts = [factual_excerpt(it) for it in items_list]
-    diagnostics = {}
-    translated = translate_titles(excerpts, client=client, diagnostics=diagnostics)
+    diagnostics = {i: it.translation_diagnostic for i, it in enumerate(items_list)
+                   if getattr(it, "translation_diagnostic", None)}
+    translated = translate_titles(excerpts, client=client, diagnostics=diagnostics,
+                                  max_attempts=max_attempts, timeout=timeout)
     for index, (it, original, text) in enumerate(zip(items_list, excerpts, translated, strict=True)):
         it.translation_diagnostic = diagnostics.get(index, {})
         it.source_excerpt = original

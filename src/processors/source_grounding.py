@@ -163,3 +163,48 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
         )
     output = "；".join(dict.fromkeys(outputs))
     return (output, evidence) if evidence else ("", [])
+
+
+def diagnostic_text(value, limit=1800):
+    """Redact first, then bound diagnostics (never clip a secret before redacting)."""
+    import re
+
+    from src.utils.secrets import redact_secrets
+
+    value = redact_secrets(plain_source(str(value or "")))
+    value = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email redacted]", value)
+    return value[:limit]
+
+
+def publication_diagnostic(item) -> dict:
+    """Bounded, redacted evidence for a rejected candidate, never mail content."""
+    excerpt = factual_excerpt(item)
+    translated = str(getattr(item, "translated_excerpt", "") or getattr(item, "translated_title", ""))
+    errors = []
+    if not excerpt:
+        errors.append("no_publishable_source_excerpt")
+    elif not chinese_prose(excerpt) and not checked_excerpt(item)[1]:
+        errors.extend(translation_errors(excerpt, translated) if translated else ["missing_translation"])
+    candidate = present(checked_excerpt(item)[1] or excerpt, source_name=getattr(item, "source", "")).text
+    if candidate:
+        if not chinese_prose(candidate):
+            errors.append("not_chinese")
+        if not complete_excerpt(candidate):
+            errors.append("incomplete_excerpt")
+        if promotional_prose(candidate):
+            errors.append("promotional_prose")
+        issue = editorial_issue(candidate)
+        if issue:
+            errors.append(issue)
+    return {
+        "url": diagnostic_text(getattr(item, "url", ""), 2000),
+        "title": diagnostic_text(getattr(item, "title", "")),
+        "snippet": diagnostic_text(getattr(item, "snippet", "") or getattr(item, "summary", "")),
+        "source": diagnostic_text(getattr(item, "source", ""), 100),
+        "published_at": diagnostic_text(getattr(item, "published_at", ""), 80),
+        "source_excerpt": diagnostic_text(excerpt),
+        "translated_excerpt": diagnostic_text(translated),
+        "errors": list(dict.fromkeys(errors)),
+        "translation_rejection": diagnostic_text(getattr(item, "translation_diagnostic", {}), 1000),
+        "truncated": any(len(str(value or "")) > 1800 for value in (excerpt, translated, getattr(item, "title", ""), getattr(item, "snippet", ""))),
+    }
