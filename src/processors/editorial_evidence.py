@@ -20,6 +20,9 @@ def editorial_issue(text: str) -> str | None:
         return 'historical_background'
     if re.search(r'(?:makes? (?:a )?major push into|大举进军).*market|大举进军.*市场', text, re.I):
         return 'promotional_context_missing'
+    if re.search(r'\b(?:finds?|sees?|identifies?|picks?)\b.{0,40}\b(?:winners?|winning stocks?)\b|'
+                 r'(?:发现|看好|选出).{0,20}(?:赢家|受益股)', text, re.I):
+        return 'investment_opinion'
     if re.search(r'provide\w*.*(?:revenue )?visibility|提供.*(?:收入|营收)可见性|'
                  r'positioned to benefit|evergreen investments|competitive assets?|'
                  r'highlights?.*effort|凸显.*努力', text, re.I):
@@ -35,7 +38,7 @@ def analysis_source(title: str, summary: str = '') -> bool:
 
 # Event objects, not the issuer name, determine whether model-scope evidence is
 # required. An AI company can also delay financing, a meeting or a building.
-_STATUS_ACTION = re.compile(r"\b(?:paus\w*|cancel\w*|scrap\w*|halt\w*|suspend\w*|abandon\w*|axes?|shelv\w*|postpon\w*|delay\w*|defer\w*)\b|暂停|取消|搁置|终止|砍掉|放弃|推迟|延后|延期", re.I)
+_STATUS_ACTION = re.compile(r"\bpull(?:s|ed|ing)?(?=\s+(?:[\w-]+\s+){0,8}back\b)|\bwithdraw(?:s|n|ing)?\b|\b(?:paus\w*|cancel\w*|scrap\w*|halt\w*|suspend\w*|abandon\w*|axes?|shelv\w*|postpon\w*|delay\w*|defer\w*)\b|暂停|取消|搁置|终止|砍掉|放弃|推迟|延后|延期|撤回", re.I)
 _STATUS_OBJECTS = {
     "model": r"\b(?:models?|GPT[- .]?\d[\w.-]*|API|training|evaluation|inference|deployment|services?|subscriptions?)\b|模型|训练|评估|推理|部署|服务|订阅",
     "corporate": r"\b(?:IPOs?|financing|funding|fundrais\w*|offerings?|listings?|budgets?|meetings?|conferences?|construction|factories|factory|contracts?|acquisitions?|mergers?)\b|上市|融资|募资|预算|会议|大会|建设|工厂|合同|收购|并购",

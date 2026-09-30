@@ -1,0 +1,136 @@
+[
+  {
+    "section": "company",
+    "title": "Microsoft Stock Slips 1.2% Although Copilot Super-App Expands Paid Workflows",
+    "original": "Microsoft Stock Slips 1.2% Although Copilot Super-App Expands Paid Workflows",
+    "translated": "Microsoft 股价下滑 1.2%，尽管 Copilot 超级应用扩展了付费工作流",
+    "errors": [
+      "payment",
+      "raise",
+      "fall",
+      "event_scope"
+    ]
+  },
+  {
+    "section": "company",
+    "title": "Costco's US Comp Sales Lead as Domestic Momentum Stays Strong",
+    "original": "Costco's U.S. comp sales rise 10.7% in Q4, as higher traffic, bigger tickets and resilient member spending power domestic momentum.",
+    "translated": "Costco 第四季度美国同店销售增长 10.7%，受客流量上升、客单价提高以及会员消费能力保持韧性推动，美国本土动能延续。",
+    "errors": [
+      "quantities_or_units",
+      "hold"
+    ]
+  },
+  {
+    "section": "company",
+    "title": "Google Is Fighting an EU Order That Could Help Its AI Rivals",
+    "original": "Google Is Fighting an EU Order That Could Help Its AI Rivals",
+    "translated": "Google 正对抗一项可能帮助其 AI 竞争对手的欧盟命令",
+    "errors": [
+      "identifier:EU"
+    ]
+  },
+  {
+    "section": "company",
+    "title": "Alphabet Stock Slips as Google Appeals EU AI-Access Orders",
+    "original": "The litigation protects platform control while prolonging uncertainty over rival access to Android and search data.",
+    "translated": "该诉讼在维持平台控制权的同时，延长了竞争对手获取 Android 与搜索数据的不确定性。",
+    "errors": [
+      "hold"
+    ]
+  },
+  {
+    "section": "company",
+    "title": "American Express Unveils Its Next Generation of Aeroplan Cards",
+    "original": "Launching January 12, 2027, the significantly enhanced portfolio builds on more than two decades of partnership with Aeroplan.",
+    "translated": "该大幅增强的产品组合将于 2027 年 1 月 12 日推出，建立在与 Aeroplan 二十多年合作的基础之上。",
+    "errors": [
+      "quantities_or_units",
+      "modality",
+      "event_scope"
+    ]
+  },
+  {
+    "section": "company",
+    "title": "Mastercard Expands B2B Payments With AI-Powered Analytics",
+    "original": "Mastercard Expands B2B Payments With AI-Powered Analytics",
+    "translated": "Mastercard 借助 AI 驱动的分析扩展 B2B 支付业务",
+    "errors": [
+      "raise"
+    ]
+  },
+  {
+    "section": "macro_selection",
+    "title": "30-year Treasury bond yield scales to highest level since 2002",
+    "original": "30-year Treasury bond yield scales to highest level since 2002",
+    "translated": "30 年期美国国债收益率攀升至 2002 年以来最高水平",
+    "errors": [
+      "raise"
+    ]
+  },
+  {
+    "section": "macro_selection",
+    "title": "Dollar Powers to Best Month Since June on Fed’s Inflation Fight",
+    "original": "Dollar Powers to Best Month Since June on Fed’s Inflation Fight",
+    "translated": "在美联储抗击通胀之际，美元劲升至 6 月以来最佳月度表现",
+    "errors": [
+      "quantities_or_units"
+    ]
+  },
+  {
+    "section": "macro_selection",
+    "title": "Asia Stocks Rise, Bonds Steady Before US Inflation: Markets Wrap",
+    "original": "Asian stocks gained for the first time in three sessions and bonds steadied after a bruising selloff as traders awaited a crucial US inflation reading for clues on the path of interest rates.",
+    "translated": "亚洲股市三个交易日以来首次上涨，债券在经历一轮猛烈抛售后企稳，交易员等待关键的美国通胀数据，以寻找利率路径的线索。",
+    "errors": [
+      "modality"
+    ]
+  },
+  {
+    "section": "macro_selection",
+    "title": "China Offers Subsidies on Some Residential Mortgages",
+    "original": "China will offer subsidies on interest costs for eligible first-home mortgages as Beijing attempts to revive home sales and turn around the years-long slump in the property sector.",
+    "translated": "中国将对符合条件首套房贷的利息成本提供补贴，北京正试图重振房屋销售、扭转房地产行业持续数年的低迷。",
+    "errors": [
+      "modality",
+      "fall"
+    ]
+  },
+  {
+    "section": "macro_selection",
+    "title": "China unveils mortgage subsidies to boost economy",
+    "original": "China unveils mortgage subsidies to boost economy",
+    "translated": "中国推出房贷补贴以提振经济",
+    "errors": [
+      "raise"
+    ]
+  },
+  {
+    "section": "macro_selection",
+    "title": "China factory activity snaps 2-month contractionary streak in September",
+    "original": "China factory activity snaps 2-month contractionary streak in September",
+    "translated": "中国 9 月工厂活动终结连续 2 个月的收缩态势",
+    "errors": [
+      "quantities_or_units"
+    ]
+  },
+  {
+    "section": "frontier",
+    "title": "OpenAI pulls new model back as AI industry confronts growing safety concerns - WBFF",
+    "original": "OpenAI pulls new model back as AI industry confronts growing safety concerns - WBFF",
+    "translated": "OpenAI 撤回新模型，AI 行业面临日益加剧的安全担忧 - WBFF",
+    "errors": [
+      "raise"
+    ]
+  },
+  {
+    "section": "frontier",
+    "title": "Competition for AI computing power intensifies! Anthropic discloses an $84.5 billion agreement, significantly exceeding May estimates, while SpaceX's AI growth engine accelerates further. - Moomoo",
+    "original": "Competition for AI computing power intensifies! Anthropic discloses an $84.5 billion agreement, significantly exceeding May estimates, while SpaceX's AI growth engine accelerates further. - Moomoo",
+    "translated": "AI 算力竞争加剧！Anthropic 披露一项 845 亿美元协议，显著超过 5 月的估算，同时 SpaceX 的 AI 增长引擎进一步加速。 - Moomoo",
+    "errors": [
+      "quantities_or_units",
+      "modality"
+    ]
+  }
+]
