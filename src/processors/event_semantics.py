@@ -7,7 +7,7 @@ import re
 
 # Match negative phrases before checking event states (e.g. not approved).
 NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|不计划|未经|而非|并非|不是|未(?=上调|下调|提高|降低|增加|减少|批准|支付|完成|推出|发布|收购|暂停|取消|维持)"
-MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|wait|waits|said to|will|shall|intends?|scheduled|looms?)\b|\bto\s+(?:pay|invest|investigate|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|据称|传闻|寻求|等待|待定|待批|尚待"
+MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|consider(?:s|ed|ing)?|reportedly|rumou?rs?|consensus|pending|awaiting|wait|waits|said to|will|shall|intends?|scheduled|looms?)\b|\bto\s+(?:pay|invest|investigate|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|据称|传闻|寻求|等待|待定|待批|尚待"
 EVENTS = {
     "approval": r"\b(?:approv\w*|authoriz(?:e|es|ed|ing|ation)|clearance|greenlight\w*)\b|批准|获批|监管放行",
     "completion": r"\b(?:completed?|finalized?|closed the deal)\b|完成|已交割|已落地",

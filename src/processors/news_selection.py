@@ -110,11 +110,27 @@ def source_boilerplate(text: str) -> bool:
 
 
 def noun_fragment(text: str) -> bool:
-    """A new-product noun phrase is not a self-contained event statement."""
-    return bool(re.search(r"\b(?:agents?|platforms?|models?|tools?|apps?|devices?)\b|智能体|平台|模型|工具|设备", text, re.I)
-                and not has_event(text, 'launch', 'approval', 'announcement', 'investment', 'completion',
-                                  'pause', 'cancel', 'delay', 'raise', 'cut', 'fall', 'refusal')
-                and not re.search(r"\b(?:will|plans?|may|could|offers?|helps?|can|is|are|has|have|says?|said|states?|stated|warns?|warned|argues?|argued)\b|计划|将|可能|提供|帮助|能够|具备|支持|是|称|表示|指出|认为|警告", text, re.I))
+    """Reject observable nominal titles, not the absence of a known verb.
+
+    Event dictionaries are intentionally incomplete. An unfamiliar predicate
+    must never by itself turn a complete source sentence into a fragment.
+    """
+    text = re.sub(r"\s+[-–—|]\s+[^|]+$", "", plain_source(text)).strip().rstrip('.。')
+    product = r"(?:agents?|platforms?|models?|tools?|apps?|devices?)"
+    # Bare product headings: a proper-name owner plus nominal modifiers, ending
+    # at the product noun. No arbitrary trailing words are swallowed as nouns.
+    owner = r"[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*)?"
+    modifiers = r"(?:(?:new|latest|AI|expense|corporate|digital|mobile|enterprise|software)\s+){0,5}"
+    nominal = r"(?:new|latest|AI|expense|corporate|digital|mobile|enterprise|software)\s+"
+    prefix = owner + r"(?:['’]s\s+|\s+(?i:" + nominal + "))"
+    bare = prefix + modifiers + product
+    if re.fullmatch(bare, text, re.I):
+        # Case-sensitive proper-name owner, case-insensitive nominal tail.
+        return bool(re.fullmatch(prefix + r"(?i:" + modifiers + product + ")", text))
+    # Possessive product headings with a short title-case purpose phrase.
+    # Lowercase/open-ended tails remain candidates for the normal evidence gate.
+    purpose = r"[A-Z][\w-]*(?:\s+(?:[A-Z][\w-]*|and|of)){0,3}"
+    return bool(re.fullmatch(prefix + r"(?i:" + modifiers + product + r" for)\s+" + purpose, text))
 
 
 _RATING_SERVICE = re.compile(
