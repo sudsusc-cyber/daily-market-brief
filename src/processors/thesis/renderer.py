@@ -27,7 +27,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 3
+_VERSION = 4
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -192,6 +192,13 @@ def _publication_item(section: str, row: dict, today: date):
     if row.get("source_kind") == "analysis" or analysis_source(
             row.get("original_title", ""), row.get("original_summary", "")):
         return None, "analysis_not_new_evidence"
+    from types import SimpleNamespace
+
+    from src.processors.news_selection import explicit_old_event
+
+    source = SimpleNamespace(published_at=row.get("published_at"))
+    if explicit_old_event(source, row.get("excerpt", ""), allow_fresh_update=False):
+        return None, "old_event_not_new_evidence"
     rule = _rule_for(row)
     if not rule:
         return None, "no_bounded_long_term_watchpoint"

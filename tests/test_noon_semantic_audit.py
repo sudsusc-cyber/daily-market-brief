@@ -47,12 +47,17 @@ def test_complete_tencent_sentence_in_roundup_remains_usable_but_other_company_d
     text,rows=grounded_text('汇丰控股耗资1.37亿港元回购。',[it])
     # Final company gate must reject another sentence even if it is in the source.
     from src.processors.news_selection import company_fact_matches
-    assert not company_fact_matches(text,'0700.HK')
+    # Publication now rejects the unrelated excerpt before binding and safely
+    # falls back to the holding's own complete source sentence.
+    assert company_fact_matches(text,'0700.HK')
+    assert '汇丰' not in text
     text,rows=grounded_text('腾讯控股回购100万股。',[it])
     assert text=='腾讯控股回购100万股。' and rows[0]['original_summary']==it.summary
     news=NewsItem(it.title,datetime(2026,9,29),it.url,it.source,summary=it.summary,holding_ticker='0700.HK')
     rejected=_rebuild_safe_summary('<strong>腾讯</strong>——汇丰控股耗资1.37亿港元回购。[1]',[news])
-    assert rejected is None
+    assert rejected is not None
+    assert '腾讯控股回购100万股' in rejected.summary_html
+    assert '汇丰' not in rejected.summary_html
     accepted=_rebuild_safe_summary('<strong>腾讯</strong>——腾讯控股回购100万股。[1]',[news])
     assert accepted and '100万股' in accepted.summary_html and '1.37' not in accepted.summary_html
 

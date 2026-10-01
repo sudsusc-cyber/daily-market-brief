@@ -144,7 +144,7 @@ def _bundle_with_xss_url() -> CompanyNewsBundle:
     return CompanyNewsBundle(
         holding=HOLDINGS[0],  # MSFT
         items=[NewsItem(
-            title="evil",
+            title="微软公布季度业绩",
             published_at=_DUMMY_DT,
             url="javascript:alert(1)",
             source="evil.com",
@@ -228,7 +228,7 @@ def _macro_bundle_javascript() -> MacroFeedBundle:
     return MacroFeedBundle(
         source="Evil",
         items=[MacroNewsItem(
-            title="evil",
+            title="微软公布季度业绩",
             published_at=_DUMMY_DT,
             url="javascript:alert(1)",
             source="Evil",

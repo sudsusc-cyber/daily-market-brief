@@ -181,6 +181,10 @@ def _translate_all_bundles(
                               for item in bundle.items])
     titles_to_translate: list[object] = []
     for b in cn_bundles:
+        # Bind the holding before excerpt selection/translation, not only when
+        # rendering: otherwise an unrelated first sentence gets translated.
+        for item in b.items:
+            item.holding_ticker = b.holding.ticker
         titles_to_translate.extend([item for item in b.items if company_candidate(item, b.holding.ticker)][:5])
     for f in fig_bundles:
         titles_to_translate.extend([item for item in f.items if meaningful_quote(item)][:5])

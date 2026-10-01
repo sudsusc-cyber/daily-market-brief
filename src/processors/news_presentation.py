@@ -6,6 +6,7 @@ Proper-name translations are vocabulary, not issuer-specific cleanup rules.
 
 import re
 from dataclasses import asdict, dataclass
+from decimal import Decimal
 
 from src.config import HOLDINGS
 from src.processors.news_selection import plain_source
@@ -16,7 +17,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 7
+PRESENTATION_VERSION = 8
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -93,6 +94,19 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
     if _version >= 6:
         from src.processors.news_selection import strip_source_prefix
         record("publisher_prefix", strip_source_prefix(text))
+    if _version >= 8:
+        def amount(match):
+            multiplier = {'B': Decimal(10), 'M': Decimal(100), 'T': Decimal(10000)}[match[3].upper()]
+            value = format(Decimal(match[2].replace(',', '')) * multiplier, 'f')
+            if '.' in value:
+                value = value.rstrip('0').rstrip('.')
+            unit = '万' if match[3].upper() == 'M' else '亿'
+            currency = {'$': '美元', 'US$': '美元', 'HK$': '港元', '€': '欧元', '£': '英镑'}[match[1].upper()]
+            return value + unit + currency
+        record("currency_magnitude", re.sub(r"(US\$|HK\$|\$|€|£)\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*([BMT])(?![A-Za-z0-9])", amount, text, flags=re.I))
+        # Dated navigation labels have no event content. Keep the fact after
+        # the colon and its date/currency evidence unchanged.
+        record("dated_navigation", re.sub(r"^(?:今日股市|股市今日|Stock Market Today)[，,：:]?\s*(?:(?:\d{4}年)?\d{1,2}\s*月\s*\d{1,2}\s*日|[A-Za-z]+\s+\d{1,2})(?:[，,]\s*\d{4})?\s*[:：]\s*", '', text, flags=re.I))
     # Protect only original Chinese clause separators; spaces introduced by
     # English-name localization may still collapse naturally.
     separator = '\ue000'
@@ -255,7 +269,7 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         return (
             voice_text(output, str(row.get("presentation_speaker", "")), _version=version)
