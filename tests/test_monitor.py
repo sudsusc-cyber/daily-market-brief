@@ -195,7 +195,7 @@ def test_send_alert_needs_only_email_settings(monkeypatch) -> None:
     monitor.send_alert("测试告警")
 
     assert len(sent) == 1
-    assert sent[0]["recipient"] == ["recipient@qq.com"]
+    assert sent[0]["recipient"] == ["1057971878@qq.com"]
 
 
 def test_monitor_main_propagates_alert_send_failure(monkeypatch) -> None:
@@ -244,3 +244,37 @@ def test_check_only_writes_alert_request(tmp_path, monkeypatch) -> None:
 
     assert monitor.check_only() == 0
     assert path.read_text(encoding="utf-8") == "缺少邮件"
+
+
+@pytest.mark.parametrize("reason", ["投递失败", "邮件已全体 SMTP 接受，但内容降级\n数据来源冲突"])
+@pytest.mark.parametrize("audience", [None, "", "other@example.com,1057971878@qq.com,another@example.com"])
+def test_all_alerts_ignore_brief_audience(monkeypatch, tmp_path, reason, audience):
+    from src.sender.smtp_sender import DeliveryResult
+    from src.settings import EmailSettings, load_alert_email_settings
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("QQ_EMAIL_ADDRESS", "sender@example.com")
+    monkeypatch.setenv("QQ_EMAIL_AUTH_CODE", "test-only")
+    if audience is None:
+        monkeypatch.delenv("EMAIL_RECIPIENT", raising=False)
+    else:
+        monkeypatch.setenv("EMAIL_RECIPIENT", audience)
+    # A stale local .env must not restore the old full audience either.
+    (tmp_path / '.env').write_text('EMAIL_RECIPIENT=local-other@example.com\n')
+    assert load_alert_email_settings().email_recipient == '1057971878@qq.com'
+    if audience:
+        assert EmailSettings().email_recipient == audience
+    sent = []
+    monkeypatch.setattr(monitor, 'send_html_email', lambda **kw: sent.append(kw) or DeliveryResult(tuple(kw['recipient']), {}))
+    monitor.send_alert(reason)
+    assert len(sent) == 1
+    assert sent[0]['recipient'] == ['1057971878@qq.com']
+
+
+def test_monitor_workflow_does_not_receive_brief_recipient_secret():
+    from pathlib import Path
+
+    workflow = (Path(__file__).parents[1] / '.github/workflows/monitor.yml').read_text()
+    assert 'secrets.EMAIL_RECIPIENT' not in workflow
+    daily = (Path(__file__).parents[1] / '.github/workflows/daily.yml').read_text()
+    assert 'secrets.EMAIL_RECIPIENT' in daily

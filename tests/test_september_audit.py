@@ -151,7 +151,7 @@ def test_collected_stocks_survive_later_timeout(monkeypatch):
 
 
 def test_monitor_partial_acceptance_fails(monkeypatch):
-    monkeypatch.setattr(monitor, "load_email_settings", lambda: SimpleNamespace(
+    monkeypatch.setattr(monitor, "load_alert_email_settings", lambda: SimpleNamespace(
         email_recipient="a@example.com,b@example.com", qq_email_address="s@example.com", qq_email_auth_code="fixture"))
     monkeypatch.setattr(monitor, "send_html_email", lambda **_: DeliveryResult(
         ("a@example.com",), {"b@example.com": (550, b"rejected")}))

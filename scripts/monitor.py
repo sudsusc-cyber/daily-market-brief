@@ -1,6 +1,6 @@
 """
 监控脚本:检查今天 daily.yml 是否有明确的 SMTP 送达确认步骤。
-没有送达确认 → 发告警邮件给收件人。
+没有送达确认 → 仅向项目维护者发送告警邮件。
 
 被 .github/workflows/monitor.yml 调用。
 
@@ -13,7 +13,7 @@
 环境变量(由 monitor.yml 注入):
 - GH_TOKEN:GITHUB_TOKEN(actions:read)
 - GH_REPO:owner/repo
-- QQ_EMAIL_ADDRESS / QQ_EMAIL_AUTH_CODE / EMAIL_RECIPIENT:发告警邮件
+- QQ_EMAIL_ADDRESS / QQ_EMAIL_AUTH_CODE:告警 SMTP 凭据；收件人固定为项目维护者
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.sender.smtp_sender import send_html_email
-from src.settings import load_email_settings
+from src.settings import ALERT_RECIPIENT, load_alert_email_settings
 from src.utils.action_evidence import bjt_date, candidate_run, pages, run_evidence, workflow_runs
 from src.utils.dates import BEIJING
 from src.utils.holidays import should_send_today
@@ -183,8 +183,8 @@ def send_alert(reason: str) -> None:
     """
     import html as _html
 
-    settings = load_email_settings()
-    recipients = [r.strip() for r in settings.email_recipient.split(",") if r.strip()]
+    settings = load_alert_email_settings()
+    recipients = [ALERT_RECIPIENT]
     repo = os.environ.get("GH_REPO", "")
     actions_url = (
         f"https://github.com/{_html.escape(repo, quote=True)}/actions"
