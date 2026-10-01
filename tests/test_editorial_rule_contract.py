@@ -38,7 +38,7 @@ def signal(kind="NONE", error=None):
     ([signal(error="timeout")], "待核验"),
 ])
 def test_dynamic_intro_uses_only_actual_signal_context(states, expected):
-    client = Client("{信号背景}" + PROSE)
+    client = Client("细读规则，{信号背景}，" + PROSE)
     text = holdings_intro.write_intro(states, client=client)
     assert expected in text and 60 <= len(text) <= 110
     assert PROSE in text and "只处于" not in text
@@ -51,7 +51,7 @@ def test_published_history_retries_repeated_reflection_without_consuming_draft(t
     history.remember("holdings_intro", "", old)
     history.commit()
     before = history.path.read_bytes()
-    client = Client("{信号背景}" + PROSE, "{信号背景}" + OTHER)
+    client = Client("细读规则，{信号背景}，" + PROSE, "留些余地，{信号背景}，" + OTHER)
     new = holdings_intro.write_intro([signal("DCA")], client=client, history=history)
     assert new and OTHER in new and len(client.calls) == 2
     assert "recent_repeat" in client.calls[1][0][0]
@@ -63,7 +63,7 @@ def test_published_history_retries_repeated_reflection_without_consuming_draft(t
     "建议立即买入并加仓。", "收益率达到20%。", "今日港股普遍上涨。",
 ])
 def test_literary_intro_cannot_add_current_market_claims(invention):
-    client = Client("{信号背景}" + invention + PROSE, "{信号背景}" + invention + PROSE)
+    client = Client("细读规则，{信号背景}，" + invention + PROSE, "细读规则，{信号背景}，" + invention + PROSE)
     assert holdings_intro.write_intro([signal()], client=client) is None
     assert len(client.calls) == 2
 
@@ -123,5 +123,5 @@ def test_model_event_ranking_not_replaced_by_permanent_topic_priority():
 
 @pytest.mark.parametrize("separator", ["，", ", ", "。", "；"])
 def test_intro_placeholder_does_not_double_sentence_punctuation(separator):
-    text = holdings_intro.write_intro([signal()], client=Client("{信号背景}" + separator + PROSE))
-    assert text == holdings_intro.signal_context([signal()]) + PROSE
+    text = holdings_intro.write_intro([signal()], client=Client("细读规则，{信号背景}" + separator + PROSE))
+    assert text == "细读规则，" + holdings_intro.signal_context([signal()]).rstrip("。") + separator + PROSE

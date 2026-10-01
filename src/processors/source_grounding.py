@@ -134,7 +134,7 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
             continue
         validated = checked_excerpt(item)[1] if mode == "checked_translation" else excerpt
         source_name = str(getattr(item, "source", "") or "")
-        presentation = present(validated, source_name=source_name)
+        presentation = present(validated, source_name=source_name, original_text=excerpt)
         displayed = presentation.text
         if not chinese_prose(displayed) or not complete_excerpt(displayed) or promotional_prose(displayed) or editorial_issue(displayed):
             logger.warning("news.publication_rejected reason=not_complete_chinese")
@@ -190,7 +190,7 @@ def publication_diagnostic(item) -> dict:
         errors.append("no_publishable_source_excerpt")
     elif not chinese_prose(excerpt) and not checked_excerpt(item)[1]:
         errors.extend(translation_errors(excerpt, translated) if translated else ["missing_translation"])
-    candidate = present(checked_excerpt(item)[1] or excerpt, source_name=getattr(item, "source", "")).text
+    candidate = present(checked_excerpt(item)[1] or excerpt, source_name=getattr(item, "source", ""), original_text=excerpt).text
     if candidate:
         if not chinese_prose(candidate):
             errors.append("not_chinese")

@@ -1,0 +1,454 @@
+{
+  "run_id": 36804003774,
+  "sections": {
+    "company": [
+      {
+        "url": "https://finnhub.io/api/news?id=b1c27efc452131fb1977d1fdb359bf298570ab081eaa48ae752015d86d1eb198",
+        "original_title": "Microsoft (MSFT) Could Be 21% Above Fair Value After ClickHouse Expansion",
+        "original_summary": "Microsoft (MSFT) just deepened its ties with ClickHouse, extending the analytics partner’s presence across Microsoft Fabric, OneLake, Azure and the Microsoft Marketplace. For anyone tracking Microsoft stock, this alliance sharpens the firm’s broader data and AI story. Recent price action has been choppy for Microsoft. The shares are around US$508.96 after a 90-day share price return of 32.45%. The 1-year total shareholder return is slightly negative, which points to strong short-term momentum...",
+        "excerpt": "Microsoft (MSFT) Could Be 21% Above Fair Value After ClickHouse Expansion",
+        "published_at": "2026-09-30 20:09:25+00:00",
+        "source_sha256": "0e6dbe289ac345b0b193b2c33dfec6041cd7cc1afe5c22ac9194ba9ba4e60908",
+        "output_text": "Microsoft 在 ClickHouse 扩张后可能高出公允价值 21%",
+        "mode": "checked_translation",
+        "validated_text": "Microsoft (MSFT) 在 ClickHouse 扩张后可能高出公允价值 21%",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [
+          "issuer_listing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=1195430df86aca549d1887b627a4a8689b060975d1f8d2dedba288fb067ded5a",
+        "original_title": "What Should Costco Stock Holders Take From Its Fiscal Fourth Quarter?",
+        "original_summary": "Costco Wholesale (COST) stock rose 2.9% in the first session after its Q4 FY2026 report. The shares trade at 46.4 times earnings, more than twice the S&P 500's 21.9, so holders are counting on growth that keeps coming. What should a Costco holder take from a quarter that beat estimates and lifted the stock, yet left questions about whether its price cuts are driving more sales.",
+        "excerpt": "The shares trade at 46.4 times earnings, more than twice the S&P 500's 21.9, so holders are counting on growth that keeps coming.",
+        "published_at": "2026-09-30 15:55:41+00:00",
+        "source_sha256": "bd1df0f300923dbfd7afc099a12cfe9818352c93b3d1dd7e071fd786da086521",
+        "output_text": "该股按 46.4 倍盈利交易，是 S&P 500 的 21.9 倍的两倍多，因此持有者指望增长持续到来。",
+        "mode": "checked_translation",
+        "validated_text": "该股按 46.4 倍盈利交易，是 S&P 500 的 21.9 倍的两倍多，因此持有者指望增长持续到来。",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=896f4a4e19435f89e701a78564b104ce85f21479fba1841fe468e3a7db5e1394",
+        "original_title": "Stock Market Today, Sept. 30: Nvidia Authorizes $150B Buyback, Lifting Total to $235B",
+        "original_summary": "Today, Sept. 30, 2026, the AI chip giant reinforced management confidence with an expanded repurchase program through 2028.",
+        "excerpt": "Stock Market Today, Sept. 30: Nvidia Authorizes $150B Buyback, Lifting Total to $235B",
+        "published_at": "2026-09-30 21:40:01+00:00",
+        "source_sha256": "5a449429f3a4817b853aba767bc09904dc39a8fe35eebcf81bb9f0159e8bf95d",
+        "output_text": "今日股市，9 月 30 日：Nvidia 批准 1500 亿美元回购，总额升至 2350 亿美元",
+        "mode": "checked_translation",
+        "validated_text": "今日股市，9 月 30 日：Nvidia 批准 1500 亿美元回购，总额升至 2350 亿美元",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=590edd77ebe41e577c32d4d4e003b07cb5c95d8fb8cccdd02ca08b92f1c4c637",
+        "original_title": "TSMC Reportedly Weighs Texas Chip Investment On Top Of $265B Arizona Push",
+        "original_summary": "TSMC increased its Arizona commitment by $100 billion in July, bringing the total from $165 billion to $265 billion.",
+        "excerpt": "TSMC Reportedly Weighs Texas Chip Investment On Top Of $265B Arizona Push",
+        "published_at": "2026-09-30 13:17:20+00:00",
+        "source_sha256": "122cb3ca44179f7f718b5d52ce54a9aae1a8ab09f4b6c3d1f0a54a48c5e5a2d9",
+        "output_text": "据报道 TSMC 考虑在 2650 亿美元 Arizona 投资之外再投 Texas 芯片项目",
+        "mode": "checked_translation",
+        "validated_text": "据报道 TSMC 考虑在 2650 亿美元 Arizona 投资之外再投 Texas 芯片项目",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=0916ae5cd94d3ce4b6e43a1176afa96830c80e0564a36af85213d35494e50930",
+        "original_title": "Google’s Gemini 4 Argon Closes the Pricing Triangle. The Benchmark Lead Is the Real Story.",
+        "original_summary": "The Pricing Triangle Closes Google DeepMind chose the last day of September to do something that makes the competitive landscape of frontier AI look almost mathematical. On September 30, SVP Koray Kavukcuoglu announced Gemini 4 Argon at introductory pricing of $2 per million input tokens and $10 per million output tokens, with cached input at […]",
+        "excerpt": "Google’s Gemini 4 Argon Closes the Pricing Triangle. The Benchmark Lead Is the Real Story.",
+        "published_at": "2026-09-30 23:59:54+00:00",
+        "source_sha256": "43bff9320034f4a505a2e1d65d3556212f13a372d41f1211a370137452735ab1",
+        "output_text": "Google 的 Gemini 4 Argon 闭合了定价三角。基准领先才是真正的看点。",
+        "mode": "checked_translation",
+        "validated_text": "Google 的 Gemini 4 Argon 闭合了定价三角。基准领先才是真正的看点。",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=a62b99f4dc3106ff2f92cda7ac91b0b64717887fdd9cc4aab600c2248c9ebb75",
+        "original_title": "Berkshire Hathaway (BRK.A) Names Howard G. Buffett Chairman",
+        "original_summary": "Berkshire Hathaway (NYSE:BRK.A) announced that Warren Buffett has stepped down as Chairman, effective immediately. The board named Howard G. Buffett as the new Chairman, while Warren Buffett will assume the title of Chairman Emeritus. The leadership change formalizes a new governance structure at Berkshire Hathaway that separates the Chair and Chief Executive roles. The move from Warren Buffett to Howard G. Buffett as Chair comes alongside broader succession planning that investors have...",
+        "excerpt": "Berkshire Hathaway (NYSE:BRK.A) announced that Warren Buffett has stepped down as Chairman, effective immediately.",
+        "published_at": "2026-09-30 17:17:07+00:00",
+        "source_sha256": "de46ebc2401c7b548c177f5a645f8a03fc3851fb7bd8116c77950c583817d621",
+        "output_text": "Berkshire Hathaway 宣布 Warren Buffett 已卸任董事长，即刻生效。",
+        "mode": "checked_translation",
+        "validated_text": "Berkshire Hathaway (NYSE:BRK.A) 宣布 Warren Buffett 已卸任董事长，即刻生效。",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [
+          "qualified_listing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=5be639e8f3c5c7baed8878b41c8bef9941b47107b4b5f37a7d219601d75de317",
+        "original_title": "Coca-Cola’s Secret Weapon Isn’t Its Soda",
+        "original_summary": "Coca-Cola has beaten earnings five straight quarters and raised its guidance, yet a pending IRS ruling and a price-to-free-cash-flow ratio of 71 hang over the stock like a storm cloud. Here is what the bulls are betting the bears have wrong.",
+        "excerpt": "Coca-Cola has beaten earnings five straight quarters and raised its guidance, yet a pending IRS ruling and a price-to-free-cash-flow ratio of 71 hang over the stock like a storm cloud.",
+        "published_at": "2026-09-30 12:45:44+00:00",
+        "source_sha256": "e847add87fd98f79c15588e85151c152041460dc6dda249b11a59733e99b7b57",
+        "output_text": "Coca-Cola 已连续五个季度盈利超预期并上调指引，但一项待决的 IRS 裁决和 71 倍的市价对自由现金流比率，如乌云般笼罩该股。",
+        "mode": "checked_translation",
+        "validated_text": "Coca-Cola 已连续五个季度盈利超预期并上调指引，但一项待决的 IRS 裁决和 71 倍的市价对自由现金流比率，如乌云般笼罩该股。",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=e5d37c835d188b3ed18291d0d3d1da85e84f328d395bd7e608a49bf2044170a4",
+        "original_title": "Amex Adds AI, Expense Tracking to Corporate Card to Counter Fintech Rivals",
+        "original_summary": "American Express has rolled out an expense-management platform with AI features alongside its new corporate card, as the company’s corporate business faces mounting competition from fintechs.",
+        "excerpt": "Amex Adds AI, Expense Tracking to Corporate Card to Counter Fintech Rivals",
+        "published_at": "2026-09-30 11:16:00+00:00",
+        "source_sha256": "741a878d68905d01f09913f2b3bc77ce9d88ebc7659bceaab2d6edbb3153fe47",
+        "output_text": "Amex 为企业卡新增 AI 与费用追踪功能，以对抗金融科技竞争对手",
+        "mode": "checked_translation",
+        "validated_text": "Amex 为企业卡新增 AI 与费用追踪功能，以对抗金融科技竞争对手",
+        "source_name": "Yahoo",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMiZkFVX3lxTE1MTHc4bFh1OHJoamxQQ0dFNWZKbGRQdTlkTURSRzY5ckJKbm80ajcyNVFDbEhJckU4YkFaSWpoX2ptZXA0VGwyVERRMDZCclQyd1lKdzZCa18xSXVZNUdTUmw5OU1Mdw?oc=5",
+        "original_title": "南向资金丨腾讯控股获净买入14.07亿港元 - 东方财富",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiZkFVX3lxTE1MTHc4bFh1OHJoamxQQ0dFNWZKbGRQdTlkTURSRzY5ckJKbm80ajcyNVFDbEhJckU4YkFaSWpoX2ptZXA0VGwyVERRMDZCclQyd1lKdzZCa18xSXVZNUdTUmw5OU1Mdw?oc=5\" target=\"_blank\">南向资金丨腾讯控股获净买入14.07亿港元</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">东方财富</font>",
+        "excerpt": "南向资金丨腾讯控股获净买入14.07亿港元 - 东方财富",
+        "published_at": "2026-09-30 10:40:05+00:00",
+        "source_sha256": "037c9f5aa0fa0610fb7950d59b551b2d2c83a690d8e2e22f60c2fa67b9edce08",
+        "output_text": "南向资金丨腾讯控股获净买入14.07亿港元",
+        "mode": "verified_extract",
+        "validated_text": "南向资金丨腾讯控股获净买入14.07亿港元 - 东方财富",
+        "source_name": "东方财富",
+        "presentation_version": 6,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMiSEFVX3lxTFBPdjN1bzZqRzdCMFpibklCcTRidXh4Y3Y2SDhLS0FvYjZaOVJ5Z0RvY1hHT0lvblN6YXdkdmdzcGJheVFkdlZFQg?oc=5",
+        "original_title": "段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元 - cls.cn",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiSEFVX3lxTFBPdjN1bzZqRzdCMFpibklCcTRidXh4Y3Y2SDhLS0FvYjZaOVJ5Z0RvY1hHT0lvblN6YXdkdmdzcGJheVFkdlZFQg?oc=5\" target=\"_blank\">段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">cls.cn</font>",
+        "excerpt": "段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元 - cls.cn",
+        "published_at": "2026-09-30 20:28:34+00:00",
+        "source_sha256": "195c5326a3a3c5b8ded588130c8a39ef3f39d157db388f4644146d9bdfb99682",
+        "output_text": "段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元",
+        "mode": "verified_extract",
+        "validated_text": "段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元 - cls.cn",
+        "source_name": "cls.cn",
+        "presentation_version": 6,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      }
+    ],
+    "macro": [
+      {
+        "url": "https://www.bloomberg.com/news/articles/2026-10-01/gold-steady-as-softer-inflation-data-tempers-fed-rate-hike-bets",
+        "original_title": "Gold Steady as Softer Inflation Data Tempers Fed Rate-Hike Bets",
+        "original_summary": "Gold opened the month steady as softer inflation data lowered bets the Federal Reserve will raise interest rates at its next meeting, while high bond yields left the door open to renewed selling.",
+        "excerpt": "Gold Steady as Softer Inflation Data Tempers Fed Rate-Hike Bets",
+        "published_at": "2026-10-01 00:08:16+00:00",
+        "source_sha256": "54ef681b0e8ebe528d49f24e19d3543d558a308ef13127e4f7aa16ae7fc6a7cb",
+        "output_text": "黄金持稳，通胀数据走软抑制了美联储加息押注",
+        "mode": "checked_translation",
+        "validated_text": "黄金持稳，通胀数据走软抑制了 Fed 加息押注",
+        "source_name": "Bloomberg",
+        "presentation_version": 6,
+        "presentation_operations": [
+          "entity_display_name",
+          "prose_spacing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "货币政策",
+        "macro_event": {
+          "version": 1,
+          "text": "Gold Steady as Softer Inflation Data Tempers Fed Rate-Hike Bets",
+          "topic": "货币政策",
+          "family": "policy_rates",
+          "actor": "Fed",
+          "action": "Hike",
+          "object": "Rate",
+          "geography": [],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "inflation",
+              "text": "Inflation",
+              "start": 22,
+              "end": 31
+            },
+            {
+              "kind": "action",
+              "value": "policy_change",
+              "text": "Hike",
+              "start": 54,
+              "end": 58
+            },
+            {
+              "kind": "actor",
+              "value": "central_bank",
+              "text": "Fed",
+              "start": 45,
+              "end": 48
+            },
+            {
+              "kind": "object",
+              "value": "policy_rates",
+              "text": "Rate",
+              "start": 49,
+              "end": 53
+            }
+          ],
+          "decision": "object_action_in_focus"
+        }
+      },
+      {
+        "url": "https://www.bloomberg.com/news/articles/2026-10-01/thailand-bond-outflows-hit-six-month-high-on-oil-us-yields-in-september",
+        "original_title": "Thailand Bond Outflows Hit Six-Month High on Oil, US Yields in September",
+        "original_summary": "Thai bonds suffered their biggest monthly foreign outflows since March as surging Treasury yields and the prospect of interest-rate hikes dimmed the appeal of the nation’s debt.",
+        "excerpt": "Thai bonds suffered their biggest monthly foreign outflows since March as surging Treasury yields and the prospect of interest-rate hikes dimmed the appeal of the nation’s debt.",
+        "published_at": "2026-10-01 01:24:27+00:00",
+        "source_sha256": "4a363e831af0caa33f4888ede0f9fad26e4e105b6f842fb595666147afd2e0f6",
+        "output_text": "泰国债券遭遇自 3 月以来最大单月外资流出，因美国国债收益率飙升以及加息前景削弱了该国债券的吸引力。",
+        "mode": "checked_translation",
+        "validated_text": "泰国债券遭遇自 3 月以来最大单月外资流出，因美国国债收益率飙升以及加息前景削弱了该国债券的吸引力。",
+        "source_name": "Bloomberg",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "美债市场",
+        "macro_event": {
+          "version": 1,
+          "text": "Thai bonds suffered their biggest monthly foreign outflows since March as surging Treasury yields and the prospect of interest-rate hikes dimmed the appeal of the nation’s debt.",
+          "topic": "美债市场",
+          "family": "us_bonds",
+          "actor": "",
+          "action": "yields",
+          "object": "Treasury yields",
+          "geography": [],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "us_bonds",
+              "text": "Treasury yields",
+              "start": 82,
+              "end": 97
+            },
+            {
+              "kind": "object",
+              "value": "bonds",
+              "text": "bonds",
+              "start": 5,
+              "end": 10
+            },
+            {
+              "kind": "action",
+              "value": "policy_change",
+              "text": "hikes",
+              "start": 132,
+              "end": 137
+            },
+            {
+              "kind": "action",
+              "value": "market_move",
+              "text": "yields",
+              "start": 91,
+              "end": 97
+            }
+          ],
+          "decision": "object_action_in_focus"
+        }
+      },
+      {
+        "url": "https://www.wsj.com/world/asia/u-s-pressure-campaign-leaves-iranian-tankers-stranded-in-asian-waters-ba7bc23a?mod=rss_worldnews",
+        "original_title": "U.S. Pressure Campaign Leaves Iranian Tankers Stranded in Asian Waters",
+        "original_summary": "Dozens of Iranian or Iranian-linked vessels are adrift, as the U.S. threatens sanctions for countries or companies coming to their assistance.",
+        "excerpt": "U.S. Pressure Campaign Leaves Iranian Tankers Stranded in Asian Waters",
+        "published_at": "2026-10-01 02:00:00+00:00",
+        "source_sha256": "9aa4de796cfab9328c9b75199bc9ad5a652d1229ed838cb6d4638b5e1ecb5504",
+        "output_text": "美国施压行动导致伊朗油轮滞留亚洲水域",
+        "mode": "checked_translation",
+        "validated_text": "美国施压行动导致伊朗油轮滞留亚洲水域",
+        "source_name": "WSJ",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "中东局势",
+        "macro_event": {
+          "version": 1,
+          "text": "U.S. Pressure Campaign Leaves Iranian Tankers Stranded in Asian Waters",
+          "topic": "中东局势",
+          "family": "unknown",
+          "actor": "",
+          "action": "",
+          "object": "",
+          "geography": [
+            "middle_east",
+            "us"
+          ],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "region",
+              "value": "us",
+              "text": "U.S.",
+              "start": 0,
+              "end": 4
+            },
+            {
+              "kind": "region",
+              "value": "middle_east",
+              "text": "Iran",
+              "start": 30,
+              "end": 34
+            }
+          ],
+          "decision": "regional_context"
+        }
+      }
+    ],
+    "figures": [
+      {
+        "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxOUmdSdjY5OXJlRTRvUlFXWlZERURMU0h2VUVKcHNwMzhjTlZOWDRrakNQa2RQSDZGMjRqSDRNUm9lYmxDUS12SGJnUG41VkkyQ1RKbmZUT0dObjdIUnFucE8tQlFwT0h4TEJscVhCY1pfOEg4Qmt4OGZjaVp5N0xuQ1Jacw?oc=5",
+        "original_title": "Anthropic CEO Dario Amodei agrees with Trump’s take on AI concerns, says “we can win safely” if “we do it right” and “work with the President” - AOL.com",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMigwFBVV95cUxOUmdSdjY5OXJlRTRvUlFXWlZERURMU0h2VUVKcHNwMzhjTlZOWDRrakNQa2RQSDZGMjRqSDRNUm9lYmxDUS12SGJnUG41VkkyQ1RKbmZUT0dObjdIUnFucE8tQlFwT0h4TEJscVhCY1pfOEg4Qmt4OGZjaVp5N0xuQ1Jacw?oc=5\" target=\"_blank\">Anthropic CEO Dario Amodei agrees with Trump’s take on AI concerns, says “we can win safely” if “we do it right” and “work with the President”</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">AOL.com</font>",
+        "excerpt": "Anthropic CEO Dario Amodei agrees with Trump’s take on AI concerns, says “we can win safely” if “we do it right” and “work with the President” - AOL.com",
+        "published_at": "2026-09-30 08:56:25+00:00",
+        "source_sha256": "fc3f6b418e6fa81c8dbdcf58fae5ffaab6a1094df2ba451d48b8a182e31c1c57",
+        "output_text": "Anthropic CEO Dario Amodei 认同 Trump 对 AI 担忧的看法，称若“做得对”并“与总统合作”，“我们可以安全取胜”",
+        "mode": "checked_translation",
+        "validated_text": "Anthropic CEO Dario Amodei 认同 Trump 对 AI 担忧的看法，称若“做得对”并“与总统合作”，“我们可以安全取胜” - AOL.com",
+        "source_name": "AOL.com",
+        "presentation_version": 6,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "presentation_speaker": "Dario Amodei"
+      }
+    ],
+    "frontier": [
+      {
+        "url": "https://news.google.com/rss/articles/CBMiqAJBVV95cUxQTUFVOWRCYU14MzBDVWQ1aksxT0FiNXFieXdmUVczUmNjdFZtS0FUVEVMdzdiV0RPZWdrYmtIaVQ3OGpQdFJHT3pseV8xY2NDX2loUkRGM0E2VGdZdHA4ajZiRks4T1BQWk8tTHl1RFJsVXgtX19TcS1LUEF6bUJfZ0ZXdjBXTmo1X1dieUVMMmdSMkQ4cXpyMzRDTlhkSWJYWVRJQlE2ZFFRRllsaDNLQXVIa1FSOXRSZGxzUmdpR0lCaE1IV1Npcm9tTFNaVU9mX09qNnB5bnprdnFwWHJRbmtCOXk2RU82em8teWF4WVdvNTM4TVhvMjc3VTZIWm16ZG4zcEpPMkZoWU5JYkJzaVg2dFNKVllNNXRtaGdFTUNLczBfc1hKRQ?oc=5",
+        "original_title": "Anthropic Plans to Spend $518 Billion on Cloud and Data Centers. More Than $100 Billion Is Already Promised to Amazon. - The Globe and Mail",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiqAJBVV95cUxQTUFVOWRCYU14MzBDVWQ1aksxT0FiNXFieXdmUVczUmNjdFZtS0FUVEVMdzdiV0RPZWdrYmtIaVQ3OGpQdFJHT3pseV8xY2NDX2loUkRGM0E2VGdZdHA4ajZiRks4T1BQWk8tTHl1RFJsVXgtX19TcS1LUEF6bUJfZ0ZXdjBXTmo1X1dieUVMMmdSMkQ4cXpyMzRDTlhkSWJYWVRJQlE2ZFFRRllsaDNLQXVIa1FSOXRSZGxzUmdpR0lCaE1IV1Npcm9tTFNaVU9mX09qNnB5bnprdnFwWHJRbmtCOXk2RU82em8teWF4WVdvNTM4TVhvMjc3VTZIWm16ZG4zcEpPMkZoWU5JYkJzaVg2dFNKVllNNXRtaGdFTUNLczBfc1hKRQ?oc=5\" target=\"_blank\">Anthropic Plans to Spend $518 Billion on Cloud and Data Centers. More Than $100 Billion Is Already Promised to Amazon.</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">The Globe and Mail</font>",
+        "excerpt": "Anthropic Plans to Spend $518 Billion on Cloud and Data Centers. More Than $100 Billion Is Already Promised to Amazon. - The Globe and Mail",
+        "published_at": "2026-10-01 01:00:26+00:00",
+        "source_sha256": "90a8ff9380b8378bbcaa5d519738d53059da1250adf32853c6901092285e94d2",
+        "output_text": "Anthropic 计划在云和数据中心上支出 5180 亿美元。其中超过 1000 亿美元已承诺给 Amazon。",
+        "mode": "checked_translation",
+        "validated_text": "Anthropic 计划在云和数据中心上支出 5180 亿美元。其中超过 1000 亿美元已承诺给 Amazon。 - The Globe and Mail",
+        "source_name": "The Globe and Mail",
+        "presentation_version": 6,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMirAFBVV95cUxPNERSOFU3M09XYWNrVTdSdHhkcVl4NkxXeUU2dHItLW41QnJ5TjhOX1VhaUh0Wmc1Y3ZFVm9qeXhfd0gxRVNNclo3UURDbGFrb19KS2RhSWlrbFl1RTZ5V2dlbEN4WXZ0SkwyTy1mRFc4M0lDYVRCZ0lBQnJzZ2xmenA1cDNaX294MzJYVmhydXlBQ1ZQbG40LW9lY1UtQ2MzRmZsdDJ2MWplNVAx?oc=5",
+        "original_title": "FTC launches broad investigation into Anthropic, OpenAI - The Washington Post",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMirAFBVV95cUxPNERSOFU3M09XYWNrVTdSdHhkcVl4NkxXeUU2dHItLW41QnJ5TjhOX1VhaUh0Wmc1Y3ZFVm9qeXhfd0gxRVNNclo3UURDbGFrb19KS2RhSWlrbFl1RTZ5V2dlbEN4WXZ0SkwyTy1mRFc4M0lDYVRCZ0lBQnJzZ2xmenA1cDNaX294MzJYVmhydXlBQ1ZQbG40LW9lY1UtQ2MzRmZsdDJ2MWplNVAx?oc=5\" target=\"_blank\">FTC launches broad investigation into Anthropic, OpenAI</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">The Washington Post</font>",
+        "excerpt": "FTC launches broad investigation into Anthropic, OpenAI  The Washington Post",
+        "published_at": "2026-10-01 00:26:52+00:00",
+        "source_sha256": "fe997bf964cd3c6c52e48ec99397122ca24fbd0cce440c35f4cae09c564dd39e",
+        "output_text": "FTC 对 Anthropic、OpenAI 展开广泛调查 The Washington Post",
+        "mode": "checked_translation",
+        "validated_text": "FTC 对 Anthropic、OpenAI 展开广泛调查 The Washington Post",
+        "source_name": "The Washington Post",
+        "presentation_version": 6,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      }
+    ]
+  }
+}

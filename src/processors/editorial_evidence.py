@@ -11,12 +11,19 @@ def editorial_issue(text: str) -> str | None:
     text = text.strip()
     if re.match(r"(?:NEWSLETTER|PODCAST|VIDEO)\s*[:：]", text, re.I) and re.search(r"Q&A|inside|a look|问答|解读", text, re.I):
         return 'reader_navigation'
-    if re.match(r"(?:what|who|how|why|when|where)\b[^?]*\?", text, re.I):
+    if re.match(r"(?:what|who|how|why|when|where)\s+(?:should|could|would|do|does|did|is|are|was|were|will|can|has|have)\b", text, re.I):
         return 'question_not_event'
     if re.search(r"\b(?:major|big|important)\s+(?:\w+\s+){0,2}change\s*(?:[-–—].*)?$", text, re.I):
         return 'unspecified_change'
     if re.search(r"\b(?:should be excited|what.s in store|stay tuned|read on to find out)\b", text, re.I):
         return 'reader_navigation'
+    if re.search(r"\b(?:above|below)\s+(?:its\s+)?fair value\b|(?:高于|低于|高出|低出)公允价值|"
+                 r"\b(?:trades?|trading)\s+at\s+[\d.]+\s+times\s+(?:earnings|sales)|"
+                 r"\bis the (?:real|main|bigger) (?:story|takeaway)|才是(?:真正的)?看点", text, re.I):
+        return 'valuation_or_editorial_opinion'
+    if re.search(r"\b(?:holders|investors) are (?:counting on|hoping|betting)|"
+                 r"(?:持有者|投资者)(?:指望|寄望)|\bhang over the stock\b|笼罩该股", text, re.I):
+        return 'investment_opinion'
     # A headline about an undisclosed "part/thing/detail" contains no event
     # that can be checked against its source. A concrete reporting sentence in
     # the article body remains eligible through factual_excerpt().
@@ -28,6 +35,8 @@ def editorial_issue(text: str) -> str | None:
         )
         and not re.search(r"\b(?:is|are|was|were|shows?|reveals?|means?)\b", text, re.I)
     ) or re.search(r"(?:鲜为人知|少有人注意|令人震惊|可怕)的?(?:可怕的?)?(?:部分|细节|真相)[。.!?！？]?$", text):
+        return 'teaser_without_fact'
+    if re.search(r"\bsecret (?:weapon|ingredient|formula)\b|秘密武器|秘密配方", text, re.I) and not re.search(r"\b(?:launches|announced|reports|reported)\b|发布|宣布|公布", text, re.I):
         return 'teaser_without_fact'
     if re.search(r'[?？](?:[”\"\']|\s*[-—|].*)?$', text):
         return 'question_not_event'

@@ -149,7 +149,7 @@
                   {%- if holdings_intro %}
                   {{ holdings_intro }}
                   {%- else %}
-                  当前持仓{{ holdings_counts.total }}只——美股{{ holdings_counts.us }}只，港股{{ holdings_counts.hk }}只{% if holdings_counts.etf %}，ETF {{ holdings_counts.etf }}只{% endif %}。各依其参考线，静候价格与纪律相逢。
+                  {{ holdings_intro_fallback }}
                   {%- endif %}
                 </td>
               </tr>
