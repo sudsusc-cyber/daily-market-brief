@@ -244,7 +244,7 @@ def test_sentiment_keeps_only_one_sentence_from_llm() -> None:
 def test_holdings_intro_and_subject_disable_thinking() -> None:
     intro_client = _SequenceClient([
         _response(None, "timeout"),
-        _response("{信号背景}衡量一段旅程，不只看眼前走了多远，也看脚下的路是否值得长行；时间不会替人作答，却能让扎实的判断慢慢显出分量。"),
+        _response("细读规则，{信号背景}；衡量一段旅程，不只看眼前走了多远，也看脚下的路是否值得长行；时间不会替人作答，却能让扎实的判断慢慢显出分量。"),
     ])
     assert "尚未出现既定买入信号" in write_intro([_signal()], client=intro_client)
     assert len(intro_client.calls) == 2

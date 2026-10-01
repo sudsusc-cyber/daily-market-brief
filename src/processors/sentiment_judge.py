@@ -232,10 +232,10 @@ _TASK_INSTRUCTION = """\
 档位由确定性加权算法已经决定,你**不得**改变它。你的工作是:
 - 只写一句完整中文总结,建议 35-60 个汉字,句末使用句号;不得拆成第二句
 - 在这一句话中解释为什么算法会落到这个档位,引用关键指标的具体数字与方向
-- 重点引用 CNN Fear & Greed 与 VIX;高收益债利差、DXY 只能作为辅助印证
+- 最多引用两个指标，优先选 CNN 与 VIX；高收益债利差、DXY 只能作为辅助印证，不要逐项复述。用 CNN 简称避免篇幅膨胀
 - Shiller PE 是慢变量,只能作为长期估值背景轻轻带过;除非它有显著日度变化,不得作为每日情绪判断的主论据
 - 没有真实历史分位/区间数据时,不得写"历史极值""历史高位""极端估值""接近泡沫"等绝对化表述
-- Shiller PE 允许的最强表述是:"Shiller PE 偏高,提示长期预期收益需克制"
+- 无需谈及 Shiller PE 的长期含义；这是短情绪说明，不是估值评论
 - 只解释指标与固定档位，不推导 DCA 触发概率、加仓减仓或现金比例；每个数字所在分句须写明指标名和当前/上期/变化角色，不复述总分
 - 不要写"今日"等时间副词,直接陈述
 - 不要 AI 腔,不要"让我们"
@@ -328,7 +328,8 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
     aliases = {"CNN Fear & Greed": r"CNN|恐惧.*?贪婪", "VIX": r"VIX",
                "DXY": r"DXY|美元指数", "高收益债利差": r"高收益债|信用利差", "Shiller PE": r"Shiller|席勒"}
     mentioned = False
-    for clause in re.split(r"[，,；;。]", text):
+    metric_start = "|".join(aliases.values())
+    for clause in re.split(r"[，,；;。]|、(?=(?:" + metric_start + r"))", text, flags=re.I):
         numbers = re.findall(r"[+-]?\d+(?:\.\d+)?", clause)
         metrics = [m for m in bundle.metrics if re.search(aliases.get(m.name, r"(?!)"), clause, re.I)]
         if numbers and len(metrics) != 1:
@@ -353,6 +354,12 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
                     suffix = clause[match.end():].lstrip()
                     if suffix.startswith('%') and (m.unit != '%' or role == 'delta'):
                         errors.append('unsupported_change_unit')
+            level_change = re.search(r"(?:从|由)\s*([+-]?\d+(?:\.\d+)?)%?\s*(?:微?升|降|回落|走阔|收窄)至\s*([+-]?\d+(?:\.\d+)?)", clause)
+            if level_change:
+                if m.prior is None or abs(float(level_change[1]) - m.prior) > .011:
+                    errors.append('wrong_prior_value')
+                if abs(float(level_change[2]) - m.current) > .011:
+                    errors.append('wrong_current_value')
             allowed = [m.current, m.prior, m.delta]
             if re.search(r"回落|下降|下跌|收窄|微降", clause) and m.delta is not None and m.delta < 0:
                 allowed.append(abs(m.delta))

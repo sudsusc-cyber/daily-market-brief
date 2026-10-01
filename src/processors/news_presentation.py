@@ -16,7 +16,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 6
+PRESENTATION_VERSION = 7
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -80,7 +80,7 @@ def _known_bare_listing(match: re.Match, text: str) -> str:
     return match[0]
 
 
-def present(text: str, *, source_name: str = "", _version: int = PRESENTATION_VERSION) -> Presentation:
+def present(text: str, *, source_name: str = "", original_text: str = "", _version: int = PRESENTATION_VERSION) -> Presentation:
     text = plain_source(text)
     operations = []
 
@@ -99,8 +99,16 @@ def present(text: str, *, source_name: str = "", _version: int = PRESENTATION_VE
     if _version >= 6:
         while separator in text:
             separator += '\ue000'
-        text = re.sub(r"(?<=[一-鿿]) +(?=[一-鿿])", separator, text)
+        if _version == 6:
+            text = re.sub(r"(?<=[一-鿿]) +(?=[一-鿿])", separator, text)
     source = plain_source(source_name)
+    if _version >= 7 and source:
+        # A translation can collapse the RSS double-space delimiter. Only remove
+        # that tail when the immutable excerpt proves it was publisher metadata.
+        raw = plain_source(original_text)
+        metadata_tail = re.search(r"(?:\s+[-–—|]\s*|\s{2,})" + re.escape(source) + r"\s*$", raw, re.I)
+        if metadata_tail and len(re.findall(re.escape(source), raw, re.I)) == len(re.findall(re.escape(source), text, re.I)):
+            record("publisher_tail_from_source", re.sub(r"(?:\s*[-–—|]+\s*|\s+)" + re.escape(source) + r"[。.]?\s*$", "", text, flags=re.I))
     aliases = {source} if source else set()
     aliases.update(n for group in _PUBLISHERS.values() for n in group)
     # Strip only a terminal publisher field, never an attribution in prose.
@@ -123,6 +131,8 @@ def present(text: str, *, source_name: str = "", _version: int = PRESENTATION_VE
         # metadata. Ordinary attribution ("与 Publisher 合作") remains prose.
         record("publisher_tail", re.sub(
             r"(?<=[。.!?！？%％])\s+" + re.escape(source) + r"[。.]?\s*$", "", text, flags=re.I))
+    if _version >= 7:
+        text = re.sub(r"(?<=[一-鿿]) +(?=[一-鿿])", separator, text)
     pieces = re.split(r"(?<=[。!?！？])", text)
     tail = pieces[-1].strip() or (pieces[-2].strip() if len(pieces) > 1 else "")
     if tail and _TEASER.fullmatch(tail):
@@ -245,8 +255,8 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, PRESENTATION_VERSION):
-        output = present(validated, source_name=str(row.get("source_name", "")), _version=version).text
+    if version in (4, 5, 6, PRESENTATION_VERSION):
+        output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         return (
             voice_text(output, str(row.get("presentation_speaker", "")), _version=version)
             if row.get("presentation_speaker")

@@ -187,10 +187,50 @@ def old_event_recap(item) -> bool:
         r'\btoday\b|\byesterday\b|今日|昨日|今天|昨天', plain_source(summary), re.I))
 
 
+def undated_immediate_leadership_change(item, text: str) -> bool:
+    """A repost timestamp does not date an immediately-effective succession.
+
+    Require an explicit calendar date in the original reporting context; the
+    adjacent event sentence must carry it, or a dated wire release must supply
+    its dateline. Never accept the collector's fetch/publication timestamp alone.
+    """
+    if not (re.search(r"effective immediately|即刻生效|立即生效|即时生效", text, re.I)
+            and re.search(r"chair(?:man|person)?|\bCEO\b|chief executive|董事长|首席执行官", text, re.I)
+            and re.search(r"stepped down|resign|appoint|elect|named|卸任|辞任|任命|当选|出任|接任", text, re.I)):
+        return False
+    original = plain_source(str(getattr(item, 'summary', '') or getattr(item, 'snippet', '') or ''))
+    title = plain_source(str(getattr(item, 'title', '') or ''))
+    calendar = (r"(?P<month>Jan\w*|Feb\w*|Mar\w*|Apr\w*|May|Jun\w*|Jul\w*|Aug\w*|Sep\w*|Oct\w*|Nov\w*|Dec\w*)\.?\s+(?P<day>\d{1,2}),?\s+(?P<year>20\d{2})"
+                r"|(?P<zyear>20\d{2})\s*年\s*(?P<zmonth>\d{1,2})\s*月\s*(?P<zday>\d{1,2})\s*日")
+    parts = [part for part in [title, *sentences(original)]
+             if re.search(r"effective immediately|即刻生效|立即生效|即时生效", part, re.I)]
+    dateline = _WIRE_DATELINE.search(original[:600])
+    if dateline:
+        parts.append(dateline[0])
+    published = getattr(item, 'published_at', None)
+    try:
+        published = datetime.fromisoformat(published.replace('Z', '+00:00')) if isinstance(published, str) else published
+        if not isinstance(published, datetime):
+            return True
+        event_dates = []
+        for part in parts:
+            for match in re.finditer(calendar, part, re.I):
+                if match['year']:
+                    month = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].index(match['month'][:3].lower()) + 1
+                    event_dates.append(date(int(match['year']), month, int(match['day'])))
+                else:
+                    event_dates.append(date(int(match['zyear']), int(match['zmonth']), int(match['zday'])))
+        # Ambiguous multiple dates need a better source, not a guessed event date.
+        return len(set(event_dates)) != 1 or not 0 <= (published.date() - event_dates[0]).days <= 2
+    except (ValueError, TypeError):
+        return True
+
+
 def publishable_excerpt(item, text: str) -> bool:
     return (context_allows(item, text) and complete_excerpt(text, getattr(item, 'source', ''))
             and not editorial_issue(text) and not promotional_prose(text)
-            and not old_event_excerpt(item, text) and status_has_scope(item, text))
+            and not old_event_excerpt(item, text) and not undated_immediate_leadership_change(item, text + ' ' + plain_source(str(getattr(item, 'title', ''))) + ' ' + plain_source(str(getattr(item, 'summary', '') or getattr(item, 'snippet', '') or '')))
+            and status_has_scope(item, text))
 
 
 def factual_excerpt(item) -> str:
@@ -262,6 +302,11 @@ def company_candidate(item, ticker: str) -> bool:
         return False
     if _ROUNDUP.search(title):
         return bool(roundup_excerpt(item, ticker))
+    excerpt = factual_excerpt(item)
+    # An analysis headline is not rescued by another metaphorical fragment.
+    # A complete operating announcement in the body remains eligible.
+    if editorial_issue(title) == 'valuation_or_editorial_opinion' and not _OPERATING_EVENT.search(excerpt):
+        return False
     # A vendor winning a platform's badge is not operating news about that platform.
     # Keep substantive partner contracts, capacity and investments eligible.
     if _PARTNER_PROMOTION.search(title) and not _OPERATING_EVENT.search(title):

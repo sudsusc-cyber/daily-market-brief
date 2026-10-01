@@ -26,6 +26,7 @@ from markupsafe import Markup
 
 from src.collectors.stocks import StockSignal
 from src.config import BUY_STRATEGIES
+from src.processors.holdings_intro import fallback_intro
 from src.processors.html_safe import is_safe_url
 from src.processors.sentiment_judge import VERDICT_THRESHOLDS, one_sentence_summary
 from src.renderer.news_prose import news_paragraphs, sentence_end
@@ -497,6 +498,7 @@ def render_email(
         logo_cids=logo_cids or {},
         header_image_url=header_image_url,
         holdings_intro=holdings_intro,
+        holdings_intro_fallback=fallback_intro(signals, generated_at),
         valuations=valuations or {},
         valuation_checked_at=valuation_checked_at,
         valuation_label=valuation_label,

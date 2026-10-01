@@ -47,6 +47,7 @@ OBJECTS = {
     "budget": r"\bbudgets?\b|预算",
     "subsidy": r"subsid(?:y|ies|ize)|mortgage support|补贴|房贷支持",
     "tax": r"\btax(?:es|ation)?\b|\bIRS\b|fiscal|government spending|避税|财政|税收|减税|加税|税务|政府支出",
+    "precious_metals": r"\bgold\b|\bsilver\b|bullion|黄金|白银|贵金属",
     "energy": r"\boil\b|\bcrude\b|\benergy\b|natural gas|油价|原油|石油|能源|天然气",
     "defense": r"missile|defen[cs]e|military|导弹|国防|军工",
     "trade": r"\b(?:tariffs?|trad(?:e|es|ing))\b|关税|贸易",
@@ -71,7 +72,7 @@ ACTIONS = {
     "restriction": r"\b(?:curbs?|restrict\w*|bans?|banned|banning)\b|限制|禁令",
     "spending": r"contract|spending|合同|开支",
     "negotiation": r"negotia\w*|discuss\w*|talks|summit|bargain|谈判|磋商|峰会|讨论|施压",
-    "market_move": r"\b(?:rises?|falls?|rebounds?|gains?|drops?|surges?|yields?|selloff)\b|上涨|下跌|上行|下行|反弹|承压|回升|走低",
+    "market_move": r"\b(?:rises?|falls?|rebounds?|gains?|drops?|surges?|yields?|selloff|steady|stable|suffer(?:s|ed)?)\b|上涨|下跌|上行|下行|反弹|承压|回升|走低|持稳|遭遇",
     "decision": r"announc\w*|approv\w*|reject\w*|宣布|批准|拒绝|决定",
 }
 ACTORS = {
@@ -97,6 +98,7 @@ TOPICS = {
     "tax": "财政政策",
     "subsidy": "财政政策",
     "energy": "能源市场",
+    "precious_metals": "贵金属市场",
     "defense": "国防开支",
     "trade": "国际贸易",
     "credit": "信用市场",
@@ -121,7 +123,7 @@ def _spans(kind, vocabulary, text):
 
 # Boundaries describe syntax rather than any particular financial story.
 _BACKGROUND = re.compile(
-    r"\b(?:because|after|amid|as investors|while)\b|此前|由于|因为|随着|因(?!此|而|为|素|子|果|由)",
+    r"\b(?:because|after|amid|as(?!\s+(?:of|well|much|many|a\b|an\b))|while)\b|此前|由于|因为|随着|因(?!此|而|为|素|子|果|由)",
     re.I,
 )
 
@@ -129,6 +131,12 @@ _BACKGROUND = re.compile(
 def _focus(text):
     match = _BACKGROUND.search(text)
     if not match:
+        comma = re.search(r'[,，]', text)
+        if comma:
+            lead = text[:comma.start()]
+            if (any(re.search(pattern, lead, re.I) for pattern in OBJECTS.values())
+                    and re.search(ACTIONS['market_move'], lead, re.I)):
+                return 0, comma.start()
         return 0, len(text)
     if not text[: match.start()].strip():
         # A leading subordinate clause ends at its comma: "After ..., bonds ...".
