@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from src.processors.editorial_evidence import analysis_source, editorial_issue
+from src.processors.event_semantics import event_pattern, normalize_event_text
 from src.processors.html_safe import is_safe_url
 from src.utils.news_facts import canonical_fact
 
@@ -27,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 4
+_VERSION = 5
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -58,7 +59,7 @@ class WatchRule:
         from src.processors.news_selection import reporting_text
 
         # A masthead and separate background sentence cannot supply the action.
-        return any(re.search(self.subject, clause, re.I) and re.search(self.action, clause, re.I)
+        return any(re.search(self.subject, clause, re.I) and re.search(self.action, normalize_event_text(clause), re.I)
                    for clause in re.split(r"[。；;!?]|(?<!\bInc)\.(?=\s+[A-Z])|\b(?:while|whereas)\b", reporting_text(text), flags=re.I))
 
 
@@ -68,7 +69,7 @@ _RULES = (
     WatchRule(
         "infrastructure-investment",
         r"\b(?:cloud|data cent(?:er|re)s?|infrastructure|fabs?)\b|云|数据中心|基础设施|晶圆厂|产能",
-        r"\b(?:invest(?:s|ed|ing|ment|ments)?|capex|capital expenditures?|build(?:s|ing)?|expand(?:s|ed|ing)?|spend(?:s|ing)?|under construction|being built)\b|投资|投入|资本开支|建设|扩建|扩产|在建",
+        event_pattern("investment") + r"|\b(?:build(?:s|ing)?|expand(?:s|ed|ing)?|spend(?:s|ing)?|under construction|being built)\b|投入|建设|扩建|扩产|在建",
         "基础设施投入的长期价值取决于资本回报",
         "实际投入、投产进度、利用率与现金流能否匹配。",
     ),
@@ -82,21 +83,21 @@ _RULES = (
     WatchRule(
         "payment-commercialization",
         r"\b(?:settlements?|payments?)\b|结算|支付",
-        r"\b(?:launch(?:es|ed|ing)?|enabl(?:e|es|ed|ing)|switch(?:es|ed)? on|roll(?:s|ed)?[ -]?out|introduc(?:e|es|ed|ing|tion)|adopt(?:s|ed|ing|ion)?)\b|开通|推出|启用|采用|上线",
+        event_pattern("launch") + r"|\b(?:enabl(?:e|es|ed|ing)|adopt(?:s|ed|ing|ion)?)\b|采用",
         "支付新业务的长期价值仍需真实交易规模验证",
         "实际交易量、客户采用、费用收入与合规成本。",
     ),
     WatchRule(
         "product-release-risk",
         r"\bGPT[- .]?\d+(?:\.\d+)?\b|\b(?:models?|platforms?|iphone|devices?|chips?)\b|模型|平台|手机|设备|芯片",
-        r"\b(?:scrap(?:s|ped|ping)?|abandon(?:s|ed|ing)?|cancel(?:s|led|ed|ling|ing)?|shelv(?:e|es|ed|ing)|axes?|halt(?:s|ed|ing)?|delay(?:s|ed|ing)?|postpon(?:e|es|ed|ing))\b|放弃|取消|搁置|砍掉|暂停|推迟|延后",
+        event_pattern("pause", "cancel", "delay"),
         "产品发布调整后的长期影响取决于后续安排",
         "调整原因、问题解决进度、后续发布安排与投入变化。",
     ),
     WatchRule(
         "product-commercialization",
         r"\bGPT[- .]?\d+(?:\.\d+)?\b|\b(?:models?|platforms?|iphone|devices?|chips?)\b|模型|平台|手机|设备|芯片",
-        r"\b(?:launch(?:es|ed|ing)?|releas(?:e|es|ed|ing)|introduc(?:e|es|ed|ing)|roll(?:s|ed)?[ -]?out)\b|推出|发布|上市|上线",
+        event_pattern("launch") + r"|上市",
         "新产品的长期价值仍需持续采用和盈利兑现",
         "用户采用、收入贡献、利润率与持续投入。",
     ),
@@ -110,14 +111,14 @@ _RULES = (
     WatchRule(
         "capital-allocation",
         r"\b(?:buybacks?|repurchas(?:e|es|ed|ing)|dividends?|acquir(?:e|es|ed|ing)|acquisitions?)\b|回购|股息|分红|收购",
-        r"\b(?:announc(?:e|es|ed|ing|ement)|approv(?:e|es|ed|ing|al)|agree(?:s|d|ment)?|complet(?:e|es|ed|ing|ion)|plan(?:s|ned|ning)?|cancel(?:s|led|ed|ling|ing)?)\b|宣布|批准|协议|完成|计划|取消",
+        event_pattern("announcement", "approval", "completion", "cancel") + r"|\bagree(?:s|d|ment)?\b|\bplan(?:s|ned|ning)?\b|协议|计划|取消",
         "资本配置的长期成效应由每股现金回报检验",
         "实际执行金额、资金来源与后续现金回报。",
     ),
     WatchRule(
         "regulatory-access",
         r"\b(?:regulat(?:or|ors|ory|ion|ions)|antitrust|licen[cs](?:e|es|ing))\b|监管|反垄断|牌照",
-        r"\b(?:approv(?:e|es|ed|ing|al)|reject(?:s|ed|ing|ion)?|bans?|fine[ds]?)\b|批准|驳回|禁令|禁止|罚款",
+        event_pattern("approval") + r"|\breject(?:s|ed|ing|ion)?\b|\bbans?\b|\bfine[ds]?\b|驳回|禁令|禁止|罚款",
         "监管事项的长期影响取决于适用范围与执行条件",
         "决定的适用范围、生效条件、后续程序与披露的经营影响。",
     ),

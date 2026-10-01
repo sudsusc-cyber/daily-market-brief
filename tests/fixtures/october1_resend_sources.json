@@ -1,0 +1,285 @@
+{
+  "company": [
+    {
+      "url": "https://finnhub.io/api/news?id=d3ed06bc7200eb0f7d9395e83e6c6ea8237c06f23854ef2933f1db3690ee1855",
+      "original_title": "Piper Sandler Maintains Overweight on Microsoft, Raises Price Target to $610",
+      "original_summary": "Piper Sandler  analyst Billy Fitzsimmons   maintains Microsoft (NASDAQ:MSFT) with a Overweight and raises the price target from $550 to $610.",
+      "excerpt": "Piper Sandler Maintains Overweight on Microsoft, Raises Price Target to $610",
+      "published_at": "2026-09-30 05:07:32+00:00",
+      "source_sha256": "4ccfb9c7057975774e467bc6228ace2c0b98b127d35e19dd8433e8b6db006ccc",
+      "output_text": "Piper Sandler 维持对 Microsoft 的增持评级，将目标价上调至 $610",
+      "mode": "checked_translation",
+      "validated_text": "Piper Sandler 维持对 Microsoft 的增持评级，将目标价上调至 $610",
+      "source_name": "Benzinga",
+      "presentation_version": 8,
+      "presentation_operations": [],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    },
+    {
+      "url": "https://finnhub.io/api/news?id=896f4a4e19435f89e701a78564b104ce85f21479fba1841fe468e3a7db5e1394",
+      "original_title": "Stock Market Today, Sept. 30: Nvidia Authorizes $150B Buyback, Lifting Total to $235B",
+      "original_summary": "Today, Sept. 30, 2026, the AI chip giant reinforced management confidence with an expanded repurchase program through 2028.",
+      "excerpt": "Stock Market Today, Sept. 30: Nvidia Authorizes $150B Buyback, Lifting Total to $235B",
+      "published_at": "2026-09-30 21:40:01+00:00",
+      "source_sha256": "5a449429f3a4817b853aba767bc09904dc39a8fe35eebcf81bb9f0159e8bf95d",
+      "output_text": "Nvidia 批准 1500亿美元 回购，使总额升至 2350亿美元",
+      "mode": "checked_translation",
+      "validated_text": "今日股市，9 月 30 日：Nvidia 批准 $150B 回购，使总额升至 $235B",
+      "source_name": "Yahoo",
+      "presentation_version": 8,
+      "presentation_operations": [
+        "currency_magnitude",
+        "dated_navigation"
+      ],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    },
+    {
+      "url": "https://finnhub.io/api/news?id=590edd77ebe41e577c32d4d4e003b07cb5c95d8fb8cccdd02ca08b92f1c4c637",
+      "original_title": "TSMC Reportedly Weighs Texas Chip Investment On Top Of $265B Arizona Push",
+      "original_summary": "TSMC increased its Arizona commitment by $100 billion in July, bringing the total from $165 billion to $265 billion.",
+      "excerpt": "TSMC Reportedly Weighs Texas Chip Investment On Top Of $265B Arizona Push",
+      "published_at": "2026-09-30 13:17:20+00:00",
+      "source_sha256": "122cb3ca44179f7f718b5d52ce54a9aae1a8ab09f4b6c3d1f0a54a48c5e5a2d9",
+      "output_text": "据报道 TSMC 考虑在 2650 亿美元 Arizona 投资之外再投 Texas 芯片项目",
+      "mode": "checked_translation",
+      "validated_text": "据报道 TSMC 考虑在 2650 亿美元 Arizona 投资之外再投 Texas 芯片项目",
+      "source_name": "Yahoo",
+      "presentation_version": 8,
+      "presentation_operations": [],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    },
+    {
+      "url": "https://finnhub.io/api/news?id=0ca18988afe6a22517ba7792e8ac79472bcf0139c7cf553362acb19975da5d5e",
+      "original_title": "Google debuts Gemini 4 Argon, its latest frontier model",
+      "original_summary": "Google unveiled its latest frontier AI model, Gemini 4 Argon, on Wednesday.",
+      "excerpt": "Google debuts Gemini 4 Argon, its latest frontier model",
+      "published_at": "2026-09-30 20:40:02+00:00",
+      "source_sha256": "933226cc644d29d8f1fdb7b381988e7b24af976c6515ca8077606e317c737e53",
+      "output_text": "Google 推出 Gemini 4 Argon，其最新前沿模型",
+      "mode": "checked_translation",
+      "validated_text": "Google 推出 Gemini 4 Argon，其最新前沿模型",
+      "source_name": "Yahoo",
+      "presentation_version": 8,
+      "presentation_operations": [],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    },
+    {
+      "url": "https://finnhub.io/api/news?id=6feac02187c66438070575e065c84b1c790e028b111b5b287cc84d022d00927b",
+      "original_title": "Amex's New AI Agent for Expenses",
+      "original_summary": "American Express Group President Ray Jobar reveals a new AI powered corporate platform that slashes hours from expense reports, gives finance teams real time spend insights, and uses agentic tools to streamline back office work for mid sized companies.",
+      "excerpt": "Amex's New AI Agent for Expenses",
+      "published_at": "2026-09-30 14:51:19+00:00",
+      "source_sha256": "261bf1e5487196536f9b44418e9e168ab47b35d71a238f998e98be7a495d4a1d",
+      "output_text": "Amex 用于费用的新 AI Agent",
+      "mode": "checked_translation",
+      "validated_text": "Amex 用于费用的新 AI Agent",
+      "source_name": "Yahoo",
+      "presentation_version": 8,
+      "presentation_operations": [],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMipAFBVV95cUxNaDdjZ0dWT2JySGJ1ZHFMMUZaTzZLYTdPQ3BYSEd6VUlhb29KQ1ZPai1fT1lwZWhmWW5uQWU5akVsUFFRcGRQeDBYbWd0M1d6RTRRcFpJT0pDa0tHWVhzZFRHSWt3NFpSblBjQXY0dl9PUzhqbzBsTjNuWWVoUDVIb21iSG80YXFhTFhnN2FHSW94STRGSmNVNGgyT1cxRkFtcnJpOQ?oc=5",
+      "original_title": "腾讯与甲骨文签订五年协议，租赁10万片AI芯片 - 富途牛牛",
+      "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMipAFBVV95cUxNaDdjZ0dWT2JySGJ1ZHFMMUZaTzZLYTdPQ3BYSEd6VUlhb29KQ1ZPai1fT1lwZWhmWW5uQWU5akVsUFFRcGRQeDBYbWd0M1d6RTRRcFpJT0pDa0tHWVhzZFRHSWt3NFpSblBjQXY0dl9PUzhqbzBsTjNuWWVoUDVIb21iSG80YXFhTFhnN2FHSW94STRGSmNVNGgyT1cxRkFtcnJpOQ?oc=5\" target=\"_blank\">腾讯与甲骨文签订五年协议，租赁10万片AI芯片</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">富途牛牛</font>",
+      "excerpt": "腾讯与甲骨文签订五年协议，租赁10万片AI芯片 - 富途牛牛",
+      "published_at": "2026-10-01 03:20:48+00:00",
+      "source_sha256": "b0c75d96ba42049c0236e645b0edf7079d4f93f82f7ff66ddcb6eeb58070ba11",
+      "output_text": "腾讯与甲骨文签订五年协议，租赁10万片AI芯片",
+      "mode": "verified_extract",
+      "validated_text": "腾讯与甲骨文签订五年协议，租赁10万片AI芯片 - 富途牛牛",
+      "source_name": "富途牛牛",
+      "presentation_version": 8,
+      "presentation_operations": [
+        "publisher_tail_from_source"
+      ],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    },
+    {
+      "url": "https://news.google.com/rss/articles/CBMiWEFVX3lxTE00SmNaV1B4N25BZktKYjVLajBoYVNZZkx2dVk5LTl3SER0Z2M1WU1mRDNrcWtjS3VKUE5sbnhMNnNqRVAwUUZ1dVl3MUJfanJYVzEyVkhDUGQ?oc=5",
+      "original_title": "1199元起！华为nova 16 Pro/Watch FIT 5泡泡玛特Hirono小野联名款发布 - 驱动之家",
+      "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiWEFVX3lxTE00SmNaV1B4N25BZktKYjVLajBoYVNZZkx2dVk5LTl3SER0Z2M1WU1mRDNrcWtjS3VKUE5sbnhMNnNqRVAwUUZ1dVl3MUJfanJYVzEyVkhDUGQ?oc=5\" target=\"_blank\">1199元起！华为nova 16 Pro/Watch FIT 5泡泡玛特Hirono小野联名款发布</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">驱动之家</font>",
+      "excerpt": "华为nova 16 Pro/Watch FIT 5泡泡玛特Hirono小野联名款发布  驱动之家",
+      "published_at": "2026-10-01 03:52:00+00:00",
+      "source_sha256": "a02a6c220343303e3aa8a3044c66d1269783899587165fe1c5803c65a6a04337",
+      "output_text": "华为nova 16 Pro/Watch FIT 5泡泡玛特Hirono小野联名款发布",
+      "mode": "verified_extract",
+      "validated_text": "华为nova 16 Pro/Watch FIT 5泡泡玛特Hirono小野联名款发布  驱动之家",
+      "source_name": "驱动之家",
+      "presentation_version": 8,
+      "presentation_operations": [
+        "publisher_tail_from_source"
+      ],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    }
+  ],
+  "macro": [
+    {
+      "url": "https://www.wsj.com/economy/french-inflation-tops-expectations-as-energy-prices-climb-13819bb3?mod=rss_worldnews",
+      "original_title": "Inflation in Eurozone’s Biggest Economies Reaches Multiyear Highs",
+      "original_summary": "Enduring energy-price pressures could push European Central Bank policymakers to raise interest rates again next month.",
+      "excerpt": "Inflation in Eurozone’s Biggest Economies Reaches Multiyear Highs",
+      "published_at": "2026-09-30 13:17:00+00:00",
+      "source_sha256": "e0da61c9da03b11ce28262fab807782b8767fba2907cebd1d5ec489293e1c2f2",
+      "output_text": "Eurozone 几个最大经济体的通胀达到多年高位",
+      "mode": "checked_translation",
+      "validated_text": "Eurozone 几个最大经济体的通胀达到多年高位",
+      "source_name": "WSJ",
+      "presentation_version": 8,
+      "presentation_operations": [],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": "",
+      "macro_topic": "通胀数据",
+      "macro_event": {
+        "version": 1,
+        "text": "Inflation in Eurozone’s Biggest Economies Reaches Multiyear Highs",
+        "topic": "通胀数据",
+        "family": "inflation",
+        "actor": "",
+        "action": "",
+        "object": "Inflation",
+        "geography": [],
+        "time": [],
+        "states": [],
+        "spans": [
+          {
+            "kind": "object",
+            "value": "inflation",
+            "text": "Inflation",
+            "start": 0,
+            "end": 9
+          }
+        ],
+        "decision": "object_action_in_focus"
+      }
+    },
+    {
+      "url": "https://www.bloomberg.com/news/articles/2026-10-01/yen-weakens-as-boj-summary-damps-bets-for-back-to-back-rate-hike",
+      "original_title": "Yen Weakens as BOJ Summary Damps Bets for Back-to-Back Rate Hike",
+      "original_summary": "The yen weakened against the dollar after a summary of opinions from the Bank of Japan’s September meeting disappointed investors looking for signs that policymakers may be preparing for another move this month.",
+      "excerpt": "Yen Weakens as BOJ Summary Damps Bets for Back-to-Back Rate Hike",
+      "published_at": "2026-10-01 02:09:50+00:00",
+      "source_sha256": "dcf2a0e9cfbd643a38153eb6469a00dba0e4076c7d393d4588b5837a0387c4f8",
+      "output_text": "日元走弱，因 BOJ 会议纪要抑制了连续加息的押注",
+      "mode": "checked_translation",
+      "validated_text": "日元走弱，因 BOJ 会议纪要抑制了连续加息的押注",
+      "source_name": "Bloomberg",
+      "presentation_version": 8,
+      "presentation_operations": [],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": "",
+      "macro_topic": "外汇市场",
+      "macro_event": {
+        "version": 1,
+        "text": "Yen Weakens as BOJ Summary Damps Bets for Back-to-Back Rate Hike",
+        "topic": "外汇市场",
+        "family": "fx",
+        "actor": "",
+        "action": "",
+        "object": "Yen",
+        "geography": [],
+        "time": [],
+        "states": [],
+        "spans": [
+          {
+            "kind": "object",
+            "value": "fx",
+            "text": "Yen",
+            "start": 0,
+            "end": 3
+          },
+          {
+            "kind": "action",
+            "value": "policy_change",
+            "text": "Hike",
+            "start": 60,
+            "end": 64
+          }
+        ],
+        "decision": "object_action_in_focus"
+      }
+    }
+  ],
+  "figures": [
+    {
+      "url": "https://news.google.com/rss/articles/CBMiowFBVV95cUxPdWVKRDdwbkdzcFQyRkFGXzVqSXFnM3RxbkJ3UXcyNXJEcUZsT1JzNXljbGxWOWVQeGRDNWpYczB0dWRHYkJEeDBBcFh5eFdBTXd1R3ZBY0c5WmxaOTJKanBGU1R1cUVhamdxRklfQ0R6WUNWRXJfRjV0c3ZpZG9mQ19DajM0NDZHU0h4cDM3X0pqT2lDd01id3ZFOGxZMUtFeEVz?oc=5",
+      "original_title": "Jensen Huang Says AI Could Create 1 Million Blue-Collar Jobs - thewealthadvisor.com",
+      "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiowFBVV95cUxPdWVKRDdwbkdzcFQyRkFGXzVqSXFnM3RxbkJ3UXcyNXJEcUZsT1JzNXljbGxWOWVQeGRDNWpYczB0dWRHYkJEeDBBcFh5eFdBTXd1R3ZBY0c5WmxaOTJKanBGU1R1cUVhamdxRklfQ0R6WUNWRXJfRjV0c3ZpZG9mQ19DajM0NDZHU0h4cDM3X0pqT2lDd01id3ZFOGxZMUtFeEVz?oc=5\" target=\"_blank\">Jensen Huang Says AI Could Create 1 Million Blue-Collar Jobs</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">thewealthadvisor.com</font>",
+      "excerpt": "Jensen Huang Says AI Could Create 1 Million Blue-Collar Jobs - thewealthadvisor.com",
+      "published_at": "2026-09-30 12:57:11+00:00",
+      "source_sha256": "9e122a8083075a14599cf74a42bb763b8dda23b2a3359b6fe094824a2558beef",
+      "output_text": "AI 可能创造 100 万个蓝领工作岗位",
+      "mode": "checked_translation",
+      "validated_text": "Jensen Huang 称 AI 可能创造 100 万个蓝领工作岗位 - thewealthadvisor.com",
+      "source_name": "thewealthadvisor.com",
+      "presentation_version": 8,
+      "presentation_operations": [
+        "publisher_tail_from_source",
+        "speaker_attribution"
+      ],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": "",
+      "presentation_speaker": "黄仁勋"
+    }
+  ],
+  "frontier": [
+    {
+      "url": "https://news.google.com/rss/articles/CBMihAFBVV95cUxOQTlYal9nb2ktdWJoLWtwUTlRM2Y0NXM1dElRSXZ6elZkampwSFBGa2FZZWFteENTZGxKRjQ0Y05rcmQzd1hZSkhLOFcyWTJRclcwR2RUaW1hcnJTMk5xM3J3VktJWGdlN29CeXZJQ0FMN3hDbGgzdWRrZnhwSTQxYXVRMm4?oc=5",
+      "original_title": "OpenAI’s agents obscured hacking activity in government site breaches - Financial Times",
+      "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMihAFBVV95cUxOQTlYal9nb2ktdWJoLWtwUTlRM2Y0NXM1dElRSXZ6elZkampwSFBGa2FZZWFteENTZGxKRjQ0Y05rcmQzd1hZSkhLOFcyWTJRclcwR2RUaW1hcnJTMk5xM3J3VktJWGdlN29CeXZJQ0FMN3hDbGgzdWRrZnhwSTQxYXVRMm4?oc=5\" target=\"_blank\">OpenAI’s agents obscured hacking activity in government site breaches</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">Financial Times</font>",
+      "excerpt": "OpenAI’s agents obscured hacking activity in government site breaches - Financial Times",
+      "published_at": "2026-10-01 04:00:24+00:00",
+      "source_sha256": "74722aa14dc7543a4d1aab6474d4d67c8b79373d9838b9b4362bcbbbf2fe2d95",
+      "output_text": "OpenAI 的智能体在政府网站入侵事件中掩盖了黑客活动",
+      "mode": "checked_translation",
+      "validated_text": "OpenAI 的智能体在政府网站入侵事件中掩盖了黑客活动 - Financial Times",
+      "source_name": "Financial Times",
+      "presentation_version": 8,
+      "presentation_operations": [
+        "publisher_tail_from_source"
+      ],
+      "publication_path": "source_fallback",
+      "source_kind": "reported",
+      "source_body": "",
+      "context_url": "",
+      "context_fetched_at": ""
+    }
+  ]
+}

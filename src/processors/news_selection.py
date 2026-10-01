@@ -4,7 +4,9 @@ import html
 import re
 from datetime import date, datetime
 
+from src.processors.announcement_context import action_context, requires_action_context
 from src.processors.editorial_evidence import editorial_issue, status_has_scope
+from src.processors.event_semantics import document_types, has_event
 from src.processors.html_safe import strip_all_tags
 from src.processors.technical_context import (
     context_allows,
@@ -59,7 +61,7 @@ def complete_excerpt(text: str, source_name: str = '') -> bool:
     if re.search(r'\b(?:worldwide|locations|merchants|customers)[1-9](?=[,.;:]|$)', text, re.I):
         return False
     if source_name:
-        text = re.sub(r'\s+[-–—|]\s*' + re.escape(source_name) + r'\s*$', '', text, flags=re.I)
+        text = re.sub(r'(?:\s+[-–—|]\s*|\s{2,})' + re.escape(source_name) + r'\s*$', '', text, flags=re.I)
     if re.search(r'(?:\.{3}|…|\[\s*…\s*\])\s*[。.!！?？”’"\']*$', text):
         return False
     text = text.rstrip('。.!！?？ ”’"\'')
@@ -87,6 +89,34 @@ _BUSINESS_FACT = re.compile(
     r'|(?:plans?|will|agrees? to) invest|announced|introduc\w*|appoint\w*|acqui\w*|merger|launch\w*'
     r'|(?:paus\w*|cancel\w*).*(?:training|evaluation|launch)|settlement|lawsuit|litigation|patent verdict|court ruling|appeal|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
+
+def business_fact(text: str) -> bool:
+    """Use the same event families as translation and long-term watchpoints."""
+    return bool(_BUSINESS_FACT.search(text) or has_event(
+        text, 'launch', 'approval', 'completion', 'acquisition', 'investment', 'announcement'))
+
+
+def analyst_opinion(text: str) -> bool:
+    """Broker ratings/targets are opinions, regardless of broker or issuer."""
+    return bool(re.search(
+        r"\b(?:price targets?|target prices?|overweight|underweight|outperform|underperform|buy rating|sell rating|hold rating)\b"
+        r"|(?:analysts?|brokerage|broker)\b.{0,80}\b(?:ratings?|upgrades?|downgrades?)\b"
+        r"|目标价|(?:分析师|券商).{0,50}评级|(?:增持|减持|买入|卖出|中性|跑赢大盘|跑输大盘)评级", text, re.I))
+
+
+def source_boilerplate(text: str) -> bool:
+    return bool(re.search(r"(?:copy|slides?|presentation).{0,100}(?:posted|available).{0,60}(?:website|relations)"
+                          r"|(?:点击|访问).{0,30}(?:网站|全文)|(?:幻灯片|副本).{0,60}(?:发布|网站)", text, re.I))
+
+
+def noun_fragment(text: str) -> bool:
+    """A new-product noun phrase is not a self-contained event statement."""
+    return bool(re.search(r"\b(?:agents?|platforms?|models?|tools?|apps?|devices?)\b|智能体|平台|模型|工具|设备", text, re.I)
+                and not has_event(text, 'launch', 'approval', 'announcement', 'investment', 'completion',
+                                  'pause', 'cancel', 'delay', 'raise', 'cut', 'fall', 'refusal')
+                and not re.search(r"\b(?:will|plans?|may|could|offers?|helps?|can|is|are|has|have|says?|said|states?|stated|warns?|warned|argues?|argued)\b|计划|将|可能|提供|帮助|能够|具备|支持|是|称|表示|指出|认为|警告", text, re.I))
+
+
 _RATING_SERVICE = re.compile(
     r"(?:Moody[’']?s|穆迪).*(?:affirms?|upgrades?|downgrades?|cuts?|lifts?|上调|下调|确认|维持).*?(?:ratings?|评级|outlook|展望)", re.I)
 _PARTNER_PROMOTION = re.compile(
@@ -165,7 +195,7 @@ def roundup_excerpt(item, ticker: str) -> str:
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '') or ''
     return next((part for part in sentences(summary)
                  if company_fact_matches(part, ticker) and complete_excerpt(part)
-                 and _BUSINESS_FACT.search(part)), '')
+                 and business_fact(part)), '')
 
 
 def explicit_old_event(item, text: str, *, max_age_days: int = 2, allow_fresh_update: bool = True) -> bool:
@@ -275,9 +305,12 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 
 
 def publishable_excerpt(item, text: str) -> bool:
-    return ((not getattr(item, 'holding_ticker', None) or holding_in_excerpt(text, item.holding_ticker))
+    return ((not requires_action_context(item) or text == action_context(item))
+            and (not getattr(item, 'holding_ticker', None) or holding_in_excerpt(text, item.holding_ticker))
             and context_allows(item, text) and complete_excerpt(text, getattr(item, 'source', ''))
             and not editorial_issue(text) and not promotional_prose(text)
+            and not source_boilerplate(text) and not noun_fragment(text)
+            and not (getattr(item, "holding_ticker", None) and analyst_opinion(text))
             and not old_event_excerpt(item, text) and not undated_immediate_leadership_change(item, text + ' ' + plain_source(str(getattr(item, 'title', ''))) + ' ' + plain_source(str(getattr(item, 'summary', '') or getattr(item, 'snippet', '') or '')))
             and status_has_scope(item, text))
 
@@ -288,11 +321,19 @@ def factual_excerpt(item) -> str:
     The immutable title and summary remain attached for context and auditing.
     RSS snippets that merely repeat the headline are not extra evidence.
     """
+    if requires_action_context(item):
+        return action_context(item)
     if needs_technical_context(str(getattr(item, 'title', ''))):
         return contextual_excerpt(item)
     if old_event_recap(item):
         return ''
     title = plain_source(getattr(item, 'title', ''))
+    summary = plain_source(getattr(item, 'summary', '') or getattr(item, 'snippet', ''))
+    if re.search(r"\bsummary\b|摘要|概要", title, re.I) and not document_types(title):
+        typed = next((part for part in sentences(summary) if document_types(part)
+                      and publishable_excerpt(item, part)), '')
+        if typed:
+            return typed
     if _ROUNDUP.search(title):
         return roundup_excerpt(item, getattr(item, 'holding_ticker', '') or '')
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '')
@@ -303,7 +344,7 @@ def factual_excerpt(item) -> str:
     if promotional_prose(title):
         return next((part for part in title_parts if not promotional_prose(part)
                      and publishable_excerpt(item, part)
-                     and (_BUSINESS_FACT.search(part) or re.search(
+                     and (business_fact(part) or re.search(
                          r'go public|IPO|fil(?:e|ed|ing)|上市|招股|提交', part, re.I))), '')
     if len(title_parts) > 1 and _PRICE_EDITORIAL.search(title_parts[0]):
         for part in title_parts[1:]:
@@ -312,7 +353,7 @@ def factual_excerpt(item) -> str:
                 return part
     for sentence in publication_candidates(item, plain_source(summary)):
         if (publishable_excerpt(item, sentence)
-                and len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)
+                and len(sentence) >= 30 and business_fact(sentence) and not _PRICE_EDITORIAL.search(sentence)
                 and sentence not in title and title not in sentence):
             eligible.append(sentence)
     # When a recap contains an explicit fresh update, lead with that update.
@@ -352,6 +393,8 @@ def company_candidate(item, ticker: str) -> bool:
     if _ROUNDUP.search(title):
         return bool(roundup_excerpt(item, ticker))
     excerpt = factual_excerpt(item)
+    if analyst_opinion(title) and (analyst_opinion(excerpt) or not business_fact(excerpt)):
+        return False
     # An analysis headline is not rescued by another metaphorical fragment.
     # A complete operating announcement in the body remains eligible.
     if editorial_issue(title) == 'valuation_or_editorial_opinion' and not _OPERATING_EVENT.search(excerpt):

@@ -14,6 +14,11 @@ import hashlib
 import logging
 from dataclasses import asdict, dataclass
 
+from src.processors.announcement_context import (
+    action_context,
+    action_context_date,
+    requires_action_context,
+)
 from src.processors.editorial_evidence import analysis_source, editorial_issue
 from src.processors.html_safe import is_safe_url
 from src.processors.news_presentation import PRESENTATION_VERSION, present
@@ -54,6 +59,8 @@ class SourceEvidence:
     source_body: str = ""
     context_url: str = ""
     context_fetched_at: str = ""
+    event_date: str = ""
+    event_date_basis: str = ""
 
 
 def source_sentences(item) -> list[str]:
@@ -146,6 +153,8 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
             asdict(
                 SourceEvidence(
                     url=item.url,
+                    event_date=action_context_date(item, excerpt),
+                    event_date_basis="dated_source_excerpt" if action_context_date(item, excerpt) else "",
                     source_body=str(getattr(item, "source_body", "") or ""),
                     context_url=str(getattr(item, "context_url", "") or ""),
                     context_fetched_at=str(getattr(item, "context_fetched_at", "") or ""),
@@ -186,6 +195,8 @@ def publication_diagnostic(item) -> dict:
     excerpt = factual_excerpt(item)
     translated = str(getattr(item, "translated_excerpt", "") or getattr(item, "translated_title", ""))
     errors = []
+    if requires_action_context(item) and not action_context(item):
+        errors.append("recap_requires_dated_action_context")
     if not excerpt:
         errors.append("no_publishable_source_excerpt")
     elif not chinese_prose(excerpt) and not checked_excerpt(item)[1]:
