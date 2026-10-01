@@ -109,6 +109,13 @@ def source_boilerplate(text: str) -> bool:
                           r"|(?:点击|访问).{0,30}(?:网站|全文)|(?:幻灯片|副本).{0,60}(?:发布|网站)", text, re.I))
 
 
+def navigation_headline(text: str) -> bool:
+    """An article promising reasons/tips is navigation, not those facts."""
+    return bool(re.search(
+        r"^\s*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:reasons?|ways?|things?|tips?)\b"
+        r"|(?:的|有)[一二三四五六七八九十\d]+个(?:原因|理由|要点|方法)[。.!！?？]?\s*$", text, re.I))
+
+
 def noun_fragment(text: str) -> bool:
     """Reject observable nominal titles, not the absence of a known verb.
 
@@ -325,7 +332,7 @@ def publishable_excerpt(item, text: str) -> bool:
             and (not getattr(item, 'holding_ticker', None) or holding_in_excerpt(text, item.holding_ticker))
             and context_allows(item, text) and complete_excerpt(text, getattr(item, 'source', ''))
             and not editorial_issue(text) and not promotional_prose(text)
-            and not source_boilerplate(text) and not noun_fragment(text)
+            and not source_boilerplate(text) and not noun_fragment(text) and not navigation_headline(text)
             and not (getattr(item, "holding_ticker", None) and analyst_opinion(text))
             and not old_event_excerpt(item, text) and not undated_immediate_leadership_change(item, text + ' ' + plain_source(str(getattr(item, 'title', ''))) + ' ' + plain_source(str(getattr(item, 'summary', '') or getattr(item, 'snippet', '') or '')))
             and status_has_scope(item, text))
@@ -345,6 +352,8 @@ def factual_excerpt(item) -> str:
         return ''
     title = plain_source(getattr(item, 'title', ''))
     summary = plain_source(getattr(item, 'summary', '') or getattr(item, 'snippet', ''))
+    if navigation_headline(title):
+        return next((part for part in sentences(summary) if publishable_excerpt(item, part)), '')
     if re.search(r"\bsummary\b|摘要|概要", title, re.I) and not document_types(title):
         typed = next((part for part in sentences(summary) if document_types(part)
                       and publishable_excerpt(item, part)), '')

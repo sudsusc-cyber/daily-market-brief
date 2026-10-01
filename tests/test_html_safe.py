@@ -196,7 +196,8 @@ def test_news_summarizer_neutralizes_xss_in_summary() -> None:
     assert "<img" not in html.lower()
     assert "onerror" not in html.lower()
     # 文本内容应被 escape 后保留(非字符级删除)— "推出新产品" 应可见
-    assert "微软公布季度业绩" in html
+    assert "公布季度业绩" in html
+    assert "微软" in html
     assert "推出新产品" not in html
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from src.collectors.frontier_labs import FrontierBundle, FrontierItem, SourceType
@@ -43,6 +43,7 @@ class FrontierKeyPoint:
     source_type: SourceType = "google_news"
     published_at: datetime | None = None
     evidence: list[dict] = field(default_factory=list)
+    labs: tuple[str, ...] = ()
 
 
 @dataclass
@@ -324,13 +325,27 @@ def select_frontier_items(
         authority = 0 if item.source_type == "official" else _SOURCE_AUTHORITY.get(item.source_name, 6)
         return (-item.score, authority, -ts)
 
+    # One identical source fact may mention several labs. Collapse it before
+    # applying slots, otherwise a duplicate can crowd out a distinct event.
+    from src.utils.news_facts import canonical_fact
+
+    groups = {}
+    for item in sorted(items, key=sort_key):
+        key = (item.source_url, canonical_fact(item.text))
+        if key not in groups:
+            groups[key] = replace(item, labs=item.labs or (item.lab,))
+        else:
+            prior = groups[key]
+            groups[key] = replace(prior, labs=tuple(dict.fromkeys((*prior.labs, *(item.labs or (item.lab,))))),
+                                  related_tickers=list(dict.fromkeys([*prior.related_tickers, *item.related_tickers])))
     selected: list[FrontierKeyPoint] = []
     by_lab: dict[str, int] = {}
-    for item in sorted(items, key=sort_key):
-        if by_lab.get(item.lab, 0) >= max_items_per_lab:
+    for item in groups.values():
+        if any(by_lab.get(lab, 0) >= max_items_per_lab for lab in item.labs):
             continue
         selected.append(item)
-        by_lab[item.lab] = by_lab.get(item.lab, 0) + 1
+        for lab in item.labs:
+            by_lab[lab] = by_lab.get(lab, 0) + 1
         if len(selected) >= max_total:
             break
     return selected

@@ -127,7 +127,8 @@ def test_each_company_fact_has_punctuation_before_its_citation():
     result = _rebuild_safe_summary('\n'.join(f'<strong>腾讯</strong> — {t}[{i+1}]' for i, t in enumerate(facts)), items)
     assert result is not None
     for fact in facts:
-        assert fact + '。' in result.summary_html
+        assert fact.removeprefix('腾讯') + '。' in result.summary_html
+    assert '腾讯' in result.summary_html
 
 
 def test_sentiment_roles_cannot_be_swapped():

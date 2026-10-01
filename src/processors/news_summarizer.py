@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 
 from src.collectors.company_news import CompanyNewsBundle, NewsItem, _is_relevant
+from src.processors.edition_composition import compose_company_rows
 from src.processors.html_safe import (
     FOOTNOTE_ANCHOR_STYLE,
     FOOTNOTE_RE,
@@ -354,20 +355,26 @@ def _rebuild_safe_summary(
             rejections.append(f"{company}: roundup_subject_mismatch")
             logger.warning("news_summarizer.roundup_source_mismatch company=%r", company)
             continue
-        evidence.extend(mapping)
-        published_urls = {row["url"] for row in mapping}
-        citations = "".join(match.group(0) for match in FOOTNOTE_RE.finditer(summary)
-                            if 1 <= (index := footnote_idx(match)) <= len(flat_items)
-                            and flat_items[index - 1].url in published_urls)
-        verified_rows.append((company, sentence_end(supported) + citations))
-    # One company row, all distinct verified facts retained with their own
-    # citations. Grouping is not factual deduplication and never drops updates.
-    grouped: dict[str, list[str]] = {}
-    for company, text in verified_rows:
-        bucket = grouped.setdefault(company, [])
-        if text not in bucket:
-            bucket.append(text)
-    raw_rows = [(company, " ".join(facts)) for company, facts in grouped.items()]
+
+        verified_rows.append((company, ticker or '', mapping))
+    grouped = {}
+    for company, ticker, mapping in verified_rows:
+        bucket = grouped.setdefault(company, {'ticker': ticker, 'rows': []})
+        bucket['rows'].extend(mapping)
+    raw_rows = []
+    for company, bucket in grouped.items():
+        rows = compose_company_rows(bucket['rows'], bucket['ticker'])
+        evidence.extend(rows)
+        parts = []
+        for row in rows:
+            source_urls = {row['url']} | {support['url'] for support in row.get('supporting_sources', [])}
+            by_url = {}
+            for index, item in enumerate(flat_items, 1):
+                if item.url in source_urls:
+                    by_url.setdefault(item.url, index)
+            refs = ''.join(f'[{index}]' for index in by_url.values())
+            parts.append(sentence_end(row['output_text']) + refs)
+        raw_rows.append((company, ' '.join(parts)))
     combined_for_scan = "\n".join(f"{cn} {summary}" for cn, summary in raw_rows)
     rewrite, footnotes = _resolve_footnote_mapping(combined_for_scan, flat_items)
 
