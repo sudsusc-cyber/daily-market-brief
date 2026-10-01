@@ -23,13 +23,18 @@ _WIRE_DATELINE = re.compile(
 
 def reporting_text(text: str) -> str:
     """Drop a wire dateline/standfirst, never rewrite the reporting sentence."""
-    text = plain_source(text)
+    text = strip_source_prefix(plain_source(text))
     dateline = _WIRE_DATELINE.search(text[:600])
     if dateline and re.search(
             r"(?:^|(?<=[a-z]))[A-Z][A-Z .'-]{1,45},\s*(?:[A-Z][A-Za-z .'-]{1,30},\s*)?$",
             text[:dateline.start()]):
         return text[dateline.end():].strip()
     return text
+
+
+def strip_source_prefix(text: str) -> str:
+    """Recognize a domain masthead by delimiter syntax, never prose attribution."""
+    return re.sub(r"^(?:https?://)?(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?:/[\w/-]*)?\s*(?:--|—|–|\|)\s*", "", text).strip()
 
 
 def plain_source(text: str) -> str:
@@ -248,6 +253,13 @@ def factual_excerpt(item) -> str:
 def company_candidate(item, ticker: str) -> bool:
     title = plain_source(getattr(item, 'title', ''))
     text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
+    if re.search(r"\b(?:net worth|wealth.*shares|richest|biography)\b", title, re.I) and re.search(r"\?|profile|who is|what is", title, re.I):
+        return False
+    # Appointment beneficiary is the grammatical subject, not the appointee's
+    # existing employer. Apply to all configured issuers via collector aliases.
+    appointment = re.match(r"(.+?)\s+appoints?\s+.+?\s+to\s+(?:its\s+)?(?:board|board of directors)", title, re.I)
+    if appointment and not company_fact_matches(appointment[1], ticker):
+        return False
     if _ROUNDUP.search(title):
         return bool(roundup_excerpt(item, ticker))
     # A vendor winning a platform's badge is not operating news about that platform.

@@ -1,0 +1,718 @@
+{
+  "run_id": 36788762504,
+  "edition": "2026-10-01",
+  "sections": {
+    "company": [
+      {
+        "url": "https://finnhub.io/api/news?id=e028621171f811405eb4d44b88784d4f58cb12095d09b480b127e5d802268ab1",
+        "original_title": "Costco confirms major food court change",
+        "original_summary": "Members should be excited to see what’s in store.",
+        "excerpt": "Costco confirms major food court change",
+        "published_at": "2026-09-30 00:37:00+00:00",
+        "source_sha256": "afd5318c261b039331072bb0ad95dd52456a9d9b0ddc9a1a82fcc97a1837287a",
+        "output_text": "Costco 确认美食广场重大变动",
+        "mode": "checked_translation",
+        "validated_text": "Costco 确认美食广场重大变动",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=d0e56e7719215c73297f61badb285afed90dd1c9710cf426987042c614a32fef",
+        "original_title": "Apple to enter smart-home market with Siri AI hub",
+        "original_summary": "Apple Inc (NASDAQ:AAPL, XETRA:APC) plans to debut a Siri AI-powered smart-home hub in October, a push to challenge Amazon and Google's dominance of the market, Bloomberg reported. The main product is a roughly 6-inch display that can sit on a counter or mount on a wall. It is designed to...",
+        "excerpt": "Apple to enter smart-home market with Siri AI hub",
+        "published_at": "2026-09-30 16:24:00+00:00",
+        "source_sha256": "d582921aff1492979c5c90ec79ed6ee1dbb5ba19b90a292c8b0be61144419be9",
+        "output_text": "Apple 将凭借 Siri AI hub 进入智能家居市场",
+        "mode": "checked_translation",
+        "validated_text": "Apple 将凭借 Siri AI hub 进入智能家居市场",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=8beb07c9fe5c8c51d5487d9903eb9fa93da951c3b9b503d2149e88d186fcc3a2",
+        "original_title": "Nvidia (NVDA) Unveils Open Agent Safety Platform",
+        "original_summary": "Nvidia (NasdaqGS:NVDA) introduced the Open Agent Safety Platform, adding OpenShell and Sentry tools for autonomous AI oversight. The safety suite launches with partners including Bedrock Data and TrendAI to help enterprises set and enforce AI usage boundaries. Nvidia CEO Jensen Huang joined a White House event where leading AI developers signed a voluntary accord on safety standards. The Open Agent Safety Platform and Nvidia's role in the White House safety accord only capture part of this...",
+        "excerpt": "Nvidia (NasdaqGS:NVDA) introduced the Open Agent Safety Platform, adding OpenShell and Sentry tools for autonomous AI oversight.",
+        "published_at": "2026-09-30 13:11:12+00:00",
+        "source_sha256": "e5f61a8183775b4e2b4bfe242ebeaf0fc52cf7105bd401ff3a82bdc0133cee1e",
+        "output_text": "Nvidia 推出 Open Agent Safety Platform，新增 OpenShell 和 Sentry 工具，用于自主 AI 监督。",
+        "mode": "checked_translation",
+        "validated_text": "Nvidia (NasdaqGS:NVDA) 推出 Open Agent Safety Platform，新增 OpenShell 和 Sentry 工具，用于自主 AI 监督。",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "qualified_listing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=919feb3de0a71cf6e2b76361e3f78098380ed8b67aa3afc90eadea4f909c867e",
+        "original_title": "HealthEquity Appoints Moody’s CFO Noémie Heuland to Board of Directors",
+        "original_summary": "DRAPER, Utah, Sept. 30, 2026 (GLOBE NEWSWIRE) -- HealthEquity, Inc. (NASDAQ: HQY) (“HealthEquity” or the “Company”), the largest independent health savings account (HSA) custodian by account volume and a leader in consumer-directed benefits (CDB), today announced that Noémie Heuland, Chief Financial Officer of Moody’s Corporation (NYSE: MCO), has been elected to its board of directors (the “Board”) effective Sept. 24, 2026. Heuland will also serve on the Audit and Risk Committee and Cybersecurit",
+        "excerpt": "HealthEquity, Inc. (NASDAQ: HQY) (“HealthEquity” or the “Company”), the largest independent health savings account (HSA) custodian by account volume and a leader in consumer-directed benefits (CDB), today announced that Noémie Heuland, Chief Financial Officer of Moody’s Corporation (NYSE: MCO), has been elected to its board of directors (the “Board”) effective Sept. 24, 2026.",
+        "published_at": "2026-09-30 13:00:00+00:00",
+        "source_sha256": "f5ce577431376f523f31b1efb4ffe0bcf2f462e8d83ed226545acd4c98d363df",
+        "output_text": "HealthEquity， Inc.（“HealthEquity”或“公司”），按账户数量计最大的独立健康储蓄账户 (HSA) 托管机构，也是消费者导向福利 (CDB) 领域的领导者，今日宣布 Moody's Corporation 首席财务官 Noémie Heuland 已当选为其董事会（“董事会”）成员，自 2026 年 9 月 24 日起生效。",
+        "mode": "checked_translation",
+        "validated_text": "HealthEquity, Inc. (NASDAQ: HQY)（“HealthEquity”或“公司”），按账户数量计最大的独立健康储蓄账户 (HSA) 托管机构，也是消费者导向福利 (CDB) 领域的领导者，今日宣布 Moody's Corporation (NYSE: MCO) 首席财务官 Noémie Heuland 已当选为其董事会（“董事会”）成员，自 2026 年 9 月 24 日起生效。",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "qualified_listing",
+          "prose_spacing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=590c0a1dc903ca9a4594e7ce19b899a941b66f8d06864cb1ee9c3528fb5e7ca7",
+        "original_title": "Google asks EU court to suspend order to share search data with AI rivals",
+        "original_summary": "Investing.com -- Google has requested the European Union’s General Court to suspend a regulatory order requiring the company to share its search data with OpenAI and competing search engines.",
+        "excerpt": "Google asks EU court to suspend order to share search data with AI rivals",
+        "published_at": "2026-09-30 17:58:43+00:00",
+        "source_sha256": "8f2a2e1ac22b9fb03521820747f997a94747fd3eb5765974f282c3cb34509e05",
+        "output_text": "Google 请求欧盟法院暂停与 AI 竞争对手共享搜索数据的命令",
+        "mode": "checked_translation",
+        "validated_text": "Google 请求欧盟法院暂停与 AI 竞争对手共享搜索数据的命令",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=19481caeb4e189a128a835678d8648de2f9028a95a59f0ccc651e94832582534",
+        "original_title": "What is Howard Buffett’s net worth in 2026? The new Berkshire chair's wealth & shares",
+        "original_summary": "Howard Buffett took over his father’s role as chairman of Berkshire Hathaway in September 2026. Here’s how much Warren Buffett’s son is worth and how many Berkshire shares he owns.",
+        "excerpt": "What is Howard Buffett’s net worth in 2026? The new Berkshire chair's wealth & shares",
+        "published_at": "2026-09-30 02:08:08+00:00",
+        "source_sha256": "bf108f328725477aa905ee0dff1ada9e4c9c1617543763c1e7f7841d0801fcb5",
+        "output_text": "Howard Buffett 在 2026 年的净资产是多少？新任 Berkshire 董事长的财富与持股",
+        "mode": "checked_translation",
+        "validated_text": "Howard Buffett 在 2026 年的净资产是多少？新任 Berkshire 董事长的财富与持股",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=a6ae52385a2817eafd3f9bd026d9ad7b270b0f62c1d435648cf10b651dbc779f",
+        "original_title": "American Express Delivers the Next Generation of Amex Corporate™",
+        "original_summary": "NEW YORK, September 30, 2026--American Express (NYSE: AXP) announced today the launch of the next generation of Amex Corporate, with new capabilities that bring together the new American Express Corporate Cashback® Cards, integrated Expense Management software, and new Amex Expense mobile app. Building on the company’s leadership in serving a broad range of businesses, the new offerings also include AI capabilities and access to American Express’ award-winning service, giving new Corporate Cashb",
+        "excerpt": "American Express (NYSE: AXP) announced today the launch of the next generation of Amex Corporate, with new capabilities that bring together the new American Express Corporate Cashback® Cards, integrated Expense Management software, and new Amex Expense mobile app.",
+        "published_at": "2026-09-30 11:00:00+00:00",
+        "source_sha256": "62343b4a4c2546235ad2928f9864c81287004a62a8b04bc6937ae79aade8f627",
+        "output_text": "American Express 今日宣布推出新一代 Amex Corporate，新功能将全新的 American Express Corporate Cashback® Cards、集成的 Expense Management 软件以及新的 Amex Expense 移动应用整合在一起。",
+        "mode": "checked_translation",
+        "validated_text": "American Express (NYSE: AXP) 今日宣布推出新一代 Amex Corporate，新功能将全新的 American Express Corporate Cashback® Cards、集成的 Expense Management 软件以及新的 Amex Expense 移动应用整合在一起。",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "qualified_listing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMipgFBVV95cUxOWHRZVGZCSGtjMDZtVFp1YnZWQmhsazI5WmxBRW5VVEhyRVdfUDV1b1JVWkp4MFdVaVU3OGR6NGdfOXllWGRrZi1tRVU4VFJGS3hPeXJwYUwyV0JBNV9WSTlsdTRTbGZmdWpzTFFXUERxYmZWaVg4ZGdUa0V1RDl3aE1rNFN1cGYwN1BrUmxyMFNmWWZDc2pmSnlMQWg3WUxOZWdKYTJ3?oc=5",
+        "original_title": "腾讯9月30日回购价值1.003亿港元的股票。 - 富途牛牛",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMipgFBVV95cUxOWHRZVGZCSGtjMDZtVFp1YnZWQmhsazI5WmxBRW5VVEhyRVdfUDV1b1JVWkp4MFdVaVU3OGR6NGdfOXllWGRrZi1tRVU4VFJGS3hPeXJwYUwyV0JBNV9WSTlsdTRTbGZmdWpzTFFXUERxYmZWaVg4ZGdUa0V1RDl3aE1rNFN1cGYwN1BrUmxyMFNmWWZDc2pmSnlMQWg3WUxOZWdKYTJ3?oc=5\" target=\"_blank\">腾讯9月30日回购价值1.003亿港元的股票。</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">富途牛牛</font>",
+        "excerpt": "腾讯9月30日回购价值1.003亿港元的股票。 - 富途牛牛",
+        "published_at": "2026-09-30 13:48:00+00:00",
+        "source_sha256": "bde7d8198e543be1e3f6434215b65b913397af75680083e1cee9d99bbcc5a11a",
+        "output_text": "腾讯9月30日回购价值1.003亿港元的股票。",
+        "mode": "verified_extract",
+        "validated_text": "腾讯9月30日回购价值1.003亿港元的股票。 - 富途牛牛",
+        "source_name": "富途牛牛",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMiWEFVX3lxTE5SNkQ1dndEb1dQNWNZVFNfTDVhdk9zQWZWVk1Lb25peE1TTVlUMGJKeEhlM25scVNVM0dUd28wcHBBLXMySkZYVFpKWVdZS1JxYUdONzhUUWo?oc=5",
+        "original_title": "腾讯控股获南向资金净买入14.07亿港元 - 36氪",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiWEFVX3lxTE5SNkQ1dndEb1dQNWNZVFNfTDVhdk9zQWZWVk1Lb25peE1TTVlUMGJKeEhlM25scVNVM0dUd28wcHBBLXMySkZYVFpKWVdZS1JxYUdONzhUUWo?oc=5\" target=\"_blank\">腾讯控股获南向资金净买入14.07亿港元</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">36氪</font>",
+        "excerpt": "腾讯控股获南向资金净买入14.07亿港元 - 36氪",
+        "published_at": "2026-09-30 10:03:49+00:00",
+        "source_sha256": "3f47fede7cfacf0e31cf7fd6686490c7529fc2d81d024af5bf41df9751531d51",
+        "output_text": "腾讯控股获南向资金净买入14.07亿港元",
+        "mode": "verified_extract",
+        "validated_text": "腾讯控股获南向资金净买入14.07亿港元 - 36氪",
+        "source_name": "36氪",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMiSEFVX3lxTFBPdjN1bzZqRzdCMFpibklCcTRidXh4Y3Y2SDhLS0FvYjZaOVJ5Z0RvY1hHT0lvblN6YXdkdmdzcGJheVFkdlZFQg?oc=5",
+        "original_title": "段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元 - 财联社",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiSEFVX3lxTFBPdjN1bzZqRzdCMFpibklCcTRidXh4Y3Y2SDhLS0FvYjZaOVJ5Z0RvY1hHT0lvblN6YXdkdmdzcGJheVFkdlZFQg?oc=5\" target=\"_blank\">段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">财联社</font>",
+        "excerpt": "段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元 - 财联社",
+        "published_at": "2026-09-30 20:28:34+00:00",
+        "source_sha256": "4acc776dea8247faa7edd0315b8f81b2675ce14ff630504eb85adbb48ecae93b",
+        "output_text": "段永平举牌泡泡玛特3日后再增持持股总市值近145亿港元",
+        "mode": "verified_extract",
+        "validated_text": "段永平举牌泡泡玛特3日后再增持 持股总市值近145亿港元 - 财联社",
+        "source_name": "财联社",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "publisher_tail",
+          "prose_spacing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMiVkFVX3lxTE1uczQ3aER0RGxMQ1VhZGhYdndHbUZXMC13VWtycENXS2lCeTJXbFhFTXlPYzRTNm1IM2cyUUtUSXBHalhhb2MxWE1DcjBzMEpnUmFfZzdn?oc=5",
+        "original_title": "泡泡玛特一周动向：欧洲首家旗舰店落子巴黎 美洲线下渠道逆势增长20% - ebrun.com",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiVkFVX3lxTE1uczQ3aER0RGxMQ1VhZGhYdndHbUZXMC13VWtycENXS2lCeTJXbFhFTXlPYzRTNm1IM2cyUUtUSXBHalhhb2MxWE1DcjBzMEpnUmFfZzdn?oc=5\" target=\"_blank\">泡泡玛特一周动向：欧洲首家旗舰店落子巴黎 美洲线下渠道逆势增长20%</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">ebrun.com</font>",
+        "excerpt": "泡泡玛特一周动向：欧洲首家旗舰店落子巴黎 美洲线下渠道逆势增长20% - ebrun.com",
+        "published_at": "2026-09-30 06:43:59+00:00",
+        "source_sha256": "2e7602c356ee3842add93a5a9205678b51194ea761850b1ec3e4c3fe634d0b0f",
+        "output_text": "泡泡玛特一周动向：欧洲首家旗舰店落子巴黎美洲线下渠道逆势增长20%",
+        "mode": "verified_extract",
+        "validated_text": "泡泡玛特一周动向：欧洲首家旗舰店落子巴黎 美洲线下渠道逆势增长20% - ebrun.com",
+        "source_name": "ebrun.com",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "publisher_tail",
+          "prose_spacing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      },
+      {
+        "url": "https://finnhub.io/api/news?id=8de004a062e71120a82f51037a73bbc98d01999636e52a0ae7ef5169309c1bc3",
+        "original_title": "Open Standard issues dollar stablecoin backed by Visa, Stripe, and Mastercard",
+        "original_summary": "Investing.com -- A consortium backed by payment giants including Visa Inc (NYSE:V), Stripe Inc., and Mastercard Inc (NYSE:MA) has officially launched a new US dollar-pegged stablecoin, marking one of the most concerted traditional finance pushes to date into digital currency infrastructure.",
+        "excerpt": "Investing.com -- A consortium backed by payment giants including Visa Inc (NYSE:V), Stripe Inc., and Mastercard Inc (NYSE:MA) has officially launched a new US dollar-pegged stablecoin, marking one of the most concerted traditional finance pushes to date into digital currency infrastructure.",
+        "published_at": "2026-09-30 16:54:42+00:00",
+        "source_sha256": "0511c1ff28929e770576b4dfe54e09de21a9098cacab39df3ed4a5cc7fe7c556",
+        "output_text": "Investing.com -- 一个由支付巨头支持的财团已正式推出一款新的美元挂钩稳定币，成员包括 Visa Inc、Stripe Inc. 和 Mastercard Inc，这标志着传统金融迄今对数字货币基础设施最集中的一次推进。",
+        "mode": "checked_translation",
+        "validated_text": "Investing.com -- 一个由支付巨头支持的财团已正式推出一款新的美元挂钩稳定币，成员包括 Visa Inc (NYSE:V)、Stripe Inc. 和 Mastercard Inc (NYSE:MA)，这标志着传统金融迄今对数字货币基础设施最集中的一次推进。",
+        "source_name": "Yahoo",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "qualified_listing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      }
+    ],
+    "macro": [
+      {
+        "url": "https://www.ft.com/content/39de7709-7b5b-42f6-ad90-df50f1308ea2?syn-25a6b1a6=1",
+        "original_title": "US government debt rout triggers ‘vicious loop’ of selling",
+        "original_summary": "Yields on 10-year Treasuries soar half a percentage point in worst month in four years",
+        "excerpt": "US government debt rout triggers ‘vicious loop’ of selling",
+        "published_at": "2026-09-30 21:32:32+00:00",
+        "source_sha256": "5a7b8ea1b47a7a3c542aeb0ec3fd3656e4a5bfc2b4142267fa2834cb4b3730a2",
+        "output_text": "美国政府债务暴跌引发“恶性循环”式抛售",
+        "mode": "checked_translation",
+        "validated_text": "美国政府债务暴跌引发“恶性循环”式抛售",
+        "source_name": "FT",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "美债市场",
+        "macro_event": {
+          "version": 1,
+          "text": "US government debt rout triggers ‘vicious loop’ of selling",
+          "topic": "美债市场",
+          "family": "us_bonds",
+          "actor": "government",
+          "action": "",
+          "object": "US government debt",
+          "geography": [
+            "us"
+          ],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "us_bonds",
+              "text": "US government debt",
+              "start": 0,
+              "end": 18
+            },
+            {
+              "kind": "actor",
+              "value": "public_authority",
+              "text": "government",
+              "start": 3,
+              "end": 13
+            },
+            {
+              "kind": "region",
+              "value": "us",
+              "text": "US",
+              "start": 0,
+              "end": 2
+            }
+          ],
+          "decision": "object_action_in_focus"
+        }
+      },
+      {
+        "url": "https://www.cnbc.com/2026/09/30/treasury-yields-bonds-selloff.html",
+        "original_title": "10-year Treasury yield is higher as traders look past inflation data, await jobs report",
+        "original_summary": "Treasury yields were lower on Wednesday following the release of lighter-than-expected U.S. inflation data.",
+        "excerpt": "10-year Treasury yield is higher as traders look past inflation data, await jobs report",
+        "published_at": "2026-09-30 20:33:30+00:00",
+        "source_sha256": "b595cdfcc9a3384cdf96886520a200abfb6f2855a311e810d27d548509dbe841",
+        "output_text": "10 年期美国国债收益率走高，交易员未理会通胀数据，等待就业报告",
+        "mode": "checked_translation",
+        "validated_text": "10 年期美国国债收益率走高，交易员未理会通胀数据，等待就业报告",
+        "source_name": "CNBC",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "美债市场",
+        "macro_event": {
+          "version": 1,
+          "text": "10-year Treasury yield is higher as traders look past inflation data, await jobs report",
+          "topic": "美债市场",
+          "family": "us_bonds",
+          "actor": "",
+          "action": "yield",
+          "object": "Treasury yield",
+          "geography": [],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "us_bonds",
+              "text": "Treasury yield",
+              "start": 8,
+              "end": 22
+            },
+            {
+              "kind": "object",
+              "value": "inflation",
+              "text": "inflation",
+              "start": 54,
+              "end": 63
+            },
+            {
+              "kind": "action",
+              "value": "release",
+              "text": "report",
+              "start": 81,
+              "end": 87
+            },
+            {
+              "kind": "action",
+              "value": "market_move",
+              "text": "yield",
+              "start": 17,
+              "end": 22
+            }
+          ],
+          "decision": "object_action_in_focus"
+        }
+      },
+      {
+        "url": "https://www.cnbc.com/2026/09/30/watch-minneapolis-fed-president-neel-kashkari.html",
+        "original_title": "Fed's Kashkari says inflation is 'still too high' even after softer-than-expected PCE data",
+        "original_summary": "Kashkari will sit down with CNBC's Steve Liesman for an exclusive conversation Wednesday night.",
+        "excerpt": "Fed's Kashkari says inflation is 'still too high' even after softer-than-expected PCE data",
+        "published_at": "2026-09-30 22:21:27+00:00",
+        "source_sha256": "130d887683c0891de35ec38f4441f3eee2e29b76145639da49baa80fce530b4b",
+        "output_text": "美联储的 Kashkari 表示，即便 PCE 数据低于预期，通胀“仍然过高”",
+        "mode": "checked_translation",
+        "validated_text": "美联储的 Kashkari 表示，即便 PCE 数据低于预期，通胀“仍然过高”",
+        "source_name": "CNBC",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "通胀数据",
+        "macro_event": {
+          "version": 1,
+          "text": "Fed's Kashkari says inflation is 'still too high' even after softer-than-expected PCE data",
+          "topic": "通胀数据",
+          "family": "inflation",
+          "actor": "Fed",
+          "action": "",
+          "object": "inflation",
+          "geography": [],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "inflation",
+              "text": "inflation",
+              "start": 20,
+              "end": 29
+            },
+            {
+              "kind": "object",
+              "value": "inflation",
+              "text": "PCE",
+              "start": 82,
+              "end": 85
+            },
+            {
+              "kind": "actor",
+              "value": "central_bank",
+              "text": "Fed",
+              "start": 0,
+              "end": 3
+            }
+          ],
+          "decision": "object_action_in_focus"
+        }
+      },
+      {
+        "url": "https://www.bloomberg.com/news/articles/2026-09-30/dollar-powers-to-best-month-since-june-on-fed-s-inflation-fight",
+        "original_title": "Dollar Wraps Best Month Since March on Fed’s Inflation Fight",
+        "original_summary": "The dollar wrapped up its best month since March after the Federal Reserve’s renewed focus on taming inflation pushed interest-rate expectations and US bond yields higher.",
+        "excerpt": "Dollar Wraps Best Month Since March on Fed’s Inflation Fight",
+        "published_at": "2026-09-30 00:18:08+00:00",
+        "source_sha256": "92147d2b1e89c64a2d4842a1e1f75369ac3c28a375894b10edf5160a4169492a",
+        "output_text": "美元因美联储抗击通胀而录得自 3 月以来最佳月度表现",
+        "mode": "checked_translation",
+        "validated_text": "美元因 Fed 抗击通胀而录得自 3 月以来最佳月度表现",
+        "source_name": "Bloomberg",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "entity_display_name",
+          "prose_spacing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "通胀数据",
+        "macro_event": {
+          "version": 1,
+          "text": "Dollar Wraps Best Month Since March on Fed’s Inflation Fight",
+          "topic": "通胀数据",
+          "family": "inflation",
+          "actor": "Fed",
+          "action": "",
+          "object": "Inflation",
+          "geography": [],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "inflation",
+              "text": "Inflation",
+              "start": 45,
+              "end": 54
+            },
+            {
+              "kind": "actor",
+              "value": "central_bank",
+              "text": "Fed",
+              "start": 39,
+              "end": 42
+            }
+          ],
+          "decision": "object_action_in_focus"
+        }
+      },
+      {
+        "url": "https://www.wsj.com/world/europe/u-k-says-strong-indications-iran-is-linked-to-foiled-attack-on-air-base-efb98199?mod=rss_worldnews",
+        "original_title": "U.K. Says It Has ‘Strong Indications’ Iran Is Linked to Foiled Attack on Air Base",
+        "original_summary": "Prime Minister Andy Burnham says Tehran played a part after five men were arrested on suspicion of plotting a terrorist act near the RAF Fairford facility.",
+        "excerpt": "U.K. Says It Has ‘Strong Indications’ Iran Is Linked to Foiled Attack on Air Base",
+        "published_at": "2026-09-30 19:40:00+00:00",
+        "source_sha256": "9396914cf1745580372d0084060d9edf6765e28c8107cd0b293d8698393a65ee",
+        "output_text": "U.K. 称有“强烈迹象”表明伊朗与空军基地未遂袭击有关",
+        "mode": "checked_translation",
+        "validated_text": "U.K. 称有“强烈迹象”表明 Iran 与空军基地未遂袭击有关",
+        "source_name": "WSJ",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "entity_display_name",
+          "prose_spacing"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "中东局势",
+        "macro_event": {
+          "version": 1,
+          "text": "U.K. Says It Has ‘Strong Indications’ Iran Is Linked to Foiled Attack on Air Base",
+          "topic": "中东局势",
+          "family": "unknown",
+          "actor": "",
+          "action": "",
+          "object": "",
+          "geography": [
+            "middle_east"
+          ],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "region",
+              "value": "middle_east",
+              "text": "Iran",
+              "start": 38,
+              "end": 42
+            }
+          ],
+          "decision": "regional_context"
+        }
+      },
+      {
+        "url": "https://www.wsj.com/business/energy-oil/oil-prices-slip-further-as-gulf-exports-recover-0cf48ca2?mod=rss_worldnews",
+        "original_title": "Oil Prices Rebound as Middle East Risks Persist",
+        "original_summary": "Oil prices rose as tensions, supply risks and shipping disruptions in the Middle East persist, even as Persian Gulf crude exports continued to recover.",
+        "excerpt": "Oil Prices Rebound as Middle East Risks Persist",
+        "published_at": "2026-09-30 14:43:00+00:00",
+        "source_sha256": "434ad3c1663a24e21c11467307feef635a7a4eaf73a52b40ef40413eddc0cab6",
+        "output_text": "中东风险持续，油价反弹",
+        "mode": "checked_translation",
+        "validated_text": "中东风险持续，油价反弹",
+        "source_name": "WSJ",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "中东局势",
+        "macro_event": {
+          "version": 1,
+          "text": "Oil Prices Rebound as Middle East Risks Persist",
+          "topic": "中东局势",
+          "family": "energy",
+          "actor": "",
+          "action": "Rebound",
+          "object": "Oil",
+          "geography": [
+            "middle_east"
+          ],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "energy",
+              "text": "Oil",
+              "start": 0,
+              "end": 3
+            },
+            {
+              "kind": "action",
+              "value": "market_move",
+              "text": "Rebound",
+              "start": 11,
+              "end": 18
+            },
+            {
+              "kind": "region",
+              "value": "middle_east",
+              "text": "Middle East",
+              "start": 22,
+              "end": 33
+            }
+          ],
+          "decision": "regional_context"
+        }
+      },
+      {
+        "url": "https://www.wsj.com/business/energy-oil/middle-east-crude-oil-exports-back-at-prewar-levels-analysts-say-b5582027?mod=rss_worldnews",
+        "original_title": "Middle East Crude Oil Exports Back at Prewar Levels, Analysts Say",
+        "original_summary": "The region’s major crude producers have ramped up supplies through alternative pipelines, ports and ship-to-ship transfers to navigate disruptions due to the Iran conflict.",
+        "excerpt": "Middle East Crude Oil Exports Back at Prewar Levels, Analysts Say",
+        "published_at": "2026-09-30 13:35:00+00:00",
+        "source_sha256": "5d90b47655754f6d2bd68c45260926f5b982289310de43d502f17bc82421b321",
+        "output_text": "分析师称，中东原油出口已回到战前水平",
+        "mode": "checked_translation",
+        "validated_text": "分析师称，中东原油出口已回到战前水平",
+        "source_name": "WSJ",
+        "presentation_version": 5,
+        "presentation_operations": [],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "macro_topic": "中东局势",
+        "macro_event": {
+          "version": 1,
+          "text": "Middle East Crude Oil Exports Back at Prewar Levels, Analysts Say",
+          "topic": "中东局势",
+          "family": "energy",
+          "actor": "",
+          "action": "",
+          "object": "Crude",
+          "geography": [
+            "middle_east"
+          ],
+          "time": [],
+          "states": [],
+          "spans": [
+            {
+              "kind": "object",
+              "value": "energy",
+              "text": "Crude",
+              "start": 12,
+              "end": 17
+            },
+            {
+              "kind": "object",
+              "value": "energy",
+              "text": "Oil",
+              "start": 18,
+              "end": 21
+            },
+            {
+              "kind": "region",
+              "value": "middle_east",
+              "text": "Middle East",
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "decision": "regional_context"
+        }
+      }
+    ],
+    "figures": [
+      {
+        "url": "https://news.google.com/rss/articles/CBMif0FVX3lxTE9IeWlsWEVUNVdrWUFFV3poSGJaSHZJeDhFOXJmOU5sS2ItaTE1R2NVTTVaVEFUellMckxpblVwYnFDdDR2OGtSMV92Ulo4SXNCVWNDTmZ0UnFLZkFuYklkN2JhVzZUcE9yc09GZGQwQlZoNkxnRl9LMEJQVFpQZWM?oc=5",
+        "original_title": "Nvidia CEO Jensen Huang tells AI labs: “If they’re worried about it, just stop” - Martin Cid Magazine",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMif0FVX3lxTE9IeWlsWEVUNVdrWUFFV3poSGJaSHZJeDhFOXJmOU5sS2ItaTE1R2NVTTVaVEFUellMckxpblVwYnFDdDR2OGtSMV92Ulo4SXNCVWNDTmZ0UnFLZkFuYklkN2JhVzZUcE9yc09GZGQwQlZoNkxnRl9LMEJQVFpQZWM?oc=5\" target=\"_blank\">Nvidia CEO Jensen Huang tells AI labs: “If they’re worried about it, just stop”</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">Martin Cid Magazine</font>",
+        "excerpt": "Nvidia CEO Jensen Huang tells AI labs: “If they’re worried about it, just stop” - Martin Cid Magazine",
+        "published_at": "2026-09-30 12:54:21+00:00",
+        "source_sha256": "0c756b1fc7b011994878b72fa889160e0341d430504acd96723c68a28fff14f7",
+        "output_text": "Nvidia CEO Jensen Huang 对 AI 实验室表示：“如果他们担心，那就停下来”",
+        "mode": "checked_translation",
+        "validated_text": "Nvidia CEO Jensen Huang 对 AI 实验室表示：“如果他们担心，那就停下来” - Martin Cid Magazine",
+        "source_name": "Martin Cid Magazine",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "presentation_speaker": "黄仁勋"
+      },
+      {
+        "url": "https://news.google.com/rss/articles/CBMilAFBVV95cUxNS0FjVnVJeTRNUF85ZWJJX3V0VVY2Y21PUF95THVoVmZrbEFtWlVyM19xOWRGM3ZTQU1rU2tqdkp4Ynd2bEZ4TTlVbndvLU1xY1JlM2tqTF9aMUdJVmN2MVdRcWxOSTlwX0dKU01NZ091Ykp6aXRVS1FReDd1RWVIZzFSSWZBbGxMRkhLR2gyeXNOaTFl?oc=5",
+        "original_title": "OpenAI IPO Delay: Sam Altman Says Safety Comes Before Wall Street - remio",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMilAFBVV95cUxNS0FjVnVJeTRNUF85ZWJJX3V0VVY2Y21PUF95THVoVmZrbEFtWlVyM19xOWRGM3ZTQU1rU2tqdkp4Ynd2bEZ4TTlVbndvLU1xY1JlM2tqTF9aMUdJVmN2MVdRcWxOSTlwX0dKU01NZ091Ykp6aXRVS1FReDd1RWVIZzFSSWZBbGxMRkhLR2gyeXNOaTFl?oc=5\" target=\"_blank\">OpenAI IPO Delay: Sam Altman Says Safety Comes Before Wall Street</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">remio</font>",
+        "excerpt": "OpenAI IPO Delay: Sam Altman Says Safety Comes Before Wall Street - remio",
+        "published_at": "2026-09-30 16:01:37+00:00",
+        "source_sha256": "b3b094d46022c2aef9c31cdbd4e0a1a3c06a1c3790d77e1acdcbe455f25db0e5",
+        "output_text": "OpenAI IPO 推迟：Sam Altman 称安全优先于华尔街",
+        "mode": "checked_translation",
+        "validated_text": "OpenAI IPO 推迟：Sam Altman 称安全优先于华尔街 - remio",
+        "source_name": "remio",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": "",
+        "presentation_speaker": "奥特曼"
+      }
+    ],
+    "frontier": [
+      {
+        "url": "https://news.google.com/rss/articles/CBMirAFBVV95cUxOOFhLTkZneU9Ya2hKLWthbzg3TmpESVlwR3JVN01jc0VGaE85T0FOUnp6Z09ManVqcDJVNVFwVzUzUk5FMFJ5dUw5UFA4ckpEeDhTcVJLSldfa3k1c3FHMHFjMUVlRURuX014b3BQMmhPSVhrWmQ3ZnhPT05TM2w5dVZYZFZ5ZVoyRjdtSzlUT1Ffck5RSWNGSW9tbUVvSndMMlNUeEFnMWVIalRl?oc=5",
+        "original_title": "NEWSLETTER: Inside Anthropic’s confidential S-1: a Q&A - Reuters",
+        "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMirAFBVV95cUxOOFhLTkZneU9Ya2hKLWthbzg3TmpESVlwR3JVN01jc0VGaE85T0FOUnp6Z09ManVqcDJVNVFwVzUzUk5FMFJ5dUw5UFA4ckpEeDhTcVJLSldfa3k1c3FHMHFjMUVlRURuX014b3BQMmhPSVhrWmQ3ZnhPT05TM2w5dVZYZFZ5ZVoyRjdtSzlUT1Ffck5RSWNGSW9tbUVvSndMMlNUeEFnMWVIalRl?oc=5\" target=\"_blank\">NEWSLETTER: Inside Anthropic’s confidential S-1: a Q&amp;A</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">Reuters</font>",
+        "excerpt": "NEWSLETTER: Inside Anthropic’s confidential S-1: a Q&A - Reuters",
+        "published_at": "2026-09-30 22:25:09+00:00",
+        "source_sha256": "4b7592ef1b8217b8f0f441affbea95c6bb6e6370e1a4ec891c55c96f8a5c4c34",
+        "output_text": "NEWSLETTER：Anthropic 机密 S-1 文件内幕：问答",
+        "mode": "checked_translation",
+        "validated_text": "NEWSLETTER：Anthropic 机密 S-1 文件内幕：问答 - Reuters",
+        "source_name": "Reuters",
+        "presentation_version": 5,
+        "presentation_operations": [
+          "publisher_tail"
+        ],
+        "publication_path": "source_fallback",
+        "source_kind": "reported",
+        "source_body": "",
+        "context_url": "",
+        "context_fetched_at": ""
+      }
+    ]
+  }
+}

@@ -37,6 +37,7 @@ from src.processors.source_grounding import (
     recover_selected_translations,
     source_prompt,
 )
+from src.renderer.news_prose import sentence_end
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF
 
 logger = logging.getLogger(__name__)
@@ -347,7 +348,7 @@ def _rebuild_safe_summary(
         citations = "".join(match.group(0) for match in FOOTNOTE_RE.finditer(summary)
                             if 1 <= (index := footnote_idx(match)) <= len(flat_items)
                             and flat_items[index - 1].url in published_urls)
-        verified_rows.append((company, supported + citations))
+        verified_rows.append((company, sentence_end(supported) + citations))
     # One company row, all distinct verified facts retained with their own
     # citations. Grouping is not factual deduplication and never drops updates.
     grouped: dict[str, list[str]] = {}

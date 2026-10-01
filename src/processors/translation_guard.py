@@ -13,24 +13,26 @@ from collections import Counter
 from decimal import Decimal
 
 # Match negative phrases before checking event states (e.g. not approved).
-_NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|未经|而非|并非|不是|未(?=上调|下调|提高|降低|增加|减少|批准|支付|完成|推出|发布|收购|暂停|取消|维持)"
-_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|will|shall|intends?|scheduled|looms?)\b|\bto\s+(?:pay|invest|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|传闻|寻求|等待|待定|待批|尚待"
+_NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|不计划|未经|而非|并非|不是|未(?=上调|下调|提高|降低|增加|减少|批准|支付|完成|推出|发布|收购|暂停|取消|维持)"
+_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|wait|waits|said to|will|shall|intends?|scheduled|looms?)\b|\bto\s+(?:pay|invest|investigate|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|据称|传闻|寻求|等待|待定|待批|尚待"
 _EVENTS = {
-    "approval": r"\b(?:approv\w*|clearance|greenlight\w*)\b|批准|获批|监管放行",
+    "approval": r"\b(?:approv\w*|authoriz(?:e|es|ed|ing|ation)|clearance|greenlight\w*)\b|批准|获批|监管放行",
     "completion": r"\b(?:completed?|finalized?|closed the deal)\b|完成|已交割|已落地",
     "cut": r"\b(?:cuts?(?!\s+(?:[A-Za-z.]+\s+){0,4}off\b)|cutting(?!\s+(?:[A-Za-z.]+\s+){0,4}off\b)|trims?|trimmed|lowers?|lowered|reduces?|reduced|reduction)\b|下调|削减|降息|减少|降低|减产|裁减|裁员",
     "cut_off": r"\bcut(?:s|ting)?\s+(?:[A-Za-z.]+\s+){0,4}off\b|切断|隔绝|孤立",
     "payment": r"\b(?:pay|pays|paid|paying)\b|支付|付给",
     "raise": r"\b(?:raises?|raised|lifts?|lifted|upgrades?|upgraded|hikes?|hiked|increases?|increased|boosts?|boosted|expands?|expanded|expansion|growth|grew|grow\w*)\b|上调|加息|增加|提高|扩大|扩张|增长|扩建",
     "hold": r"\b(?:holds?|unchanged|maintains?|maintained)\b|维持|不变|保持|持平",
-    "fall": r"\b(?:falls?|fell|declines?|declined|drops?|dropped|slumps?|slumped)\b|下降|下跌|回落|下滑",
+    "fall": r"\b(?:falls?|fell|declines?(?!\s+to\b)|declined(?!\s+to\b)|drops?|dropped|slumps?|slumped)\b|下降|下跌|回落|下滑",
     "rise": r"\b(?:rises?|rose|gains?|gained|surges?|surged|rallies|rallied|is up)\b|上升|上涨|攀升|飙升",
-    "profit": r"\b(?:profits?|earnings|net income)\b|盈利|利润|收益(?!率)",
+    "profit": r"\b(?:profits?|earnings(?!\s+(?:release|call|date)\b)|net income)\b|盈利|利润|收益(?!率)",
     "loss": r"\b(?:loss|losses)\b|亏损",
     "revenue": r"\b(?:revenues?|sales)\b|营收|收入|销售",
-    "investment": r"\b(?:invest\w*|capex|capital spending)\b|投资|资本开支|资本支出",
+    "investigation": r"\binvestigat(?:e|es|ed|ing|ion|ions)\b|调查",
+    "refusal": r"\b(?:declin(?:e|es|ed|ing)|refus(?:e|es|ed|ing))\s+to\b|拒绝",
+    "investment": r"\b(?:invest(?:s|ed|ing|ment|ments)?|capex|capital spending)\b|投资|资本开支|资本支出",
     "acquisition": r"\b(?:acqui\w*|merger|takeover|buyout)\b|收购|并购|合并",
-    "launch": r"\b(?:launch\w*|rolls? out|rollout|switched on|starts?|releases?|released|unveils?|unveiled)\b|发布|推出|亮相|发射|启用|启动|开通",
+    "launch": r"\b(?:launch\w*|rolls? out|rollout|switched on|starts?|releases?|released|unveils?|unveiled|debuts?|debuted)\b|发布|推出|亮相|发射|启用|启动|开通",
 }
 # Direction synonyms are one fact, not separate events that a translation must
 # repeat twice ("revenue rose" and "revenue increased" both mean 营收增长).
@@ -235,8 +237,10 @@ def _financial_bindings(text: str) -> dict:
 
 
 def translation_errors(original: str, translated: str) -> list[str]:
-    original = unicodedata.normalize('NFKC', original)
-    translated = unicodedata.normalize('NFKC', translated)
+    from src.processors.news_selection import strip_source_prefix
+
+    original = strip_source_prefix(unicodedata.normalize('NFKC', original))
+    translated = strip_source_prefix(unicodedata.normalize('NFKC', translated))
     # Release of people is not a product launch. Preserve the rest of the clause,
     # including negation, numbers and entities, for the checks below.
     original = re.sub(r"\breleas(?:e|es|ed|ing)(?=\s+(?:(?:the|a|two|three|\d+)\s+)?(?:suspects?|prisoners?|hostages?)\b)",
@@ -244,7 +248,13 @@ def translation_errors(original: str, translated: str) -> list[str]:
     # A court ordering somebody to pay is an obligation, not a tentative plan.
     original = re.sub(r"\b(orders?|ordered|requires?|required)(\s+[^.;!?]{1,80}?)\bto\s+(pay)\b",
                       r"\1\2\3", original, flags=re.I)
+    # Starting an investigation is a procedural event, not a product launch.
+    original = re.sub(r"\blaunch(?:es|ed|ing)?(?=\s+(?:(?:an?|the|broad|new|formal|antitrust|regulatory|criminal|civil|independent|joint|sweeping|comprehensive)\s+){0,3}investigation\b)", "opens", original, flags=re.I)
+    translated = re.sub(r"(?:启动|发起)(?=(?:对[^，。；,;]{1,40}的)?(?:广泛|全面|正式|新|反垄断|刑事|民事)?调查)", "展开", translated)
     errors = []
+    if (re.search(r"\b(?:government|sovereign) debt\b.*\b(?:rout|selloff|sell-off|selling)\b", original, re.I)
+            and re.search(r"政府债务(?:暴跌|下跌|下降|锐减)", translated)):
+        errors.append("bond_price_not_debt_stock")
     # A calendar period does not physically approach a financial asset. Retry
     # this literal headline construction instead of rewriting checked evidence.
     if (re.search(r"\blooms?\b", original, re.I) and

@@ -9,6 +9,14 @@ from urllib.parse import urlsplit
 
 def editorial_issue(text: str) -> str | None:
     text = text.strip()
+    if re.match(r"(?:NEWSLETTER|PODCAST|VIDEO)\s*[:：]", text, re.I) and re.search(r"Q&A|inside|a look|问答|解读", text, re.I):
+        return 'reader_navigation'
+    if re.match(r"(?:what|who|how|why|when|where)\b[^?]*\?", text, re.I):
+        return 'question_not_event'
+    if re.search(r"\b(?:major|big|important)\s+(?:\w+\s+){0,2}change\s*(?:[-–—].*)?$", text, re.I):
+        return 'unspecified_change'
+    if re.search(r"\b(?:should be excited|what.s in store|stay tuned|read on to find out)\b", text, re.I):
+        return 'reader_navigation'
     # A headline about an undisclosed "part/thing/detail" contains no event
     # that can be checked against its source. A concrete reporting sentence in
     # the article body remains eligible through factual_excerpt().

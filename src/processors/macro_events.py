@@ -52,7 +52,8 @@ OBJECTS = {
     "trade": r"\b(?:tariffs?|trad(?:e|es|ing))\b|关税|贸易",
     "credit": r"subprime|credit risk|auto loans?|borrowers|次级|信贷|信用风险|汽车贷款|借款人",
     "bonds": r"\bbonds?\b|债券|国债",
-    "fx": r"\bforex\b|exchange rate|currency market|外汇|汇率|"
+    "fx": r"\b(?:dollar|yuan|yen|euro|sterling)\b(?=\s+(?:\w+\s+){0,4}(?:best|worst|strongest|weakest)\s+(?:day|week|month|quarter|year)\b)|"
+          r"\bforex\b|exchange rate|currency market|外汇|汇率|"
           r"\b(?:dollar|yuan|yen|euro|sterling)\b(?=\s+(?:index|powers?|gains?|rises?|falls?|drops?|surges?|weakens?|strengthens?))|"
           r"(?:美元|欧元|人民币|日元|英镑)(?=指数|汇率|走强|走弱|上涨|下跌|飙升|劲升)",
     "flows": r"capital flows|fund flows|foreign capital|资金流|外资",
