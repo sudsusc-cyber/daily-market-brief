@@ -252,6 +252,14 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = re.sub(r"\blaunch(?:es|ed|ing)?(?=\s+(?:(?:an?|the|broad|new|formal|antitrust|regulatory|criminal|civil|independent|joint|sweeping|comprehensive)\s+){0,3}investigation\b)", "opens", original, flags=re.I)
     translated = re.sub(r"(?:启动|发起)(?=(?:对[^，。；,;]{1,40}的)?(?:广泛|全面|正式|新|反垄断|刑事|民事)?调查)", "展开", translated)
     errors = []
+    # Superlatives with plural subjects must not silently become a single
+    # country/company/bank. Require explicit plurality in Chinese for this
+    # otherwise ambiguous construction; this is not a universal grammar proof.
+    for noun, chinese in {'economies': '经济体', 'companies': '公司|企业', 'banks': '银行',
+                          'markets': '市场', 'countries': '国家'}.items():
+        if (re.search(r"\b(?:biggest|largest|smallest|leading|major|top)\s+" + noun + r"\b", original, re.I)
+                and not re.search(r"(?:各|多|几|数|主要|之一|们|两|三|四|五).{0,12}(?:" + chinese + r")|(?:" + chinese + r").{0,4}(?:之一|们)", translated)):
+            errors.append('plural_subject_scope:' + noun)
     if (re.search(r"\b(?:government|sovereign) debt\b.*\b(?:rout|selloff|sell-off|selling)\b", original, re.I)
             and re.search(r"政府债务(?:暴跌|下跌|下降|锐减)", translated)):
         errors.append("bond_price_not_debt_stock")

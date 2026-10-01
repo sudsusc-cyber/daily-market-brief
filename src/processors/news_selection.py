@@ -77,7 +77,8 @@ def chinese_prose(text: str) -> bool:
 
 
 _PRICE_EDITORIAL = re.compile(
-    r'which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
+    r'(?:stock|shares?).*(?:best|worst|strongest|weakest).*(?:day|week|month|quarter|year)|股价.*(?:最佳|最差|最好|最坏).*表现'
+    r'|which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
     r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rises?|falls?|rall(?:y|ies)|surges?|jumps?|slumps?|edges? (?:higher|lower))'
     r'|wish you (?:had )?bought|regret not buying|unloved .*stock|别错过|后悔没买'
     r'|哪.*股票|值得买|股价.*(?:上涨|下跌|飙升)', re.I)
@@ -128,6 +129,38 @@ def company_fact_matches(text: str, ticker: str) -> bool:
     return bool(aliases and any(plain_source(text).lower().startswith(alias.strip().lower()) for alias in aliases))
 
 
+def holding_in_excerpt(text: str, ticker: str) -> bool:
+    """A published passage must itself name its assigned holding."""
+    from src.collectors.company_news import _RELEVANCE_KEYWORDS
+    from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
+
+    aliases = [*_RELEVANCE_KEYWORDS.get(ticker, []), COMPANY_DISPLAY_NAMES.get(ticker, '')]
+    return any(alias.strip() and re.search(
+        (r"(?<![A-Za-z0-9])" if re.match(r"[A-Za-z0-9]", alias.strip()) else '')
+        + re.escape(alias.strip())
+        + (r"(?![A-Za-z0-9])" if re.search(r"[A-Za-z0-9]$", alias.strip()) else ''), text, re.I)
+        for alias in aliases)
+
+
+def publication_candidates(item, text: str) -> list[str]:
+    """Include adjacent evidence so a financing's investor isn't lost."""
+    parts = sentences(text)
+    ticker = getattr(item, 'holding_ticker', None)
+    result = list(parts)
+    if ticker:
+        for left, right in zip(parts, parts[1:], strict=False):
+            if (not holding_in_excerpt(left, ticker) and holding_in_excerpt(right, ticker)
+                    and re.search(r"participat|invest|led by|partner|agreement|supply|customer|参与|投资|领投|合作|供应|客户", right, re.I)
+                    and re.search(r"round|financing|deal|transaction|agreement|contract|project|Series|本轮|此次|该|这", right, re.I)
+                    and len(left + right) <= 1200):
+                # Keep the exact source interval, including its separator.
+                start = text.find(left)
+                end = text.find(right, start + len(left))
+                if start >= 0 and end >= 0:
+                    result.insert(0, text[start:end + len(right)])
+    return result
+
+
 def roundup_excerpt(item, ticker: str) -> str:
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '') or ''
     return next((part for part in sentences(summary)
@@ -135,56 +168,71 @@ def roundup_excerpt(item, ticker: str) -> str:
                  and _BUSINESS_FACT.search(part)), '')
 
 
-def old_event_excerpt(item, text: str) -> bool:
-    """Reject explicitly dated old-event investment recaps, not new reporting.
+def explicit_old_event(item, text: str, *, max_age_days: int = 2, allow_fresh_update: bool = True) -> bool:
+    """Check calendar dates attached to completed events, not comparison baselines.
 
-    Anchor to the article's publication date, never today's fetch time. This is
-    deliberately limited to leading event dates; historical comparisons remain.
+    Only same-clause event/date bindings are considered. A publication timestamp
+    is never substituted for an event date; fiscal periods and 'since' records
+    do not date the reporting event. Undated claims remain subject to other gates.
     """
-    # Explicit dated reported results can also recycle an old announcement. Do
-    # not apply a two-day stock-news rule to interviews, macro or other feeds.
-    dated_results = bool(re.match(r'Results (?:released|published)|Reported on|(?:\d{4}\s*年)?\d{1,2}\s*月\s*\d{1,2}\s*日发布的', plain_source(text), re.I))
-    retrospective_question = bool(re.search(r'\b(?:Can|Could|Should|Will)\b.*\?|值得买|增长机会', plain_source(getattr(item, 'title', '')), re.I))
-    if not dated_results and not retrospective_question:
-        return False
     published = getattr(item, 'published_at', None)
-    if isinstance(published, str):
-        try:
-            published = datetime.fromisoformat(published)
-        except ValueError:
-            return False
-    if not isinstance(published, datetime):
-        return False
-    text = plain_source(text)
-    if re.search(r'\btoday\b|\byesterday\b|\bwill\b|\bplans? to\b|今日|昨日|今天|昨天|将于|计划于', text, re.I):
-        return False
-    match = re.match(
-        r'^(?:(?:On|Results released|Results published|Reported on)\s+)?(Jan\w*|Feb\w*|Mar\w*|Apr\w*|May|Jun\w*|Jul\w*|Aug\w*|Sep\w*|Oct\w*|Nov\w*|Dec\w*)'
-        r'\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?(?:\s*[,，:：]|\s+(?=showed|reported|revealed))', text, re.I)
-    chinese = re.match(r'^(?:(\d{4})\s*年)?(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:\s*[,，:：]|\s*发布的)', text)
-    if not match and not chinese:
-        return False
-    if match:
-        month = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].index(match[1][:3].lower()) + 1
-        day, year = int(match[2]), match[3]
-    else:
-        month, day, year = int(chinese[2]), int(chinese[3]), chinese[1]
-    # Infer a previous year only around the year boundary, not arbitrary future dates.
-    year = int(year) if year else published.year - int(published.month <= 2 and month >= 11)
     try:
-        event = date(year, month, day)
+        published = datetime.fromisoformat(published.replace('Z', '+00:00')) if isinstance(published, str) else published
     except ValueError:
         return False
-    return (published.date() - event).days > 2
+    if not isinstance(published, datetime):
+        return False
+    completed = r"\b(?:completed|closed|acquired|announced|launched|released|published|reported|signed|approved|appointed|resigned|opened|began)\b|完成|收购|宣布|发布|公布|签署|批准|任命|辞任|开业|启动"
+    calendar = (r"(?P<month>Jan\w*|Feb\w*|Mar\w*|Apr\w*|May|Jun\w*|Jul\w*|Aug\w*|Sep\w*|Oct\w*|Nov\w*|Dec\w*)\.?\s+(?P<day>\d{1,2})(?:,?\s+(?P<year>20\d{2}))?"
+                r"|(?:(?P<zyear>20\d{2})\s*年)?\s*(?P<zmonth>\d{1,2})\s*月\s*(?P<zday>\d{1,2})\s*日"
+                r"|(?P<iso>20\d{2}-\d{2}-\d{2})")
+    old_event = fresh_event = False
+    for part in sentences(text):
+        for clause in re.split(r"[;；]|\b(?:but|while|whereas)\b|但是|而今天", part, flags=re.I):
+            if not re.search(completed, clause, re.I):
+                continue
+            dated_event = False
+            for match in re.finditer(calendar, clause, re.I):
+                before, after = clause[:match.start()], clause[match.end():]
+                # Historical baselines and financial measurement periods are
+                # not the date of the announcement/acquisition/etc.
+                if re.search(r"(?:since|from|compared (?:with|to)|as of|ended|ending|截至|自|相比)\s*$", before, re.I):
+                    continue
+                date_bound = bool(re.search(r"(?:on|in|于|在)\s*$", before, re.I)
+                                  or not before.strip()
+                                  or re.search(r"(?:released|published|reported)\s*$", before, re.I))
+                if not date_bound or re.match(r"\s*(?:以来|之前|以后|之后)", after):
+                    continue
+                try:
+                    if match['iso']:
+                        event = date.fromisoformat(match['iso'])
+                    else:
+                        month = (['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].index(match['month'][:3].lower()) + 1
+                                 if match['month'] else int(match['zmonth']))
+                        year = match['year'] or match['zyear']
+                        year = int(year) if year else published.year - int(published.month <= 2 and month >= 11)
+                        event = date(year, month, int(match['day'] or match['zday']))
+                    dated_event = True
+                    age = (published.date() - event).days
+                    old_event |= age > max_age_days
+                    fresh_event |= 0 <= age <= max_age_days
+                except ValueError:
+                    continue
+            if (not dated_event and re.search(r"\btoday\b|\byesterday\b|今日|昨日|今天|昨天", clause, re.I)
+                    and not re.search(r"\b(?:recalled|reiterated|reviewed)\b|回顾|重申", clause, re.I)):
+                fresh_event = True
+    return old_event and not (allow_fresh_update and fresh_event)
 
+
+def old_event_excerpt(item, text: str) -> bool:
+    return explicit_old_event(item, plain_source(text))
 
 
 def old_event_recap(item) -> bool:
     """Undated continuation clauses must not turn a dated recap into new news."""
     summary = getattr(item, 'summary', '') or getattr(item, 'snippet', '') or ''
     parts = sentences(summary)
-    return bool(parts and old_event_excerpt(item, parts[0]) and not re.search(
-        r'\btoday\b|\byesterday\b|今日|昨日|今天|昨天', plain_source(summary), re.I))
+    return bool(parts and old_event_excerpt(item, parts[0]) and old_event_excerpt(item, summary))
 
 
 def undated_immediate_leadership_change(item, text: str) -> bool:
@@ -227,7 +275,8 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 
 
 def publishable_excerpt(item, text: str) -> bool:
-    return (context_allows(item, text) and complete_excerpt(text, getattr(item, 'source', ''))
+    return ((not getattr(item, 'holding_ticker', None) or holding_in_excerpt(text, item.holding_ticker))
+            and context_allows(item, text) and complete_excerpt(text, getattr(item, 'source', ''))
             and not editorial_issue(text) and not promotional_prose(text)
             and not old_event_excerpt(item, text) and not undated_immediate_leadership_change(item, text + ' ' + plain_source(str(getattr(item, 'title', ''))) + ' ' + plain_source(str(getattr(item, 'summary', '') or getattr(item, 'snippet', '') or '')))
             and status_has_scope(item, text))
@@ -261,7 +310,7 @@ def factual_excerpt(item) -> str:
             if (complete_excerpt(part) and not _PRICE_EDITORIAL.search(part)
                     and re.search(r'\b(?:bought|purchased|acquired|announced|reported)\b|买入|增持|收购|宣布|营收', part, re.I)):
                 return part
-    for sentence in sentences(summary):
+    for sentence in publication_candidates(item, plain_source(summary)):
         if (publishable_excerpt(item, sentence)
                 and len(sentence) >= 30 and _BUSINESS_FACT.search(sentence) and not _PRICE_EDITORIAL.search(sentence)
                 and sentence not in title and title not in sentence):

@@ -24,8 +24,8 @@ from src.processors.news_selection import (
     old_event_recap,
     plain_source,
     promotional_prose,
+    publication_candidates,
     publishable_excerpt,
-    sentences,
 )
 from src.processors.technical_context import contextual_excerpt
 from src.processors.translation_guard import translation_errors
@@ -66,7 +66,7 @@ def source_sentences(item) -> list[str]:
         if not raw:
             continue
         # No splitting on semicolon/colon: their clauses often qualify a claim.
-        result.extend(s for s in [raw, *sentences(raw)]
+        result.extend(s for s in [raw, *publication_candidates(item, raw)]
                       if publishable_excerpt(item, s))
     return list(dict.fromkeys(result))
 

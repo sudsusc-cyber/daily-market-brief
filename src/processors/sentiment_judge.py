@@ -227,7 +227,7 @@ def one_sentence_summary(value: object) -> str:
     return text
 
 _TASK_INSTRUCTION = """\
-任务:基于下列 5 个情绪指标的"当前值 / 上期值 / 变化",**给定固定档位**写 argument(一句中文总结)。
+任务:依据当前水平映射分及权重解释综合档位，变化只描述走势、不能解释总分。基于下列 5 个情绪指标的"当前值 / 上期值 / 变化",**给定固定档位**写 argument(一句中文总结)。
 
 档位由确定性加权算法已经决定,你**不得**改变它。你的工作是:
 - 只写一句完整中文总结,建议 35-60 个汉字,句末使用句号;不得拆成第二句
@@ -276,6 +276,12 @@ def _format_input(b: SentimentBundle, fixed_verdict: str, score: float) -> str:
             f"- {m.name}{rating}: 当前 {cur} | 上期 {pri} | 变化 {delta}{stale}"
             f" | 实际观测 {m.observed_at or '未知'} | 来源 {m.source or '未知'}"
         )
+    scored = score_sentiment(b)
+    if scored:
+        lines.append("评分依据（只用当前值；上期值和变化不进入公式）：")
+        lines.extend(f"- {name}: 情绪映射分 {value:.1f}，有效权重 {weight:.2f}"
+                     for name, value, weight in scored["breakdown"])
+        lines.append("解释应说明当前水平的方向与权重；不得以幅度小、同向变化推导中性。")
     return "\n".join(lines)
 
 
@@ -303,15 +309,20 @@ def _parse_json(text: str) -> dict | None:
 
 
 def _deterministic_argument(bundle: SentimentBundle, verdict: str) -> str:
+    scored = score_sentiment(bundle)
+    if not scored:
+        return _ARGUMENT_FALLBACK
     parts = []
-    for metric in bundle.metrics:
-        if metric.name not in _PRIMARY_METRICS or metric.error or _finite_float(metric.current) is None:
+    for name, value, _ in scored['breakdown']:
+        if name not in _PRIMARY_METRICS:
             continue
-        label = "CNN 恐惧贪婪指数" if metric.name == "CNN Fear & Greed" else metric.name
+        metric = next(m for m in bundle.metrics if m.name == name)
+        label = "CNN 恐惧贪婪指数" if name == "CNN Fear & Greed" else name
         stamp = f"（沿用 {metric.stale_from}）" if metric.stale_from else ""
-        number = f"{metric.current:.2f}".rstrip("0").rstrip(".")
-        parts.append(f"{label} {number}{metric.unit}{stamp}")
-    return "、".join(parts) + f"，按确定性规则综合为{verdict}；留意指标分歧，按既定纪律执行。"
+        direction = '偏冷' if value < 40 else '偏热' if value >= 60 else '中性'
+        number = f"{metric.current:.2f}".rstrip('0').rstrip('.')
+        parts.append(f"{label} {number}{metric.unit}{stamp}当前水平对应{direction}信号")
+    return '，'.join(parts) + f"；各项当前水平按确定性规则与有效权重综合为{verdict}，指标变化不参与评分。"
 
 
 def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[str]:
@@ -325,6 +336,9 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
         errors.append("unsupported_strategy_claim")
     if any(label in text for _, label in VERDICT_THRESHOLDS if label != verdict):
         errors.append("verdict_mismatch")
+    if (re.search(r"故|所以|因此|因而|因.{0,30}(?:中性|偏冷|偏热)|使.{0,30}(?:评分|档位)|决定|导致|落在|落入", text)
+            and re.search(r"幅度|同向|方向一致|变化|微降|微升|升至|降至|回落|上升|下降|上涨|下跌", text)):
+        errors.append("delta_cannot_explain_level_score")
     aliases = {"CNN Fear & Greed": r"CNN|恐惧.*?贪婪", "VIX": r"VIX",
                "DXY": r"DXY|美元指数", "高收益债利差": r"高收益债|信用利差", "Shiller PE": r"Shiller|席勒"}
     mentioned = False

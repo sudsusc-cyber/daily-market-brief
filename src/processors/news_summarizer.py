@@ -29,7 +29,12 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
-from src.processors.news_selection import _ROUNDUP, company_candidate, company_fact_matches
+from src.processors.news_selection import (
+    _ROUNDUP,
+    company_candidate,
+    company_fact_matches,
+    holding_in_excerpt,
+)
 from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
 from src.processors.source_grounding import (
     INSTRUCTION,
@@ -192,6 +197,8 @@ def _format_input(bundles: list[CompanyNewsBundle]) -> tuple[str, list[NewsItem]
         cn_name = _CN_NAME_HINT.get(b.holding.ticker, b.holding.name)
         head = f"【{cn_name}({b.holding.ticker})】"
         lines.append(head)
+        for item in b.items:
+            item.holding_ticker = b.holding.ticker
         for it in [item for item in b.items if company_candidate(item, b.holding.ticker)][:15]:
             it.holding_ticker = b.holding.ticker
             it.related_holding_tickers = tuple(sorted(source_companies.get(it.url, {b.holding.ticker})))
@@ -337,6 +344,10 @@ def _rebuild_safe_summary(
         supported, mapping = grounded_text(claim, cited)
         if not supported:
             rejections.append(f"{company}: no_self_contained_supported_excerpt")
+            continue
+        if scoped and any(not holding_in_excerpt(row['excerpt'], ticker or '')
+                          or not holding_in_excerpt(row['output_text'], ticker or '') for row in mapping):
+            rejections.append(f"{company}: published_holding_context_missing")
             continue
         if any(_ROUNDUP.search(item.title) for item in cited) and any(
                 not company_fact_matches(row['output_text'], ticker or '') for row in mapping):
