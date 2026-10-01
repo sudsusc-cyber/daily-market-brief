@@ -51,7 +51,7 @@ MODALITY += r"|\bawait(?:s|ed)?\b|将(?=对|向|提供|给予|补贴|调整|进�
 # Inflections belong to the event family; consumers must not maintain their own
 # shorter synonym lists for the same action.
 EVENTS['investigation'] = r"\b(?:investigat(?:e|es|ed|ing|ion|ions)|prob(?:e|es|ed|ing)|inquir(?:y|ies))\b|调查"
-EVENTS['raise'] += r"|\braising\b|\bpops?\b"
+EVENTS['raise'] += r"|\braising\b|\bpops?\b|\bclimb(?:s|ed|ing)?\b|攀涨|爬升"
 EVENTS['approval'] += r"|获准|核准"
 EVENTS['launch'] += r'|\b(?:releasing|unveiling|debuting|introduction|roll(?:s|ed|ing)?[ -]out|switch(?:es|ed|ing)? on)\b'
 EVENTS['cancel'] += r'|\baxes?\b|砍掉'

@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 5
+_VERSION = 6
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -166,6 +166,9 @@ def _fact_key(row: dict) -> str:
 
 def _rule_for(row: dict) -> WatchRule | None:
     original, text = row["excerpt"], row["output_text"]
+    if row.get('presentation_company'):
+        from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
+        text = COMPANY_DISPLAY_NAMES.get(row['presentation_company'], '') + text
     if editorial_issue(original) or editorial_issue(text):
         return None
     if not _ENTITY.search(original) or not _ENTITY.search(text) or not re.search(r"[一-鿿]", text):
@@ -179,6 +182,28 @@ def _rule_for(row: dict) -> WatchRule | None:
                  and not (rule.key == "product-release-risk" and (
                      re.search(r"training|evaluation|inference|训练|评估|推理", original + " " + text, re.I) or
                      re.search(negated_change, original, re.I) or re.search(negated_change, text)))), None)
+
+
+def _event_subject(row):
+    from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
+    entity = _ENTITY.search(row['excerpt'])
+    name = COMPANY_DISPLAY_NAMES.get(row.get('presentation_company'), entity[0] if entity else '')
+    product = re.search(r"\b[A-Z][A-Za-z]+[- ]\d+(?:\.\d+)?(?: [A-Z][a-z]+)?\b", row.get('original_title', ''))
+    return name + (' ' + product[0] if product else '')
+
+
+def _event_key(row: dict, theme: str) -> str:
+    """Group one named product event, never all events of a company/theme."""
+    from src.processors.translation_guard import _quantities
+
+    title = row.get('original_title', '')
+    entity = _ENTITY.search(title)
+    product = re.search(r"\b[A-Z][A-Za-z]+[- ]\d+(?:\.\d+)?(?: [A-Z][a-z]+)?\b", title)
+    if theme != 'product-commercialization' or not entity or not product:
+        return _fact_key(row)
+    numbers = sorted(str(key) for key in set(_quantities(title)) | set(_quantities(row['excerpt'])))
+    identity = [theme, row.get('presentation_company') or entity[0].casefold(), product[0].casefold(), str(row.get('published_at', ''))[:10], numbers]
+    return hashlib.sha256(str(identity).encode()).hexdigest()
 
 
 def _publication_item(section: str, row: dict, today: date):
@@ -207,6 +232,8 @@ def _publication_item(section: str, row: dict, today: date):
     item = {
         "theme": rule.key,
         "thesis": rule.title,
+        "subject": _event_subject(row),
+        "event_key": _event_key(row, rule.key),
         "marker": (
             "新变量"
             if rule.key
@@ -261,17 +288,21 @@ def build_judgment_section(
     today = today or date.today()
     history = history or {}
     items, decisions, seen = [], [], set()
+    seen_events = set()
     for section, row in _verified_rows(sources or {}):
         key = _fact_key(row)
         item, reason = _publication_item(section, row, today)
-        if not reason and key in history:
-            try:
-                if 0 <= (today - date.fromisoformat(history[key])).days <= _HISTORY_DAYS:
-                    reason = "already_published_fact"
-            except (ValueError, TypeError):
-                pass
+        if not reason:
+            for published_key in (key, item['event_key']):
+                try:
+                    if published_key in history and 0 <= (today - date.fromisoformat(history[published_key])).days <= _HISTORY_DAYS:
+                        reason = "already_published_fact"
+                except (ValueError, TypeError):
+                    pass
         if not reason and key in seen:
             reason = "duplicate_fact"
+        if not reason and item["event_key"] in seen_events:
+            reason = "duplicate_event"
         if not reason:
             seen.add(key)
         if not reason and len(items) >= 3:
@@ -280,6 +311,7 @@ def build_judgment_section(
         if reason:
             continue
         items.append(item)
+        seen_events.add(item["event_key"])
     audit = {"version": _VERSION, "published": len(items), "decisions": decisions}
     if selection_audit is not None:
         selection_audit.update(audit)
@@ -298,16 +330,19 @@ def validate_publication(section, *, sources, today):
             allowed.append(item)
     original = _value(section, "items", [])
     items, seen = [], set()
+    seen_events = set()
     for item in original:
         if (
             isinstance(item, dict)
             and item in allowed
             and is_safe_url(item.get("url", ""))
             and item["fact_key"] not in seen
+            and item["event_key"] not in seen_events
             and len(items) < 3
         ):
             items.append(item)
             seen.add(item["fact_key"])
+            seen_events.add(item["event_key"])
     if len(items) != len(original):
         logger.warning("thesis.publication_rejected count=%d", len(original) - len(items))
     return JudgmentSection(items[:3], _value(section, "audit")) if items else None
@@ -338,6 +373,7 @@ def commit_publications(section, state_dir: Path, *, today: date) -> None:
         except ValueError:
             continue
     kept.update({item["fact_key"]: today.isoformat() for item in section.items})
+    kept.update({item.get("event_key", item["fact_key"]): today.isoformat() for item in section.items})
     state_dir.mkdir(parents=True, exist_ok=True)
     path = state_dir / "thesis_publications.json"
     temporary = path.with_suffix(".tmp")

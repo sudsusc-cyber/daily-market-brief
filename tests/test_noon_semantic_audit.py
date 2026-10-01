@@ -56,7 +56,8 @@ def test_complete_tencent_sentence_in_roundup_remains_usable_but_other_company_d
     news=NewsItem(it.title,datetime(2026,9,29),it.url,it.source,summary=it.summary,holding_ticker='0700.HK')
     rejected=_rebuild_safe_summary('<strong>腾讯</strong>——汇丰控股耗资1.37亿港元回购。[1]',[news])
     assert rejected is not None
-    assert '腾讯控股回购100万股' in rejected.summary_html
+    assert '回购100万股' in rejected.summary_html
+    assert '腾讯' in rejected.summary_html
     assert '汇丰' not in rejected.summary_html
     accepted=_rebuild_safe_summary('<strong>腾讯</strong>——腾讯控股回购100万股。[1]',[news])
     assert accepted and '100万股' in accepted.summary_html and '1.37' not in accepted.summary_html

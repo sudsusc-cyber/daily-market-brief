@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -78,8 +79,16 @@ class EditorialHistory:
         )
 
     def duplicate(self, section: str, entity: str, text: str) -> bool:
+        def normalize(value):
+            if section != 'company':
+                return value
+            from src.processors.news_presentation import company_body
+            from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
+            ticker = next((key for key, name in COMPANY_DISPLAY_NAMES.items() if name == entity), '')
+            value = re.sub(r'^\s*' + re.escape(entity) + r'\s*│\s*', '', value)
+            return company_body(value, ticker)
         return any(r["section"] == section and r["entity"] == entity
-                   and similar(text, r["text"]) for r in self.rows)
+                   and similar(normalize(text), normalize(r["text"])) for r in self.rows)
 
     def remember(self, section: str, entity: str, text: str) -> None:
         if not self.duplicate(section, entity, text):
