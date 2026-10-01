@@ -209,7 +209,7 @@ def _financial_bindings(text: str) -> dict:
     return bindings
 
 
-def _localization_mentions(text: str) -> list[str]:
+def _localization_spans(text: str) -> list[tuple[int, int, str]]:
     aliases = {**_LOCALIZED_TERMS_V9, **{name: name for name in _LOCALIZED_TERMS_V9.values()}}
     # Longest-first matching treats Bank of Japan as an institution, not as a
     # separate country mention. Product identifiers are outside this glossary.
@@ -218,7 +218,38 @@ def _localization_mentions(text: str) -> list[str]:
         alternatives.append((r'(?<![A-Za-z])' if alias.isascii() else '') + re.escape(alias)
                             + (r'(?![A-Za-z])' if alias.isascii() else ''))
     lookup = {key.casefold(): value for key, value in aliases.items()}
-    return [lookup[match[0].casefold()] for match in re.finditer('|'.join(alternatives), text, re.I)]
+    return [(match.start(), match.end(), lookup[match[0].casefold()])
+            for match in re.finditer('|'.join(alternatives), text, re.I)]
+
+
+def _localization_mentions(text: str) -> list[str]:
+    return [name for _, _, name in _localization_spans(text)]
+
+
+def _localized_amount_bindings(text: str) -> dict:
+    """Bind explicit monetary amounts to nearby locations within each clause.
+
+    Compare relations rather than word order: translating a background clause
+    first must not swap the geography of a monetary investment. Ties are kept
+    as ambiguous, never resolved by the order in which a name appears.
+    """
+    result = {}
+    for clause in re.split(r'[，；;。]|(?<!\d),(?!\d)', text):
+        places = _localization_spans(clause)
+        if not places:
+            continue
+        for match in _NUMBER.finditer(clause):
+            fragment = clause[max(0, match.start() - 3):match.end()]
+            money = Counter({key: n for key, n in _quantities(fragment).items()
+                             if len(key) == 2 and key[1] in {'USD', 'HKD', 'EUR'}})
+            if not money:
+                continue
+            distances = [(max(start - match.end(), match.start() - end, 0), name)
+                         for start, end, name in places]
+            nearest = min(distance for distance, _ in distances)
+            names = tuple(sorted({name for distance, name in distances if distance == nearest}))
+            result.setdefault(names, Counter()).update(money)
+    return result
 
 
 def _capital_amount_bindings(text: str) -> dict:
@@ -273,8 +304,10 @@ def translation_errors(original: str, translated: str) -> list[str]:
     # Only explicit source names constrain their localized equivalents. Existing
     # finance conventions (Treasuries -> 美国国债) must not invent an extra
     # source entity merely because the explanatory Chinese includes a country.
-    if places != [name for name in _localization_mentions(translated) if name in places]:
+    if Counter(places) != Counter(name for name in _localization_mentions(translated) if name in places):
         errors.append('localized_entity_binding')
+    if len(set(places)) > 1 and _localized_amount_bindings(original) != _localized_amount_bindings(translated):
+        errors.append('localized_amount_binding')
     if document_types(original) != document_types(translated):
         errors.append('document_type')
     if (re.search(r"\bsummary\b|摘要|概要", original, re.I)
