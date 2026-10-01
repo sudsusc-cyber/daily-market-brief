@@ -89,5 +89,14 @@ def load_settings() -> Settings:
 
 
 def load_email_settings() -> EmailSettings:
-    """只读取告警邮件需要的环境变量，不要求行情或 LLM API 密钥。"""
+    """读取普通邮件配置；监控告警必须使用 load_alert_email_settings。"""
     return EmailSettings()  # type: ignore[call-arg]
+
+
+# Explicit owner-only alert policy. Never inherit the morning brief's audience.
+ALERT_RECIPIENT = "1057971878@qq.com"
+
+
+def load_alert_email_settings() -> EmailSettings:
+    """Alert delivery needs SMTP credentials only; env/.env cannot widen its audience."""
+    return EmailSettings(email_recipient=ALERT_RECIPIENT)  # type: ignore[call-arg]

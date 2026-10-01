@@ -184,7 +184,7 @@ def test_quality_alert_has_specific_subject_and_no_credential_troubleshooting(mo
     sent = []
     monkeypatch.setattr(
         monitor,
-        "load_email_settings",
+        "load_alert_email_settings",
         lambda: SimpleNamespace(
             qq_email_address="sender@example.com",
             qq_email_auth_code="secret",
