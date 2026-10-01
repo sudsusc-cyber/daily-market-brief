@@ -16,7 +16,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 5
+PRESENTATION_VERSION = 6
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -90,6 +90,16 @@ def present(text: str, *, source_name: str = "", _version: int = PRESENTATION_VE
             operations.append(name)
             text = updated
 
+    if _version >= 6:
+        from src.processors.news_selection import strip_source_prefix
+        record("publisher_prefix", strip_source_prefix(text))
+    # Protect only original Chinese clause separators; spaces introduced by
+    # English-name localization may still collapse naturally.
+    separator = '\ue000'
+    if _version >= 6:
+        while separator in text:
+            separator += '\ue000'
+        text = re.sub(r"(?<=[一-鿿]) +(?=[一-鿿])", separator, text)
     source = plain_source(source_name)
     aliases = {source} if source else set()
     aliases.update(n for group in _PUBLISHERS.values() for n in group)
@@ -169,6 +179,8 @@ def present(text: str, *, source_name: str = "", _version: int = PRESENTATION_VE
                 country = match['country1'] or match['country2']
                 record("bond_record_word_order", country + match['tenor'] + '年期国债收益率'
                        + ('升至' if rising else '降至') + match['year'] + '年以来' + match['extreme'] + '。')
+    if _version >= 6:
+        text = text.replace(separator, ' ')
     return Presentation(text.strip(), tuple(dict.fromkeys(operations)), _version)
 
 
@@ -176,7 +188,7 @@ def publication_text(text: str, *, source_name: str = "") -> str:
     return present(text, source_name=source_name).text
 
 
-def voice_text(text: str, person: str) -> str:
+def voice_text(text: str, person: str, *, _version: int = PRESENTATION_VERSION) -> str:
     from src.collectors.figures import FIGURES
 
     # Alias data identifies the speaker; neutral-attribution grammar is shared.
@@ -197,6 +209,15 @@ def voice_text(text: str, person: str) -> str:
     # Parenthesized local-script spelling may accompany an exact known name.
     spelling = r"(?:\s*[（(][가-힣ぁ-ゟ゠-ヿ· ]{2,20}[)）])?"
     leading = "^" + role + "(?:" + name + ")" + spelling + r"\s*"
+    if _version >= 6:
+        # Topic prefixes stay visible; only an exact configured speaker and a
+        # neutral reporting verb are elided. Addressed audiences stay in prose.
+        topic, separator, rest = text.partition("：")
+        if separator and not re.search(r"称|表示|说|否认|警告|said|says|warn", topic, re.I) and re.match(leading, rest.strip(), re.I):
+            return topic + separator + voice_text(rest.strip(), person, _version=_version)
+        addressed = re.match(leading + r"(?P<audience>对[^，。；：:]{1,40})(?:表示|说|称)\s*[：:]?\s*(?P<body>.+)$", text, re.I)
+        if addressed and not re.search(r"称|表示|否认|批评|警告|said|warn|denied", addressed.group("role") or "", re.I):
+            return addressed['audience'] + '表示：' + addressed['body']
     match = re.match(leading + r"(?:表示|认为|指出|称|说)\s*[：:，,]?\s*(.+)$", text, re.I)
     if not match:
         match = re.match(leading + r"((?:将|把).*(?:称为|视为|形容为).+)$", text, re.I)
@@ -223,11 +244,11 @@ def replay_presentation(validated: str, row: dict) -> str:
         )
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
-        return voice_text(output, str(row.get("presentation_speaker", ""))) if row.get("presentation_speaker") else output
-    if version in (4, PRESENTATION_VERSION):
+        return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
+    if version in (4, 5, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), _version=version).text
         return (
-            voice_text(output, str(row.get("presentation_speaker", "")))
+            voice_text(output, str(row.get("presentation_speaker", "")), _version=version)
             if row.get("presentation_speaker")
             else output
         )

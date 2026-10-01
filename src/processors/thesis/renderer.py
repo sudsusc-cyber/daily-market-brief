@@ -27,7 +27,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 2
+_VERSION = 3
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -55,7 +55,11 @@ class WatchRule:
     watch: str
 
     def matches(self, text: str) -> bool:
-        return bool(re.search(self.subject, text, re.I) and re.search(self.action, text, re.I))
+        from src.processors.news_selection import reporting_text
+
+        # A masthead and separate background sentence cannot supply the action.
+        return any(re.search(self.subject, clause, re.I) and re.search(self.action, clause, re.I)
+                   for clause in re.split(r"[。；;!?]|(?<!\bInc)\.(?=\s+[A-Z])|\b(?:while|whereas)\b", reporting_text(text), flags=re.I))
 
 
 # Matching only chooses a question to monitor. It cannot promote a plan to an
@@ -63,57 +67,57 @@ class WatchRule:
 _RULES = (
     WatchRule(
         "infrastructure-investment",
-        r"cloud|data cent(?:er|re)s?|infrastructure|fab\b|云|数据中心|基础设施|晶圆厂|产能",
-        r"invest|capex|capital expend|build|expand|spend|under construction|being built|投资|投入|资本开支|建设|扩建|扩产|在建",
+        r"\b(?:cloud|data cent(?:er|re)s?|infrastructure|fabs?)\b|云|数据中心|基础设施|晶圆厂|产能",
+        r"\b(?:invest(?:s|ed|ing|ment|ments)?|capex|capital expenditures?|build(?:s|ing)?|expand(?:s|ed|ing)?|spend(?:s|ing)?|under construction|being built)\b|投资|投入|资本开支|建设|扩建|扩产|在建",
         "基础设施投入的长期价值取决于资本回报",
         "实际投入、投产进度、利用率与现金流能否匹配。",
     ),
     WatchRule(
         "license-economics",
-        r"licen[cs]|patent|专利|许可|授权",
-        r"renew|agree|sign|expir|terminat|续签|协议|签署|到期|终止",
+        r"\b(?:licen[cs](?:e|es|ing)|patents?)\b|专利|许可|授权",
+        r"\b(?:renew(?:s|ed|ing|al)?|agree(?:s|d|ment|ments)?|sign(?:s|ed|ing)?|expir(?:e|es|ed|ing|ation|y)|terminat(?:e|es|ed|ing|ion))\b|续签|协议|签署|到期|终止",
         "专利授权的长期收益取决于合同持续性与收费安排",
         "合同期限、授权范围、收费安排与续约情况。",
     ),
     WatchRule(
         "payment-commercialization",
-        r"settlement|payment|结算|支付",
-        r"launch|enable|switch(?:ed)? on|roll.?out|introduc|adopt|开通|推出|启用|采用|上线",
+        r"\b(?:settlements?|payments?)\b|结算|支付",
+        r"\b(?:launch(?:es|ed|ing)?|enabl(?:e|es|ed|ing)|switch(?:es|ed)? on|roll(?:s|ed)?[ -]?out|introduc(?:e|es|ed|ing|tion)|adopt(?:s|ed|ing|ion)?)\b|开通|推出|启用|采用|上线",
         "支付新业务的长期价值仍需真实交易规模验证",
         "实际交易量、客户采用、费用收入与合规成本。",
     ),
     WatchRule(
         "product-release-risk",
-        r"\bGPT[- .]?\d+(?:\.\d+)?\b|model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
-        r"scrap|abandon|cancel|shelv|axes?|halt|delay|postpon|放弃|取消|搁置|砍掉|暂停|推迟|延后",
+        r"\bGPT[- .]?\d+(?:\.\d+)?\b|\b(?:models?|platforms?|iphone|devices?|chips?)\b|模型|平台|手机|设备|芯片",
+        r"\b(?:scrap(?:s|ped|ping)?|abandon(?:s|ed|ing)?|cancel(?:s|led|ed|ling|ing)?|shelv(?:e|es|ed|ing)|axes?|halt(?:s|ed|ing)?|delay(?:s|ed|ing)?|postpon(?:e|es|ed|ing))\b|放弃|取消|搁置|砍掉|暂停|推迟|延后",
         "产品发布调整后的长期影响取决于后续安排",
         "调整原因、问题解决进度、后续发布安排与投入变化。",
     ),
     WatchRule(
         "product-commercialization",
-        r"\bGPT[- .]?\d+(?:\.\d+)?\b|model|platform|iphone|device|chip|模型|平台|手机|设备|芯片",
-        r"launch|releas|introduc|roll.?out|推出|发布|上市|上线",
+        r"\bGPT[- .]?\d+(?:\.\d+)?\b|\b(?:models?|platforms?|iphone|devices?|chips?)\b|模型|平台|手机|设备|芯片",
+        r"\b(?:launch(?:es|ed|ing)?|releas(?:e|es|ed|ing)|introduc(?:e|es|ed|ing)|roll(?:s|ed)?[ -]?out)\b|推出|发布|上市|上线",
         "新产品的长期价值仍需持续采用和盈利兑现",
         "用户采用、收入贡献、利润率与持续投入。",
     ),
     WatchRule(
         "operating-performance",
-        r"revenue|margin|cash flow|backlog|营收|收入|利润率|现金流|在手订单",
+        r"\b(?:revenues?|margins?|cash flow|backlogs?)\b|营收|收入|利润率|现金流|在手订单",
         r"\d|增长|下降|上调|下调|增加|减少",
         "经营质量需要利润与现金流共同验证",
         "后续财报中的增长持续性、利润率与现金流。",
     ),
     WatchRule(
         "capital-allocation",
-        r"buyback|repurchas|dividend|acqui[rs]|回购|股息|分红|收购",
-        r"announc|approv|agree|complet|plan|cancel|宣布|批准|协议|完成|计划|取消",
+        r"\b(?:buybacks?|repurchas(?:e|es|ed|ing)|dividends?|acquir(?:e|es|ed|ing)|acquisitions?)\b|回购|股息|分红|收购",
+        r"\b(?:announc(?:e|es|ed|ing|ement)|approv(?:e|es|ed|ing|al)|agree(?:s|d|ment)?|complet(?:e|es|ed|ing|ion)|plan(?:s|ned|ning)?|cancel(?:s|led|ed|ling|ing)?)\b|宣布|批准|协议|完成|计划|取消",
         "资本配置的长期成效应由每股现金回报检验",
         "实际执行金额、资金来源与后续现金回报。",
     ),
     WatchRule(
         "regulatory-access",
-        r"regulat|antitrust|licen[cs]|监管|反垄断|牌照",
-        r"approv|reject|ban\b|fine[ds]?\b|批准|驳回|禁令|禁止|罚款",
+        r"\b(?:regulat(?:or|ors|ory|ion|ions)|antitrust|licen[cs](?:e|es|ing))\b|监管|反垄断|牌照",
+        r"\b(?:approv(?:e|es|ed|ing|al)|reject(?:s|ed|ing|ion)?|bans?|fine[ds]?)\b|批准|驳回|禁令|禁止|罚款",
         "监管事项的长期影响取决于适用范围与执行条件",
         "决定的适用范围、生效条件、后续程序与披露的经营影响。",
     ),

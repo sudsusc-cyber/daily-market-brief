@@ -236,7 +236,7 @@ _TASK_INSTRUCTION = """\
 - Shiller PE 是慢变量,只能作为长期估值背景轻轻带过;除非它有显著日度变化,不得作为每日情绪判断的主论据
 - 没有真实历史分位/区间数据时,不得写"历史极值""历史高位""极端估值""接近泡沫"等绝对化表述
 - Shiller PE 允许的最强表述是:"Shiller PE 偏高,提示长期预期收益需克制"
-- 提示对应的投资纪律:偏冷/极度恐慌 → "DCA 触发概率上升,保持耐心";偏热/极度贪婪 → "暂缓加仓,守住现金仓位";中性 → 给出留意事项
+- 只解释指标与固定档位，不推导 DCA 触发概率、加仓减仓或现金比例；每个数字所在分句须写明指标名和当前/上期/变化角色，不复述总分
 - 不要写"今日"等时间副词,直接陈述
 - 不要 AI 腔,不要"让我们"
 - 若某指标标注"(数据源故障,沿用 X 的值)",**不得**把它作为论据主角,只能作为"参考"轻轻带过或干脆不引用;不得写"今日 VIX 上升 / 下降"这类暗示是当天数据的措辞
@@ -321,6 +321,8 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
     errors = []
     if not text or len(text) > 110 or re.search(r"历史(?:极|新|最|高位|低位)|泡沫|今日|今天", text):
         errors.append("length_or_unsupported_claim")
+    if re.search(r"DCA|触发概率|加仓|减仓|现金仓位|买入|卖出", text, re.I):
+        errors.append("unsupported_strategy_claim")
     if any(label in text for _, label in VERDICT_THRESHOLDS if label != verdict):
         errors.append("verdict_mismatch")
     aliases = {"CNN Fear & Greed": r"CNN|恐惧.*?贪婪", "VIX": r"VIX",
@@ -338,12 +340,27 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
                 continue
             if m.stale_from and ("参考" not in clause and "沿用" not in clause):
                 errors.append("missing_carried_label")
+            # Explicit roles must match their own field, not another number in
+            # the same metric. Directional changes use a positive magnitude.
+            for role, pattern, expected in (
+                ('current', r'(?:当前|现值|现为|报)\s*([+-]?\d+(?:\.\d+)?)', m.current),
+                ('prior', r'(?:上期|前值)\s*([+-]?\d+(?:\.\d+)?)', m.prior),
+                ('delta', r'(?:回落|下降|下跌|收窄|微降|上升|上涨|走高|扩大|攀升|上行|微升|走阔)\s*([+-]?\d+(?:\.\d+)?)', abs(m.delta) if m.delta is not None else None),
+            ):
+                for match in re.finditer(pattern, clause):
+                    if expected is None or abs(float(match[1]) - expected) > .011:
+                        errors.append('wrong_' + role + '_value')
+                    suffix = clause[match.end():].lstrip()
+                    if suffix.startswith('%') and (m.unit != '%' or role == 'delta'):
+                        errors.append('unsupported_change_unit')
             allowed = [m.current, m.prior, m.delta]
+            if re.search(r"回落|下降|下跌|收窄|微降", clause) and m.delta is not None and m.delta < 0:
+                allowed.append(abs(m.delta))
             if any(not any(v is not None and abs(float(n) - v) <= .011 for v in allowed) for n in numbers):
                 errors.append("unsupported_number")
-            if re.search(r"回落|下降|下跌|收窄", clause) and (m.delta is None or m.delta >= 0):
+            if re.search(r"回落|下降|下跌|收窄|微降", clause) and (m.delta is None or m.delta >= 0):
                 errors.append("wrong_down_direction")
-            if re.search(r"上升|上涨|走高|扩大|攀升", clause) and (m.delta is None or m.delta <= 0):
+            if re.search(r"上升|上涨|走高|扩大|攀升|上行|微升|走阔", clause) and (m.delta is None or m.delta <= 0):
                 errors.append("wrong_up_direction")
     if not mentioned:
         errors.append("no_metric")
