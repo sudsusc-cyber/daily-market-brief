@@ -13,11 +13,12 @@ from src.processors.news_selection import plain_source
 from src.processors.presentation_vocabulary import (
     _FINANCIAL_TERMS,
     _LEGAL_NAMES,
+    _LOCALIZED_TERMS_V9,
     _PUBLISHERS,
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 8
+PRESENTATION_VERSION = 9
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -161,7 +162,8 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
             "entity_display_name",
             re.sub(r"(?<![A-Za-z])" + re.escape(name) + r"(?![A-Za-z])", short, text, flags=re.I),
         )
-    for name, translated in _FINANCIAL_TERMS.items():
+    terms = {**_FINANCIAL_TERMS, **(_LOCALIZED_TERMS_V9 if _version >= 9 else {})}
+    for name, translated in terms.items():
         protected = "|".join(re.escape(n) for n in sorted(aliases, key=len, reverse=True))
         pattern = protected + r"|(?P<term>\b" + re.escape(name) + r"\b)"
         record(
@@ -269,7 +271,7 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         return (
             voice_text(output, str(row.get("presentation_speaker", "")), _version=version)

@@ -12,48 +12,21 @@ import unicodedata
 from collections import Counter
 from decimal import Decimal
 
-# Match negative phrases before checking event states (e.g. not approved).
-_NEGATION = r"\b(?:not|never|no|without|denies?|denied|cannot|can't|won't|hasn't|isn't|didn't|unapproved)\b|尚未|并未|没有|未获|未被|未能|不曾|否认|无法|不能|不会|不予|不批准|不计划|未经|而非|并非|不是|未(?=上调|下调|提高|降低|增加|减少|批准|支付|完成|推出|发布|收购|暂停|取消|维持)"
-_MODALITY = r"\b(?:may(?!\s+\d)|might|could|would|plans?|planned|planning|proposes?|proposed|proposal|expects?|expected|aims?|seeks?|seeking|considering|reportedly|rumou?rs?|consensus|pending|awaiting|wait|waits|said to|will|shall|intends?|scheduled|looms?)\b|\bto\s+(?:pay|invest|investigate|acquire|launch|release|appoint)\b|即将|将(?=上市|支付|于|在|会|要|发布|推出|收购|投资|任命|启动|发射|出任|担任|生效)|可能|或将|拟|计划|预计|预期|提议|考虑|据传|据称|传闻|寻求|等待|待定|待批|尚待"
-_EVENTS = {
-    "approval": r"\b(?:approv\w*|authoriz(?:e|es|ed|ing|ation)|clearance|greenlight\w*)\b|批准|获批|监管放行",
-    "completion": r"\b(?:completed?|finalized?|closed the deal)\b|完成|已交割|已落地",
-    "cut": r"\b(?:cuts?(?!\s+(?:[A-Za-z.]+\s+){0,4}off\b)|cutting(?!\s+(?:[A-Za-z.]+\s+){0,4}off\b)|trims?|trimmed|lowers?|lowered|reduces?|reduced|reduction)\b|下调|削减|降息|减少|降低|减产|裁减|裁员",
-    "cut_off": r"\bcut(?:s|ting)?\s+(?:[A-Za-z.]+\s+){0,4}off\b|切断|隔绝|孤立",
-    "payment": r"\b(?:pay|pays|paid|paying)\b|支付|付给",
-    "raise": r"\b(?:raises?|raised|lifts?|lifted|upgrades?|upgraded|hikes?|hiked|increases?|increased|boosts?|boosted|expands?|expanded|expansion|growth|grew|grow\w*)\b|上调|加息|增加|提高|扩大|扩张|增长|扩建",
-    "hold": r"\b(?:holds?|unchanged|maintains?|maintained)\b|维持|不变|保持|持平",
-    "fall": r"\b(?:falls?|fell|declines?(?!\s+to\b)|declined(?!\s+to\b)|drops?|dropped|slumps?|slumped)\b|下降|下跌|回落|下滑",
-    "rise": r"\b(?:rises?|rose|gains?|gained|surges?|surged|rallies|rallied|is up)\b|上升|上涨|攀升|飙升",
-    "profit": r"\b(?:profits?|earnings(?!\s+(?:release|call|date)\b)|net income)\b|盈利|利润|收益(?!率)",
-    "loss": r"\b(?:loss|losses)\b|亏损",
-    "revenue": r"\b(?:revenues?|sales)\b|营收|收入|销售",
-    "investigation": r"\binvestigat(?:e|es|ed|ing|ion|ions)\b|调查",
-    "refusal": r"\b(?:declin(?:e|es|ed|ing)|refus(?:e|es|ed|ing))\s+to\b|拒绝",
-    "investment": r"\b(?:invest(?:s|ed|ing|ment|ments)?|capex|capital spending)\b|投资|资本开支|资本支出",
-    "acquisition": r"\b(?:acqui\w*|merger|takeover|buyout)\b|收购|并购|合并",
-    "launch": r"\b(?:launch\w*|rolls? out|rollout|switched on|starts?|releases?|released|unveils?|unveiled|debuts?|debuted)\b|发布|推出|亮相|发射|启用|启动|开通",
-}
-# Direction synonyms are one fact, not separate events that a translation must
-# repeat twice ("revenue rose" and "revenue increased" both mean 营收增长).
-_EVENTS["raise"] += "|" + _EVENTS.pop("rise") + r"|\bexpanding\b"
-_EVENTS["cut"] += r"|\blayoffs?\b|走低"
-_EVENTS["launch"] += r"|\bintroduc(?:e|es|ed|ing)\b|\bgoes live\b|上线|出台"
-_EVENTS["payment"] += r"|\bpayments?\b|\bpayable\b"
-_EVENTS["payment_completed"] = r"\b(?:has|have|had|already)\s+paid\b|已(?:经)?支付|已付"
-_EVENTS["payment_order"] = r"\b(?:orders?|ordered|requires?|required)\b.*\bpay\b|命令.*支付|责令.*支付|判令.*支付|判赔"
-_EVENTS["person_release"] = r"\bperson_release\b|释放"
-_EVENTS["pause"] = r"\b(?:paus\w*|suspend\w*|halt\w*)\b|暂停|中止"
-_EVENTS["delay"] = r"\b(?:delay\w*|postpon\w*|defer(?:s|red|ring)?)\b|推迟|延期|延后"
-_EVENTS["cancel"] = r"\b(?:cancel\w*|scrap\w*|abandon\w*|shelv\w*)\b|取消|放弃|搁置"
-_EVENTS["raise"] += r"|\b(?:scal(?:es|ed|ing)|powers?)\s+to\b|\b(?:intensif\w*|enhanc\w*)\b|\bfans?\s+(?:[\w-]+\s+){0,2}(?:fears?|concerns?|inflation)\b|扩展|提振|增强|加剧|劲升|激增|\b(?:sales|revenues?|profits?|earnings)\s+up\b|\bscal(?:e|es|ed|ing)\s+(?:energy|power|capacity|production|compute|computing|operations?|business)\b"
-_EVENTS["fall"] += r"|\bslips?\b|跌幅"
-# Maintaining control/resilience is not a rate/price hold. Bind this polysemous
-# verb to a financial state instead of requiring its Chinese word everywhere.
-_HOLD_OBJECT = r"rates?|prices?|guidance|outlook|ratings?|dividends?|revenue|profit|production|利率|价格|指引|展望|评级|分红|营收|利润|产量"
-_EVENTS["hold"] = (r"\bunchanged\b|不变|持平(?=$|[，。；、！？,.;!?\s]|于|在|至|的|状态|水平)|\b(?:holds?|maintains?)\s+(?:\w+\s+){0,3}(?:" + _HOLD_OBJECT
-                   + r")|(?:" + _HOLD_OBJECT + r").{0,12}(?:保持|维持)|(?:保持|维持).{0,8}(?:" + _HOLD_OBJECT + r")")
-_MODALITY += r"|\bawait(?:s|ed)?\b|将(?=对|向|提供|给予|补贴|调整|进行)"
+from src.processors.event_semantics import (
+    EVENTS as _EVENTS,
+)
+from src.processors.event_semantics import (
+    MODALITY as _MODALITY,
+)
+from src.processors.event_semantics import (
+    NEGATION as _NEGATION,
+)
+from src.processors.event_semantics import (
+    document_types,
+    normalize_event_text,
+)
+from src.processors.presentation_vocabulary import _LOCALIZED_TERMS_V9
+
 _ENTITIES = {
     "Microsoft": ("Microsoft", "微软"), "Google": ("Google", "谷歌"),
     "Alphabet": ("Alphabet",), "Apple": ("Apple", "苹果"),
@@ -236,6 +209,48 @@ def _financial_bindings(text: str) -> dict:
     return bindings
 
 
+def _localization_mentions(text: str) -> list[str]:
+    aliases = {**_LOCALIZED_TERMS_V9, **{name: name for name in _LOCALIZED_TERMS_V9.values()}}
+    # Longest-first matching treats Bank of Japan as an institution, not as a
+    # separate country mention. Product identifiers are outside this glossary.
+    alternatives = []
+    for alias in sorted(aliases, key=len, reverse=True):
+        alternatives.append((r'(?<![A-Za-z])' if alias.isascii() else '') + re.escape(alias)
+                            + (r'(?![A-Za-z])' if alias.isascii() else ''))
+    lookup = {key.casefold(): value for key, value in aliases.items()}
+    return [lookup[match[0].casefold()] for match in re.finditer('|'.join(alternatives), text, re.I)]
+
+
+def _capital_amount_bindings(text: str) -> dict:
+    """Keep authorization balances separate from increments and execution.
+
+    A bag of correct dollar amounts still permits swapping their meanings.
+    Bind each marked amount clause to a role for capital-return reporting.
+    """
+    if not re.search(r"buyback|repurchas|回购", text, re.I):
+        return {}
+    result = {}
+    for clause in re.split(r"[，；;。]|(?<!\d),(?!\d)|\bwhile\b|\band bringing\b", text, flags=re.I):
+        amounts = Counter({key: count for key, count in _quantities(clause).items()
+                           if len(key) == 2 and key[1] in {'USD', 'HKD', 'EUR'}})
+        if not amounts:
+            continue
+        # Remaining is more specific than 'total remaining'. Never collapse
+        # remaining authorization into lifetime repurchases or total spending.
+        if re.search(r"\bremaining\b|剩余|尚余|可用余额", clause, re.I):
+            role = 'remaining_authorization'
+        elif re.search(r"\badditional\b|新增|额外|追加", clause, re.I):
+            role = 'additional_authorization'
+        elif re.search(r"\b(?:spent|repurchased|bought back|executed)\b|已(?:经)?(?:回购|执行)|实际(?:执行|回购)", clause, re.I):
+            role = 'executed_repurchases'
+        elif re.search(r"\btotal\b|总额|合计|累计", clause, re.I):
+            role = 'total'
+        else:
+            continue
+        result.setdefault(role, Counter()).update(amounts)
+    return result
+
+
 def translation_errors(original: str, translated: str) -> list[str]:
     from src.processors.news_selection import strip_source_prefix
 
@@ -251,7 +266,21 @@ def translation_errors(original: str, translated: str) -> list[str]:
     # Starting an investigation is a procedural event, not a product launch.
     original = re.sub(r"\blaunch(?:es|ed|ing)?(?=\s+(?:(?:an?|the|broad|new|formal|antitrust|regulatory|criminal|civil|independent|joint|sweeping|comprehensive)\s+){0,3}investigation\b)", "opens", original, flags=re.I)
     translated = re.sub(r"(?:启动|发起)(?=(?:对[^，。；,;]{1,40}的)?(?:广泛|全面|正式|新|反垄断|刑事|民事)?调查)", "展开", translated)
+    original = normalize_event_text(original)
+    translated = normalize_event_text(translated)
     errors = []
+    places = _localization_mentions(original)
+    # Only explicit source names constrain their localized equivalents. Existing
+    # finance conventions (Treasuries -> 美国国债) must not invent an extra
+    # source entity merely because the explanatory Chinese includes a country.
+    if places != [name for name in _localization_mentions(translated) if name in places]:
+        errors.append('localized_entity_binding')
+    if document_types(original) != document_types(translated):
+        errors.append('document_type')
+    if (re.search(r"\bsummary\b|摘要|概要", original, re.I)
+            and 'meeting_minutes' not in document_types(original)
+            and 'meeting_minutes' in document_types(translated)):
+        errors.append('summary_not_minutes')
     # Superlatives with plural subjects must not silently become a single
     # country/company/bank. Require explicit plurality in Chinese for this
     # otherwise ambiguous construction; this is not a universal grammar proof.
@@ -295,6 +324,8 @@ def translation_errors(original: str, translated: str) -> list[str]:
         errors.append('legal_cost_sense')
     if not re.search(r'[一-鿿]', translated):
         errors.append('not_chinese')
+    if _capital_amount_bindings(original) != _capital_amount_bindings(translated):
+        errors.append('capital_amount_scope')
     if _quantities(original) != _quantities(translated):
         errors.append('quantities_or_units')
     bindings = _financial_bindings(original)
@@ -322,7 +353,7 @@ def translation_errors(original: str, translated: str) -> list[str]:
     }.items():
         if bool(re.search(pattern, original, re.I)) != bool(re.search(pattern, translated, re.I)):
             errors.append("condition:" + condition)
-    for name, pattern in {'negation': _NEGATION, 'modality': _MODALITY, **_EVENTS}.items():
+    for name, pattern in {'negation': _NEGATION, 'modality': _MODALITY, **{k: v for k, v in _EVENTS.items() if k != 'announcement'}}.items():
         source_present = bool(re.search(pattern, original, re.I))
         translated_present = bool(re.search(pattern, translated, re.I))
         if name == 'modality' and re.search(r'\blooms?\b', original, re.I):

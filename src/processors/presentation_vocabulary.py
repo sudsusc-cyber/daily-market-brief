@@ -54,3 +54,19 @@ COMPANY_DISPLAY_NAMES: dict[str, str] = {
     "MA": "万事达",
     "LIN": "林德",
 }
+
+
+# Versioned geographic/institutional vocabulary; product identifiers stay exact.
+_LOCALIZED_TERMS_V9 = {
+    "Bank of Japan": "日本央行", "BOJ": "日本央行",
+    "Bank of England": "英国央行", "BOE": "英国央行",
+    "European Central Bank": "欧洲央行", "ECB": "欧洲央行",
+    "Eurozone": "欧元区", "euro area": "欧元区",
+    "United States": "美国", "United Kingdom": "英国",
+    "Arizona": "亚利桑那州", "Texas": "得克萨斯州", "California": "加利福尼亚州",
+    "China": "中国", "Japan": "日本", "South Korea": "韩国", "India": "印度",
+    "Singapore": "新加坡", "France": "法国", "Italy": "意大利", "Spain": "西班牙",
+    "Canada": "加拿大", "Mexico": "墨西哥", "Brazil": "巴西", "Russia": "俄罗斯",
+    "Iraq": "伊拉克", "United Arab Emirates": "阿联酋", "Netherlands": "荷兰",
+    "San Francisco": "旧金山", "AI Agent": "AI 智能体", "AI agents": "AI 智能体",
+}

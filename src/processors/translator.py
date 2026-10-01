@@ -13,6 +13,7 @@ from collections.abc import Iterable
 
 from src.processors.llm_client import LLMClient
 from src.processors.news_selection import chinese_prose, factual_excerpt, plain_source
+from src.processors.presentation_vocabulary import _LOCALIZED_TERMS_V9
 from src.processors.translation_guard import translation_errors
 
 logger = logging.getLogger(__name__)
@@ -25,16 +26,20 @@ _TASK_INSTRUCTION = """\
 任务:把下面以 "▦ N:" 编号的英文财经新闻完整证据片段逐条翻译为简体中文。
 约束:
 - 严格保留 "▦ N: <译文>" 格式,每条独占一行
-- 公司 / 人名 / 地名 / 产品名(Microsoft / Buffett / iPhone)保留英文原写
+- 公司、人名、产品型号保留原写；地名和机构名按下方统一术语表使用通行中文，未列出的专名保留原写，不猜译
 - 原文所有 ticker 和缩写（AI、TPU、NASDAQ 等）保留，英文可紧邻中文
 - 数字、日期、百分号保持原样；金额单位可转为中文但金额、币种不得变化
 - 保留 AI 技术方法：distillation 译为蒸馏，fine-tuning 译为微调；不得泛化为使用，也不得凭空补充这些方法
 - 使用自然中文语序；时间或风险“looms for”市场/资产时，译为该市场/资产“面临”或“迎来”相应时期/风险，不要写成“十月逼近国债”等字面语序；不得添加因果连接
 - 按事件语境译词：investigate 是调查，declined to 是拒绝；government debt rout 是国债遭抛售、债券价格下跌，不是政府债务规模下降。
 - 保留主体数量范围；复数的最大/主要经济体、公司、银行等须译出“几个”“多个”“各”等，不能缩成一个主体
+- 回购金额必须保留口径：additional 为新增授权，remaining 为剩余授权额度；批准回购不等于已经执行回购
+- 文件类型必须准确：summary of opinions 是意见摘要，minutes 是会议纪要；普通 summary 不可译成会议纪要
 - 完整翻译，不概括、不补充判断；严格保留否定、可能/计划/待批等限定和事件状态
 - 输出仅这些行,不要任何前言、解释、Markdown
 """
+
+_TASK_INSTRUCTION += "\n统一术语表：" + "；".join(f"{en}={zh}" for en, zh in _LOCALIZED_TERMS_V9.items())
 
 
 def _is_chinese(text: str) -> bool:
