@@ -32,8 +32,10 @@ from src.processors.html_safe import (
 from src.processors.llm_client import LLMClient
 from src.processors.news_selection import (
     _ROUNDUP,
+    business_fact,
     company_candidate,
     company_fact_matches,
+    factual_excerpt,
     holding_in_excerpt,
 )
 from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
@@ -104,6 +106,8 @@ _TASK_INSTRUCTION = """\
 值得报道：影响持续盈利、现金流、竞争优势、客户需求、定价权、资本配置、治理或重大风险的事实。
 包括业绩质量与业务结构、重大合同和商业化进展、研发与产能、重大监管/诉讼、关键管理层和并购。
 早期产品/技术变化可以入选，不要求已有收入或金额，但原文须有具体进展和清楚的业务关联。
+不要把“重大公告”当成硬门槛：可核验的产品能力、客户采用、隐私规则、收费或渠道变化等经营增量，也值得保留。
+在同样通过事实与公司归属核验的前提下，优先覆盖更多有独立经营增量的公司，不要只挑最轰动的一条。
 联名/合作本身不等于有价值：优先渠道、授权经济性、客户采用和销量证据；仅换包装、礼盒、配色从略。
 只有第三方使用或兼容某平台、获奖宣传、参会站台、资金流/持仓排名、使用教程与折扣推广，不应占据持仓动态。
 不必写额外的“利好长期价值”结论；正文只报道来源支持的事实，不代替读者作投资判断。
@@ -437,6 +441,69 @@ def _rebuild_safe_summary(
     )
 
 
+def _recover_company_coverage(raw_text, summary, flat_items, selected, *, client, audit):
+    """Replace rejected picks from other originals, once, under unchanged gates.
+
+    A surviving company row does not establish that the selected edition is
+    complete. The ranking model may review alternatives for companies whose
+    entire selected evidence failed. It still may choose silence; this is not a
+    quota, and successful rows are rebuilt from their existing exact evidence.
+    """
+    represented = {row.get("presentation_company") for row in summary.evidence}
+    represented.update(ticker for ticker, name in _CN_NAME_HINT.items()
+                       if any(name in row.get("presentation_companies", []) for row in summary.evidence))
+    lost = {item.holding_ticker for item in selected if item.holding_ticker} - represented
+    if not summary.content_rejections or not lost:
+        return summary
+    used_urls = {item.url for item in selected}
+    alternatives = []
+    per_company = {}
+    for index, item in enumerate(flat_items, 1):
+        ticker = item.holding_ticker
+        if (ticker not in lost or item.url in used_urls or per_company.get(ticker, 0) >= 3
+                or not business_fact(factual_excerpt(item))):
+            continue
+        alternatives.append((index, item))
+        per_company[ticker] = per_company.get(ticker, 0) + 1
+        if len(alternatives) >= 12:
+            break
+    if not alternatives:
+        return summary
+    record = {"phase": "coverage_recovery", "tickers": sorted(lost),
+              "candidate_indexes": [index for index, _ in alternatives],
+              "candidates": [{"index": index, "ticker": item.holding_ticker, "url": item.url,
+                              "title": item.title[:600], "excerpt": factual_excerpt(item)[:1200]}
+                             for index, item in alternatives],
+              "before_sources": len(summary.footnotes), "status": "attempted"}
+    audit.append(record)
+    payload = "\n".join(
+        f"#{index} 【{_CN_NAME_HINT.get(item.holding_ticker, item.holding_ticker)}】"
+        f"原始标题={item.title} 原始摘要={item.summary} {source_prompt(item)}"
+        for index, item in alternatives)
+    response = client.chat(
+        payload, task_extra=_TASK_INSTRUCTION + INSTRUCTION + "\n【补选】首选来源未通过刊发核验。只从上述其他候选中选择有独立经营信息的新闻；不必凑数，不重复已刊公司。编号必须使用原编号。",
+        max_tokens=1600, temperature=0.2, thinking=False, timeout=20,
+    )
+    if not response.text or _is_no_important_output(response.text):
+        record["status"] = "no_supported_alternative"
+        return summary
+    allowed = {index for index, _ in alternatives}
+    lines = []
+    for line in response.text.splitlines():
+        indexes = {footnote_idx(match) for match in FOOTNOTE_RE.finditer(line)}
+        if indexes and indexes <= allowed:
+            lines.append(line)
+    extra_indexes = {footnote_idx(match) for line in lines for match in FOOTNOTE_RE.finditer(line)}
+    recover_selected_translations([flat_items[index - 1] for index in sorted(extra_indexes)],
+                                  client=client, audit=audit, limit=6)
+    supplemented = _rebuild_safe_summary(raw_text + "\n" + "\n".join(lines), flat_items)
+    if supplemented is None or len(supplemented.footnotes) <= len(summary.footnotes):
+        record["status"] = "no_supported_alternative"
+        return summary
+    record.update(status="recovered", after_sources=len(supplemented.footnotes))
+    return supplemented
+
+
 def summarize(
     bundles: list[CompanyNewsBundle],
     *,
@@ -497,6 +564,15 @@ def summarize(
             recovery_attempted = recover_selected_translations(selected, client=client, audit=audit)
         summary = _rebuild_safe_summary(raw_text, flat_items)
         if summary is not None:
+            try:
+                summary = _recover_company_coverage(raw_text, summary, flat_items, selected,
+                                                    client=client, audit=audit)
+            except Exception as exc:
+                # Supplementation is best-effort. A timeout or malformed client
+                # response must never erase rows which already passed evidence.
+                audit.append({"phase": "coverage_recovery_failure", "error": type(exc).__name__,
+                              "retained_sources": len(summary.footnotes)})
+                logger.warning("news_summarizer.coverage_recovery_failed type=%s", type(exc).__name__)
             summary.selection_audit = audit
             if history is not None:
                 summary = history.filter_company(summary)

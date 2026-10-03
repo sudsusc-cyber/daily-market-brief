@@ -176,9 +176,10 @@ def _translate_all_bundles(
     frontier_bundles: list | None = None,
 ) -> None:
     """按实际选稿窗口翻译，原始标题/摘要保持不变。"""
-    from src.collectors.news_context import enrich_technical_context
+    from src.collectors.news_context import enrich_speaker_context, enrich_technical_context
     enrich_technical_context([item for bundle in [*cn_bundles, *fig_bundles, *macro_bundles, *(frontier_bundles or [])]
                               for item in bundle.items])
+    enrich_speaker_context(fig_bundles)
     titles_to_translate: list[object] = []
     for b in cn_bundles:
         # Bind the holding before excerpt selection/translation, not only when

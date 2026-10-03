@@ -20,7 +20,9 @@ from src.utils.news_facts import canonical_fact
 from src.utils.runtime_budget import RuntimeBudget
 
 logger = logging.getLogger(__name__)
-_HOSTS = {'www.digitaltoday.co.kr', 'digitaltoday.co.kr', 'www.cnbc.com', 'www.tomshardware.com', 'tomshardware.com'}
+_HOSTS = {'www.digitaltoday.co.kr', 'digitaltoday.co.kr', 'www.cnbc.com', 'www.tomshardware.com', 'tomshardware.com',
+          'www.reuters.com', 'www.ft.com', 'www.bloomberg.com', 'www.benzinga.com', 'www.asml.com',
+          'www.microsoft.com', 'blogs.nvidia.com', 'www.nvidia.com', 'www.amd.com'}
 _MAX_BYTES = 1_000_000
 
 
@@ -125,3 +127,46 @@ def enrich_technical_context(items):
             item.context_diagnostic = ('verified_context' if excerpt and excerpt in plain_source(item.source_body)
                                        else 'headline_lead_only' if institutional and excerpt else 'insufficient_context')
         logger.info('news.context_result status=%s', item.context_diagnostic)
+
+
+def enrich_speaker_context(bundles):
+    """Recover role-only speech from the article, with a section-wide budget."""
+    from src.processors.speaker_attribution import context_excerpt, needs_speaker_context
+
+    budget = RuntimeBudget(seconds=20)
+    cache = {}
+    for bundle in bundles:
+        for item in bundle.items:
+            if not needs_speaker_context(item, bundle.person, bundle.person_en):
+                continue
+            excerpt = context_excerpt(item, bundle.person, bundle.person_en)
+            if excerpt:
+                item.speaker_source_excerpt = excerpt
+                item.speaker_context_diagnostic = 'source_identity_bound'
+                continue
+            key = (item.url, item.title, item.source)
+            if key not in cache:
+                if len(cache) >= 3:
+                    item.speaker_context_diagnostic = 'context_request_limit'
+                    continue
+
+                def fetch_one(item=item):
+                    try:
+                        resolved = _resolve(item.url)
+                        body = _body(_fetch(resolved), item.title, item.source)
+                        return {'source_body': body, 'context_url': resolved,
+                                'context_fetched_at': datetime.now(UTC).isoformat()}
+                    except (ValueError, requests.RequestException):
+                        return {'speaker_context_diagnostic': 'source_context_unavailable'}
+
+                cache[key] = budget.call(fetch_one, seconds=12,
+                                        fallback=lambda: {'speaker_context_diagnostic': 'context_timeout'})
+            for field, value in cache[key].items():
+                setattr(item, field, value)
+            excerpt = context_excerpt(item, bundle.person, bundle.person_en)
+            if excerpt:
+                item.speaker_source_excerpt = excerpt
+                item.speaker_context_diagnostic = 'source_identity_bound'
+            elif not getattr(item, 'speaker_context_diagnostic', ''):
+                item.speaker_context_diagnostic = 'source_identity_unresolved'
+            logger.info('news.speaker_context status=%s', item.speaker_context_diagnostic)

@@ -222,6 +222,7 @@ def publication_diagnostic(item) -> dict:
         "translated_excerpt": diagnostic_text(translated),
         "errors": list(dict.fromkeys(errors)),
         "translation_rejection": diagnostic_text(getattr(item, "translation_diagnostic", {}), 1000),
+        "speaker_context": diagnostic_text(getattr(item, "speaker_context_diagnostic", ""), 100),
         "truncated": any(len(str(value or "")) > 1800 for value in (excerpt, translated, getattr(item, "title", ""), getattr(item, "snippet", ""))),
     }
 
