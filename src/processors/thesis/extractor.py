@@ -112,7 +112,7 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
     published = plain_source(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
     source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""),
                              published_at=row.get("published_at"), url=row.get("url", ""), source=row.get("source_name", ""),
-                             source_body=row.get("source_body", ""))
+                             source_body=row.get("source_body", ""), source_published_at=row.get('source_published_at', ''))
     if row.get('speaker_attribution'):
         from src.processors.speaker_attribution import attribution
 

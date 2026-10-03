@@ -3,6 +3,7 @@
 Only explicitly supported publisher hosts are fetched. RSS fields are immutable;
 article identity and body provenance are retained separately for audit.
 """
+import json
 import logging
 import re
 from datetime import UTC, datetime
@@ -22,7 +23,10 @@ from src.utils.runtime_budget import RuntimeBudget
 logger = logging.getLogger(__name__)
 _HOSTS = {'www.digitaltoday.co.kr', 'digitaltoday.co.kr', 'www.cnbc.com', 'www.tomshardware.com', 'tomshardware.com',
           'www.reuters.com', 'www.ft.com', 'www.bloomberg.com', 'www.benzinga.com', 'www.asml.com',
-          'www.microsoft.com', 'blogs.nvidia.com', 'www.nvidia.com', 'www.amd.com'}
+          'www.microsoft.com', 'blogs.nvidia.com', 'www.nvidia.com', 'www.amd.com', 'scanx.trade'}
+_SOURCE_LABELS = {'reuters', 'financial times', 'ft', 'bloomberg', 'benzinga', 'asml',
+                  'microsoft blog', 'nvidia blog', 'nvidia', 'amd', 'amd ir', 'cnbc', 'scanx.trade',
+                  'digitaltoday', 'digital today', "tom's hardware"}
 _MAX_BYTES = 1_000_000
 
 
@@ -88,6 +92,33 @@ def _body(html, title, source):
     return '\n'.join(paragraphs)
 
 
+def _published_at(html, title, source):
+    """Only datePublished for this exact article, never dateModified/fetch time."""
+    soup = BeautifulSoup(html, 'html.parser')
+    headline = re.sub(r'\s*[-–—|]\s*' + re.escape(source) + r'\s*$', '', title) if source else title
+    values = []
+    for script in soup.select('script[type="application/ld+json"]'):
+        try:
+            pending = [json.loads(script.string or script.get_text())]
+        except (ValueError, TypeError):
+            continue
+        while pending:
+            node = pending.pop()
+            if isinstance(node, list):
+                pending.extend(node)
+            elif isinstance(node, dict):
+                if (canonical_fact(str(node.get('headline', ''))) == canonical_fact(headline)
+                        and node.get('datePublished')):
+                    try:
+                        value = datetime.fromisoformat(str(node['datePublished']).replace('Z', '+00:00'))
+                        if value.tzinfo is not None:
+                            values.append(value)
+                    except (ValueError, TypeError):
+                        pass
+                pending.extend(value for value in node.values() if isinstance(value, (dict, list)))
+    return min(values).isoformat() if values else ''
+
+
 def enrich_technical_context(items):
     """At most 3 sources / 20 seconds total, within the workflow cutoff."""
     budget = RuntimeBudget(seconds=20)
@@ -144,6 +175,11 @@ def enrich_speaker_context(bundles):
                 item.speaker_source_excerpt = excerpt
                 item.speaker_context_diagnostic = 'source_identity_bound'
                 continue
+            if (urlsplit(item.url).hostname not in _HOSTS
+                    and item.source.casefold() not in _SOURCE_LABELS
+                    and item.source.casefold() not in {host.removeprefix('www.') for host in _HOSTS}):
+                item.speaker_context_diagnostic = 'unsupported_publisher'
+                continue
             key = (item.url, item.title, item.source)
             if key not in cache:
                 if len(cache) >= 3:
@@ -153,8 +189,10 @@ def enrich_speaker_context(bundles):
                 def fetch_one(item=item):
                     try:
                         resolved = _resolve(item.url)
-                        body = _body(_fetch(resolved), item.title, item.source)
+                        html = _fetch(resolved)
+                        body = _body(html, item.title, item.source)
                         return {'source_body': body, 'context_url': resolved,
+                                'source_published_at': _published_at(html, item.title, item.source),
                                 'context_fetched_at': datetime.now(UTC).isoformat()}
                     except (ValueError, requests.RequestException):
                         return {'speaker_context_diagnostic': 'source_context_unavailable'}
