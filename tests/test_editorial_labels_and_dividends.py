@@ -50,3 +50,9 @@ def test_media_credit_cleanup_retains_an_exact_verifiable_source_span():
     assert excerpt in title and excerpt in source_sentences(item)
     item.title = 'FULL INTERVIEW: Acme CEO says AGI is already here | Critics disagree'
     assert 'Critics disagree' in factual_excerpt(item)
+
+
+@pytest.mark.parametrize('title', ['恒指创三月来最大跌幅，腾讯阿里均跌2%。','纳指下挫，科技股齐跌3%。','某公司股价上涨。'])
+def test_price_only_roundup_needs_operating_disclosure(title):
+    assert long_term_noise_reason(title)
+    assert not long_term_noise_reason(title,'公司公布营收增长20%。')

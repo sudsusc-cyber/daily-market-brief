@@ -335,6 +335,9 @@ def macro_context_text(text: str, antecedent: str) -> str:
     prefix = antecedent + '，因'
     if 8 <= len(antecedent) <= 100 and text.startswith(prefix):
         return '相关背景是' + text[len(prefix):]
+    reverse = re.fullmatch(r'(?:由于|因为|因)(.+)，' + re.escape(antecedent) + r'[。.]?', text)
+    if 8 <= len(antecedent) <= 100 and reverse:
+        return '相关背景是' + reverse[1]
     return text
 
 
