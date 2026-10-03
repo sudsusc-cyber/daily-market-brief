@@ -383,14 +383,22 @@ def _recover_selected(items, parsed, *, client, budget, audit):
             retry.append(item)
     if not retry or budget.calls <= 0:
         return False
-    budget.calls -= 1
     budget.items -= len(retry)
     record = {"phase": "translation_recovery", "before": [publication_diagnostic(i) for i in retry]}
     audit.append(record)
-    try:
-        translate_in_place_news(retry, client=client, max_attempts=1, timeout=20)
-    except Exception as exc:
-        record["error"] = diagnostic_text(f"{type(exc).__name__}: {exc}", 240)
+    pending = retry
+    record["attempts"] = []
+    while pending and budget.calls > 0:
+        budget.calls -= 1
+        attempt = {"before": [publication_diagnostic(i) for i in pending]}
+        record["attempts"].append(attempt)
+        try:
+            translate_in_place_news(pending, client=client, max_attempts=1, timeout=20)
+        except Exception as exc:
+            attempt["error"] = diagnostic_text(f"{type(exc).__name__}: {exc}", 240)
+        attempt["after"] = [publication_diagnostic(i) for i in pending]
+        # Retry only unresolved selected evidence; successful siblings are immutable.
+        pending = [i for i in pending if not checked_excerpt(i)[1]]
     record["after"] = [publication_diagnostic(i) for i in retry]
     record["recovered"] = sum(bool(checked_excerpt(i)[1]) for i in retry)
     logger.info("figure_filter.translation_recovery candidates=%d recovered=%d", len(retry), record["recovered"])

@@ -149,7 +149,7 @@ def test_figure_content_rejection_keeps_verified_neighbor_and_does_not_retry_sel
     result = filter_one(figure_bundle([mention(FACT), mention('Jensen said a cloud deal was announced', '2')]), client=client)
     assert [row.text for row in result.items] == [FACT]
     assert result.error and result.content_rejections and not result.processing_error
-    assert client.chat.call_count == 2
+    assert client.chat.call_count == 3  # selection is not retried; unresolved translation is
     assert "逐条翻译" in client.chat.call_args_list[1].kwargs["task_extra"]
     assert client.chat.call_args_list[1].kwargs["timeout"] == 20
 

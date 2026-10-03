@@ -63,6 +63,28 @@ def _parse_lines(text: str) -> dict[int, str]:
     return out
 
 
+def _repair_context(previous: dict) -> str:
+    """Give a repair the failed wording and actionable constraints, not just codes.
+
+    This is translation input, never publication authority. The repaired result
+    passes exactly the same deterministic source checks as a first attempt.
+    """
+    hints = {
+        'negation': '对齐原文否定的对象和范围，不能删除否定或翻转立场',
+        'modality': '区分计划、可能、预期与已完成；保留原文限定',
+        'event_scope': '逐分句对齐动作、否定和计划状态，勿把别处的限定移到当前动作',
+        'entity_order': '保持发言者、动作主体和对象的关系，署名位置可变，主客体不可颠倒',
+        'quantities_or_units': '逐项核对数字、币种、单位、上限及其所属指标',
+        'economic_amount_role': '金额的经济含义必须一致，资产规模、收入和支出不可互换',
+    }
+    errors = previous.get('errors', [])
+    if not errors:
+        return ''
+    guidance = [hints.get(error, '对齐原文对应的动作、对象、数字和限定：' + error) for error in errors]
+    candidate = str(previous.get('candidate', ''))[:600]
+    return '\n上次未通过核验的译文（仅供修正，不是事实依据）：' + candidate + '\n修正要求：' + '；'.join(guidance)
+
+
 def translate_titles(
     titles: list[str],
     *,
@@ -94,7 +116,7 @@ def translate_titles(
 
         for attempt in range(1, max_attempts + 1):
             numbered = "\n".join(
-                f"▦ {position}: {indexed_chunk[position][1]}" + (f"\n上次译文未保留: {rejected[position]}；保留原始缩写、数字/日期、主体顺序及限定语。" if position in rejected else "")
+                f"▦ {position}: {indexed_chunk[position][1]}" + (_repair_context((diagnostics or {}).get(indexed_chunk[position][0], {"errors": rejected[position]})) if position in rejected else "")
                 for position in sorted(pending)
             )
             resp = client.chat(
