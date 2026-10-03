@@ -18,7 +18,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 14
+PRESENTATION_VERSION = 15
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -92,6 +92,13 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
             operations.append(name)
             text = updated
 
+    if (_version >= 15 and re.search(r'\bbreak[ -]?even\b', original_text, re.I)
+            and re.search(r'\b(?:jobs|payrolls|employment|unemployment)\b', original_text, re.I)
+            and not re.search(r'\b(?:profit|revenue|cost|margin)\b', original_text, re.I)):
+        record('employment_breakeven', re.sub(r'盈亏平衡(?:点|水平|线)?', '维持失业率稳定所需的月度新增就业量', text))
+    if (_version >= 15 and re.search(r':\s*reports?\b', original_text, re.I)
+            and re.search(r'[:：]报道[。.]?$', text)):
+        record('report_attribution', '据报道，' + re.sub(r'[:：]报道[。.]?$', '', text).rstrip('。'))
     if _version >= 13 and re.search(r'[一-鿿]', text):
         for term, chinese in {'tensor processing unit': '张量处理器', 'bug': '故障'}.items():
             record('technical_term', re.sub(r'\b' + re.escape(term) + r'\b', chinese, text, flags=re.I))
@@ -357,7 +364,7 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         if version >= 13 and row.get('macro_context_antecedent'):
             output = macro_context_text(output, row['macro_context_antecedent'])

@@ -405,6 +405,12 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 def publishable_excerpt(item, text: str) -> bool:
     from src.processors.investment_relevance import ambiguous_money_claim, long_term_noise_reason
 
+    # Interview programme descriptions identify topics, not the interviewee's
+    # assertions. A separate says/warns/expects clause remains eligible.
+    if (re.search(r"\b(?:discusses|talks about|speaks about)\b|讨论了?|谈论", text, re.I)
+            and re.search(r"\b(?:Secretary|Minister|Chair|CEO|Economist|President|Professor)\b|部长|主席|首席|教授", text, re.I)
+            and not re.search(r"\b(?:says|said|warns|believes|expects|predicts)\b|表示|认为|警告|预计", text, re.I)):
+        return False
     if program_metadata(item, text) or ambiguous_money_claim(text):
         return False
     if getattr(item, 'holding_ticker', None) and long_term_noise_reason(text):
