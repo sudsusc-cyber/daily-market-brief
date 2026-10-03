@@ -60,6 +60,10 @@ def sentences(text: str) -> list[str]:
 def complete_excerpt(text: str, source_name: str = '') -> bool:
     """Reject observable RSS truncation; source-field boundaries are not sentences."""
     text = plain_source(text).strip()
+    # A trailing bare reduplicated Chinese modifier is an observable cut-off,
+    # even when the RSS producer omitted its ellipsis. Keep complete sentences.
+    if re.search(r'(?:^|[。！？])\s*([\u4e00-\u9fff])\1\s*[。！？]?\s*$', text):
+        return False
     # Flattened publisher footnotes are not financial quantities. Do not guess
     # away the number: reject this excerpt and select another complete source.
     if re.search(r'\b(?:worldwide|locations|merchants|customers)[1-9](?=[,.;:]|$)', text, re.I):

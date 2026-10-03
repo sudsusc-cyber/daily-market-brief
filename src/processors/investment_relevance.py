@@ -39,6 +39,9 @@ def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=
         r'(?:进入|拓展|扩大).{0,20}(?:市场|销售渠道|分销)|'
         r'(?:sales|销量|销售额).{0,35}(?:\d|grow|rise|fall|增长|下降)', context, re.I))
     noise = {
+        'incidental_brand_appearance': r'(?:实拍|街拍|现场见闻|赛场内外|红毯).{0,200}(?:挂件|背包|玩偶|文创|设备|车辆|服饰|品牌|标识|亮相)|'
+                                     r'\b(?:spotted|pictured|seen)\s+(?:wearing|carrying|using)\b|'
+                                     r'\b(?:red carpet|street style|sidelines)\b.{0,100}\b(?:brand|logo|bag|outfit|merchandise)\b',
         'personal_trade_opinion': r'\b(?:keeps? me|makes? me|I (?:keep|am|will|would))\s+(?:buying|selling|holding)\b|(?:让我|我会|我仍|我持续).{0,6}(?:买入|卖出|持有)',
         'unquantified_outlook': r'\b(?:well.positioned|in a good position|should (?:increasingly )?worry|should be worried)\b|(?:应|应该).{0,6}(?:越来越)?担心|处于有利位置',
         'market_price_roundup': r'(?:指数|[沪深恒纳]指|恒科指|股市).{0,80}(?:上涨|下跌|下挫|跌幅|涨幅|新低|新高)|(?:均|齐)(?:涨|跌)\s*\d|股价.{0,30}(?:上涨|下跌|大涨|大跌)',
