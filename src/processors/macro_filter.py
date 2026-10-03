@@ -310,7 +310,9 @@ def _rebuild_safe_html(
             facts.append(f'<span data-macro-fact="true">{escape_text(text)}</span>')
         label = topic if topic != '其他宏观' else '宏观观察'
         if label.endswith('数据') and not any(
-                not g['event']['states'] and _is_data_release(g['evidence'][0]['excerpt']) for g in related):
+                (not g['event']['states'] and _is_data_release(g['evidence'][0]['excerpt']))
+                or re.search(r'(?:数据|指标|CPI|PCE).{0,30}(?:将|计划).{0,20}(?:公布|发布)|\b(?:data|figures|CPI|PCE)\b.{0,30}\b(?:will|due|scheduled)\b.{0,25}\b(?:release|released|published)\b', g['evidence'][0]['excerpt'], re.I)
+                for g in related):
             label = label[:-2] + '观察'
         heading = f'<span data-macro-heading="true" style="{_THEME_STYLE}">{escape_text(label)}。</span>'
         parts.append(f'<p style="{_PARAGRAPH_STYLE}">'
