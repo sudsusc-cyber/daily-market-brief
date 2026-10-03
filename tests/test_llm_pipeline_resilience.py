@@ -225,7 +225,8 @@ def test_sentiment_keeps_deterministic_result_when_both_llm_attempts_fail() -> N
     assert result is not None
     assert result["score"] is not None
     assert result["argument_fallback"] is True
-    assert "确定性规则" in result["argument"]
+    assert "综合来看" in result["argument"]
+    assert "指标变化不参与评分" not in result["argument"]
     assert all(call["thinking"] is False for call in client.calls)
 
 
@@ -244,9 +245,9 @@ def test_sentiment_keeps_only_one_sentence_from_llm() -> None:
 def test_holdings_intro_and_subject_disable_thinking() -> None:
     intro_client = _SequenceClient([
         _response(None, "timeout"),
-        _response("细读规则，{信号背景}；衡量一段旅程，不只看眼前走了多远，也看脚下的路是否值得长行；时间不会替人作答，却能让扎实的判断慢慢显出分量。"),
+        _response('{"text":"在安静中细读规则，衡量一段旅程，不只看眼前走了多远，也看脚下的路是否值得长行；时间不会替人作答，却能让扎实的判断慢慢显出分量。"}'),
     ])
-    assert "尚未出现既定买入信号" in write_intro([_signal()], client=intro_client)
+    assert "细读规则" in write_intro([_signal()], client=intro_client)
     assert len(intro_client.calls) == 2
     assert intro_client.calls[0]["thinking"] is False
 

@@ -18,7 +18,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 11
+PRESENTATION_VERSION = 12
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -183,6 +183,11 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
             re.sub(r"(?<![A-Za-z])" + name_pattern + r"(?![A-Za-z])", short, text, flags=re.I),
         )
     terms = {**_FINANCIAL_TERMS, **(_LOCALIZED_TERMS_V9 if _version >= 9 else {})}
+    from src.processors.news_selection import chinese_prose
+    if _version >= 12 and chinese_prose(text):
+        from src.collectors.figures import FIGURES
+        display = {'苏妈': '苏姿丰', '皮叉': '桑达尔·皮查伊', '奥特曼': '山姆·奥特曼', '纳德拉': '萨提亚·纳德拉'}
+        terms.update({en: display.get(cn, cn) for cn, _, _, en in FIGURES if re.search('[一-鿿]', cn)})
     for name, translated in terms.items():
         protected = "|".join(re.escape(n) for n in sorted(aliases, key=len, reverse=True))
         pattern = protected + r"|(?P<term>\b" + re.escape(name) + r"\b)"
@@ -322,7 +327,7 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, 8, 9, 10, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, 9, 10, 11, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         if version >= 10 and row.get("presentation_company"):
             output = company_body(output, row["presentation_company"], _version=version)

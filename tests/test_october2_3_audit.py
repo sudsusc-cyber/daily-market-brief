@@ -127,7 +127,7 @@ def test_actual_selected_voice_publishes_after_translation_recovery():
     source.source_excerpt = source.title
     source.translated_excerpt = 'Sam Altman 称 OpenAI 将继续压低 AI 价格 - Moomoo'
     text, mappings = grounded_text(source.translated_excerpt, [source])
-    assert text == 'Sam Altman 称 OpenAI 将继续压低 AI 价格'
+    assert text == '山姆·奥特曼称 OpenAI 将继续压低 AI 价格'
     assert mappings[0]['excerpt'] == source.title
 
 

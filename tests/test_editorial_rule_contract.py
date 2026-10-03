@@ -1,4 +1,5 @@
 """Original editorial behavior must survive factual and presentation hardening."""
+import json
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
@@ -38,9 +39,9 @@ def signal(kind="NONE", error=None):
     ([signal(error="timeout")], "待核验"),
 ])
 def test_dynamic_intro_uses_only_actual_signal_context(states, expected):
-    client = Client("细读规则，{信号背景}，" + PROSE)
+    client = Client(json.dumps({"text": "在安静中细读规则，" + PROSE}, ensure_ascii=False))
     text = holdings_intro.write_intro(states, client=client)
-    assert expected in text and 60 <= len(text) <= 110
+    assert expected not in text and 60 <= len(text) <= 110
     assert PROSE in text and "只处于" not in text
     assert len(client.calls) == 1 and client.calls[0][1]["thinking"] is False
 
@@ -51,7 +52,7 @@ def test_published_history_retries_repeated_reflection_without_consuming_draft(t
     history.remember("holdings_intro", "", old)
     history.commit()
     before = history.path.read_bytes()
-    client = Client("细读规则，{信号背景}，" + PROSE, "留些余地，{信号背景}，" + OTHER)
+    client = Client(json.dumps({"text": "在安静中细读规则，" + PROSE}, ensure_ascii=False), json.dumps({"text": "留些余地，" + OTHER}, ensure_ascii=False))
     new = holdings_intro.write_intro([signal("DCA")], client=client, history=history)
     assert new and OTHER in new and len(client.calls) == 2
     assert "recent_repeat" in client.calls[1][0][0]
@@ -63,7 +64,7 @@ def test_published_history_retries_repeated_reflection_without_consuming_draft(t
     "建议立即买入并加仓。", "收益率达到20%。", "今日港股普遍上涨。",
 ])
 def test_literary_intro_cannot_add_current_market_claims(invention):
-    client = Client("细读规则，{信号背景}，" + invention + PROSE, "细读规则，{信号背景}，" + invention + PROSE)
+    client = Client(*[json.dumps({"text": "细读规则，" + invention + PROSE}, ensure_ascii=False)] * 2)
     assert holdings_intro.write_intro([signal()], client=client) is None
     assert len(client.calls) == 2
 
@@ -121,7 +122,5 @@ def test_model_event_ranking_not_replaced_by_permanent_topic_priority():
     assert {r['url'] for r in result.evidence} == {r.url for r in rows[:3]}
 
 
-@pytest.mark.parametrize("separator", ["，", ", ", "。", "；"])
-def test_intro_placeholder_does_not_double_sentence_punctuation(separator):
-    text = holdings_intro.write_intro([signal()], client=Client("细读规则，{信号背景}" + separator + PROSE))
-    assert text == "细读规则，" + holdings_intro.signal_context([signal()]).rstrip("。") + separator + PROSE
+def test_old_forced_signal_frame_is_rejected():
+    assert holdings_intro.write_intro([signal()], client=Client(*["细读规则，{信号背景}，" + PROSE] * 2)) is None

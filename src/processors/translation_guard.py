@@ -95,6 +95,7 @@ def _quantities(text: str) -> Counter:
     # Normalize written durations only, never arbitrary words or company names.
     en_counts = dict(zip(["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"], range(1, 13), strict=True))
     zh_counts = dict(zip(["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"], range(1, 13), strict=True))
+    zh_counts["两"] = 2
     text = re.sub(r"\b(" + "|".join(en_counts) + r")(?=\s+(?:years?|months?|days?|weeks?|decades?)\b)", lambda m: str(en_counts[m[0].lower()]), text, flags=re.I)
     ordinals = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5}
     text = re.sub(r"\b(" + "|".join(ordinals) + r")(?=\s+(?:days?|weeks?)\b)",
@@ -106,7 +107,7 @@ def _quantities(text: str) -> Counter:
             tens, ones = raw.split("十")
             return str((zh_counts[tens] if tens else 1) * 10 + (zh_counts[ones] if ones else 0))
         return str(zh_counts[raw])
-    text = re.sub(r"[一二三四五六七八九]?十[一二三四五六七八九]?(?=多?年|个月|天|周)|[一二三四五六七八九](?=多?年|个月|天|周)", chinese_count, text)
+    text = re.sub(r"[一二三四五六七八九]?十[一二三四五六七八九]?(?=多?年|个月|天|周)|[一二两三四五六七八九](?=多?年|个月|天|周)", chinese_count, text)
     text = re.sub(r"(\d+)多年", r" more than \1年", text)
     text = re.sub(r"(\d+)(年|个月|天|周)多", r" more than \1\2", text)
     for match in _NUMBER.finditer(text):
@@ -204,7 +205,7 @@ def _scoped_states(text: str) -> set[tuple]:
     # Bind polarity/modality to the event clause so a 'not' elsewhere cannot
     # bless a reversed approval/completion assertion.
     for clause in re.split(r"[，,；;。!?]|\bbut\b|但是|但", text, flags=re.I):
-        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release", "pause", "cancel", "delay"):
+        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release", "reserve_drawdown", "pause", "cancel", "delay"):
             if re.search(_EVENTS[event], clause, re.I):
                 states.add((event, bool(re.search(_NEGATION, clause, re.I)),
                             bool(re.search(_MODALITY, clause, re.I))))

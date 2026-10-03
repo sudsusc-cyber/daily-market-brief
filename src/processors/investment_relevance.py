@@ -21,6 +21,7 @@ def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=
         r'(?:进入|拓展|扩大).{0,20}(?:市场|销售渠道|分销)|'
         r'(?:sales|销量|销售额).{0,35}(?:\d|grow|rise|fall|增长|下降)', context, re.I))
     noise = {
+        'personality_dispute': r'\b(?:privately confront|confronted|feud|war of words|trades? barbs|sparring)\b|口水战|隔空互怼|私下.{0,15}质问',
         'cosmetic_merchandise': r'联名款?礼盒|联名.{0,25}(?:礼盒|配色|包装)|限定包装|'
                                r'\b(?:co.branded|limited.edition).{0,35}(?:gift box|colorway|packaging)\b',
         'trading_flow': r'南向资金|北向资金|资金流入榜|资金流出榜|龙虎榜|'

@@ -133,6 +133,6 @@ def test_actual_preview_unknown_topics_are_specific_and_only_same_topics_merge()
     assert [row['macro_topic'] for row in evidence]==['财政政策','信用市场','AI 安全','AI 安全']
     assert len(soup.select('p')[2].select('a'))==2
     assert len(notes)==len(evidence)==4
-    assert all(titles[i] in soup.get_text() for i in [0,1,2,5])
+    assert all(titles[i].replace('Jensen Huang', '黄仁勋').replace('的 黄仁勋', '的黄仁勋') in soup.get_text() for i in [0,1,2,5])
     assert all(titles[i] not in soup.get_text() for i in [3,4])
     assert '其他宏观' not in soup.get_text()

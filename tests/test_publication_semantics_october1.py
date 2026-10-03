@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.processors.holdings_intro import _assemble_intro, write_intro
+from src.processors.holdings_intro import write_intro
 from src.processors.news_presentation import present, replay_presentation
 from src.processors.news_selection import company_candidate, factual_excerpt, old_event_excerpt
 from src.processors.source_grounding import grounded_text, source_sentences
@@ -82,20 +82,12 @@ def test_best_quarter_price_colour_requires_business_fact(issuer, ticker):
 
 
 def test_structured_intro_owns_signal_clause_and_checks_frame():
-    frame = {'before': '投资的尺度，需要在喧哗之外慢慢建立；',
-             'after': '，真正值得反复打磨的是对生意的理解，把规则写在情绪之前，让耐心陪伴价值兑现，也为未知保留应有的位置。'}
+    prose = '投资的尺度，需要在喧哗之外慢慢建立；真正值得反复打磨的是对生意的理解，把规则写在情绪之前，让耐心陪伴价值兑现，也为未知保留应有的位置。'
     client = Mock()
-    client.chat.return_value = SimpleNamespace(text=json.dumps(frame, ensure_ascii=False))
+    client.chat.return_value = SimpleNamespace(text=json.dumps({'text': prose}, ensure_ascii=False))
     signals = [SimpleNamespace(error=None, signal='DCA'), SimpleNamespace(error=None, signal='NONE')]
-    text = write_intro(signals, client=client)
-    assert text and text.startswith(frame['before']) and '部分标的处于既定买入区间' in text
-    assert client.chat.call_count == 1
-    for bad, reason in [('', 'empty_response'), ('{bad}', 'invalid_json'),
-                        ('{信号背景}后文', 'leading_context_marker'),
-                        ('前文{信号背景}{信号背景}', 'duplicate_context_marker')]:
-        assert _assemble_intro(bad, '背景')[1] == [reason]
-    frame['after'] = '，其余标的全部上涨，建议立即买入。'
-    client.chat.return_value.text = json.dumps(frame, ensure_ascii=False)
+    assert write_intro(signals, client=client) == prose
+    client.chat.return_value.text = json.dumps({'text': prose + '其余标的全部上涨，建议立即买入。'}, ensure_ascii=False)
     assert write_intro(signals, client=client) is None
 
 

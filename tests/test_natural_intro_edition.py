@@ -1,10 +1,11 @@
-from datetime import UTC, date, datetime, timedelta
+import json
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 
 from src.collectors.sentiment import SentimentBundle, SentimentMetric
-from src.processors.holdings_intro import _context_phrase, write_intro
+from src.processors.holdings_intro import write_intro
 from src.processors.macro_topics import macro_topic
 from src.processors.news_presentation import present, replay_presentation
 from src.processors.news_selection import company_candidate
@@ -17,23 +18,11 @@ def client(text):
     return SimpleNamespace(chat=lambda *a, **kw: SimpleNamespace(text=text))
 
 
-def test_signal_phrase_is_embedded_and_varies_with_published_history():
-    states = [SimpleNamespace(signal='DCA', error=None), SimpleNamespace(signal='NONE', error=None)]
-    history = SimpleNamespace(today=date(2026, 10, 1), rows=[])
-    outputs = []
-    phrases = []
-    for _ in range(4):
-        recent = [r['text'] for r in history.rows]
-        phrase = _context_phrase(states, recent, history)
-        # Distinct philosophical prose is required too; use no history for model
-        # repetition here and test factual phrase selection independently.
-        text = write_intro(states, client=client(PROSE))
-        assert text and text.startswith('理解一门生意') and '部分' in text
-        outputs.append(text)
-        phrases.append(phrase)
-        history.rows.append({'text': PROSE.replace('{信号背景}', phrase), 'date': history.today.isoformat(), 'section': 'holdings_intro'})
-        history.today += timedelta(days=1)
-    assert len(set(phrases)) == 4
+def test_natural_intro_does_not_depend_on_signal_state():
+    prose = PROSE.replace('；{信号背景}，', '，')
+    for kind in ('NONE', 'DCA', 'LUMP_SUM'):
+        text = write_intro([SimpleNamespace(signal=kind, error=None)], client=client(json.dumps({'text': prose})))
+        assert text == prose and '持仓' not in text
 
 
 @pytest.mark.parametrize('raw', [
@@ -125,5 +114,5 @@ def test_model_failure_fallback_also_varies_and_keeps_actual_signal_state():
     signals=[SimpleNamespace(signal='NONE',error=None)]
     texts=[fallback_intro(signals,datetime(2026,10,1,tzinfo=UTC)+timedelta(days=i)) for i in range(7)]
     assert len(set(texts))==7
-    assert all('尚未' in t or '暂未' in t or '仍未' in t for t in texts)
+    assert all('信号' not in t and '买入区间' not in t for t in texts)
     assert all(not t.startswith('持仓') and '{' not in t for t in texts)

@@ -98,7 +98,7 @@ _BUSINESS_FACT = re.compile(
 
 def business_fact(text: str) -> bool:
     """Use the same event families as translation and long-term watchpoints."""
-    return bool(_BUSINESS_FACT.search(text) or has_event(
+    return bool(_BUSINESS_FACT.search(text) or _OPERATING_EVENT.search(text) or has_event(
         text, 'launch', 'approval', 'completion', 'acquisition', 'investment', 'announcement'))
 
 
@@ -165,7 +165,7 @@ _OPERATING_EVENT = re.compile(
 
 _PROMO_PROSE = re.compile(
     r"^move over[,，]|^让开[，,]|^why (?:it|this|that) (?:could|may|might|matters)|为何.*(?:股票|重要)|为什么.*(?:股票|重要)", re.I)
-_ROUNDUP = re.compile(r"回购(?:集合|汇总|一览)|(?:buyback|repurchase).*(?:roundup|round-up|round up)", re.I)
+_ROUNDUP = re.compile(r"\b(?:voices|week(?:ly)? (?:review|roundup)|news roundup|highlights of the week)\b|本周(?:综述|声音|盘点)|回购(?:集合|汇总|一览)|(?:buyback|repurchase).*(?:roundup|round-up|round up)", re.I)
 
 
 def promotional_prose(text: str) -> bool:
@@ -201,11 +201,24 @@ def holding_in_excerpt(text: str, ticker: str) -> bool:
         for alias in aliases)
 
 
+def dependent_excerpt(text: str) -> bool:
+    """A relief/reaction clause needs the adjacent event it refers to."""
+    return bool(re.match(r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Today|Yesterday|This|That|It)\b.{0,45}\b(?:relief|respite|reaction|reprieve)\b|(?:周[一二三四五六日]|这|其|昨日|今日).{0,25}(?:缓解|喘息|反应)", text, re.I))
+
+
 def publication_candidates(item, text: str) -> list[str]:
     """Include adjacent evidence so a financing's investor isn't lost."""
     parts = sentences(text)
     ticker = getattr(item, 'holding_ticker', None)
     result = list(parts)
+    for left, right in zip(parts, parts[1:], strict=False):
+        if dependent_excerpt(right) and complete_excerpt(left) and len(left + right) <= 900:
+            start = text.find(left)
+            end = text.find(right, start + len(left))
+            if start >= 0 and end >= 0:
+                result.insert(0, text[start:end + len(right)])
+                if right in result:
+                    result.remove(right)
     if ticker:
         for left, right in zip(parts, parts[1:], strict=False):
             if (holding_in_excerpt(left, ticker) and not holding_in_excerpt(right, ticker)
@@ -341,6 +354,8 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 
 
 def publishable_excerpt(item, text: str) -> bool:
+    if dependent_excerpt(text):
+        return False
     return ((not requires_action_context(item) or text == action_context(item))
             and (not getattr(item, 'holding_ticker', None) or holding_in_excerpt(text, item.holding_ticker))
             and context_allows(item, text) and complete_excerpt(text, getattr(item, 'source', ''))

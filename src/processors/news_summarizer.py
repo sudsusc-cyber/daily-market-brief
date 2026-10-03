@@ -364,13 +364,26 @@ def _rebuild_safe_summary(
             continue
 
         verified_rows.append((company, ticker or '', mapping))
+    # One identical sourced fact must not fill several company rows. Display
+    # joint attribution while preserving one auditable mapping per company.
+    unique = {}
+    for company, ticker, mapping in verified_rows:
+        for row in mapping:
+            key = (row['url'], row['output_text'])
+            entry = unique.setdefault(key, {'companies': [], 'ticker': ticker, 'row': row})
+            if company not in entry['companies']:
+                entry['companies'].append(company)
+                entry['row']['presentation_companies'] = list(entry['companies'])
+    verified_rows = [(' / '.join(entry['companies']),
+                      entry['ticker'] if len(entry['companies']) == 1 else '',
+                      [entry['row']]) for entry in unique.values()]
     grouped = {}
     for company, ticker, mapping in verified_rows:
         bucket = grouped.setdefault(company, {'ticker': ticker, 'rows': []})
         bucket['rows'].extend(mapping)
     raw_rows = []
     for company, bucket in grouped.items():
-        rows = compose_company_rows(bucket['rows'], bucket['ticker'])
+        rows = compose_company_rows(bucket['rows'], bucket['ticker']) if bucket['ticker'] else bucket['rows']
         evidence.extend(rows)
         parts = []
         for row in rows:
