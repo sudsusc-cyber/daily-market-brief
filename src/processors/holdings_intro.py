@@ -133,13 +133,20 @@ _STATE_ADVERB_WORDS = ("已然", "依然", "仍然", "已经", "恰好", "也已
                        "目前", "现在", "现今", "现时", "现", "仍", "已", "正", "尚", "也", "则", "亦", "恰")
 _STATE_ADVERBS = "(?:(?:" + "|".join(_STATE_ADVERB_WORDS) + "))*"
 _STATE_QUALIFIER = r"(?:既定的?|预设的?)?"
+# Spatial state is compositional: verb × strategy × noun × in-locative.
+# Keeping these dimensions independent avoids accepting "区间内" while rejecting
+# the equivalent "区间之内", or requiring a special phrase for each strategy.
+_STATE_LOCATION = r"(?:在|于|处|处在|处于|位处|位于|居于|身在|置身于|落在|落于|留在)"
+_STATE_SPATIAL_NOUN = r"(?:区间|范围|位置|区域)"
+_STATE_IN_LOCATIVE = r"(?:内|之内|以内)"
+_STATE_WITHIN = (r"(?:" + _STATE_SPATIAL_NOUN + _STATE_IN_LOCATIVE + r"?"
+                 r"|(?:尺度|门槛|条件|标准)" + _STATE_IN_LOCATIVE + r"|线内)")
 _STATE_FORMS = (
-    r"(?:在|于|处|处在|处于|位处|位于|居于|身在|置身于|落在|落于|留在){q}{k}(?:的)?(?:区间内?|范围内?|尺度之内|门槛之内|线内)",
+    _STATE_LOCATION + r"{q}{k}(?:的)?" + _STATE_WITHIN,
     r"(?:合乎|符合|满足|契合){q}{k}(?:的)?(?:条件|尺度|标准|要求)",
     r"与{q}{k}(?:的)?(?:尺度|条件|区间|节奏|节拍)(?:相合|相应|相契|吻合)",
     r"为{k}(?:留有|留出)(?:余地|空间)",
     r"(?:留有|留出){k}(?:的)?(?:余地|空间)",
-    r"已?在{q}{k}(?:的)?(?:尺度|条件|标准)(?:之内|以内)",
 )
 
 
@@ -255,6 +262,9 @@ def _intro_retry(errors: list[str], *, accepted_text: str, accepted_signal: str)
         parts.append("signal_text已通过事实核验，请原样保留，不要补充事实：" + json.dumps(accepted_signal, ensure_ascii=False))
     else:
         parts.append("只按输入的主体和LUMP_SUM/DCA状态修正signal_text，写现有位置，保留正文的疏朗语气。")
+        if 'signal_state_not_bound' in errors:
+            parts.append("每个分句以原样主体开头；主体后的表达可自然组合：中性位置动词（在、现处、落在、位于等）+策略词（大额买入或定投）+区间、范围、位置，末尾可用内、之内或以内。")
+            parts.append("也可以表达与策略尺度相合、合乎策略条件或留有策略余地；这些是现存状态的语义边界，不是要求照抄的固定句。不要写区间之外、尚待达到或首次进入。")
     parts.append("输入没有提供价格、均线周期或触发时间，任何字段都不得自行补这些数字和事实；也不能添加行动建议。")
     parts.append("仍输出text和signal_text两个字段的完整JSON；这是字段修复，不是重新撰写整段。")
     return "\n" + "\n".join(parts)
