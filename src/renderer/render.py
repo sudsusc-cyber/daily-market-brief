@@ -31,6 +31,7 @@ from src.processors.html_safe import is_safe_url
 from src.processors.sentiment_judge import VERDICT_THRESHOLDS, one_sentence_summary
 from src.renderer.news_prose import news_paragraphs, sentence_end
 from src.renderer.text_utils import add_cjk_spacing
+from src.renderer.valuation_notes import valuation_notes
 from src.utils.dates import to_beijing
 from src.utils.email_typography import EMAIL_EDITORIAL_SERIF, EMAIL_NUMERIC_FEATURES
 from src.valuation.models import ValuationDisplay
@@ -511,6 +512,7 @@ def render_email(
         valuations=valuations or {},
         valuation_checked_at=valuation_checked_at,
         valuation_label=valuation_label,
+        valuation_notes=valuation_notes(valuations or {}),
         sentiment=sentiment,
         sentiment_verdict=sentiment_verdict,
         sentiment_gauge=sentiment_gauge,

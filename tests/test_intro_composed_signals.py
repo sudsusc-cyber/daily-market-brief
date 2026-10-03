@@ -307,3 +307,54 @@ def test_expanded_spatial_grammar_never_inverts_status_or_invents_a_transition()
         assert _signal_errors(f'示例企业{verb}定投的{noun}以内。', signals, [])
     for invented in ['现价100元处在', '跌幅20%后落在', '已跌破120周均线而处在']:
         assert _signal_errors(f'示例企业{invented}定投的区间内。', signals, [])
+
+
+FLOW_PROSE = ('理解一家企业，需要看见热闹背后那些安静而持久的努力。'
+              '把目光放长，也要让判断有一把清楚的尺；【持仓近况】；'
+              '尺度落到具体处，耐心才不只是等待，而是让时间检验自己对生意的理解。')
+
+
+@pytest.mark.parametrize('statement', [
+    '甲企业合乎大额买入的尺度，乙企业亦有定投的余地。',
+    '甲企业的大额买入余地尚在，乙企业与定投的尺度相契。',
+])
+def test_verified_states_can_flow_between_independent_prose_clauses(statement):
+    result = write_intro(rows(), client=Client({'text': FLOW_PROSE, 'signal_text': statement}))
+    assert result == FLOW_PROSE.replace('【持仓近况】', statement[:-1])
+    assert '。；' not in result and '；；' not in result
+    assert result.replace(statement[:-1], '', 1) == FLOW_PROSE.replace('【持仓近况】', '')
+    assert _signal_errors(statement.replace('大额买入', '定投'), rows(), [])
+    assert _signal_errors(statement.replace('尚在', '不在').replace('亦有', '没有'), rows(), [])
+
+
+@pytest.mark.parametrize('prefix', ['如果判断成立', '也许等待有了答案', '假设尺度没有偏移', '除非理解足够扎实'])
+def test_clause_integration_cannot_make_a_verified_state_conditional(prefix):
+    prose = FLOW_PROSE.replace('把目光放长，也要让判断有一把清楚的尺', prefix)
+    data = {'text': prose, 'signal_text': '甲企业有大额买入的余地，乙企业亦有定投的余地。'}
+    assert write_intro(rows(), client=Client(data, data)) is None
+
+
+def test_semicolon_composition_does_not_hide_a_repeated_reflection():
+    from src.processors.holdings_intro import _intro_errors
+
+    statement = '甲企业有大额买入的余地，乙企业亦有定投的余地'
+    old = FLOW_PROSE.replace('【持仓近况】', statement)
+    assert 'recent_repeat' in _intro_errors(FLOW_PROSE.replace('【持仓近况】', ''), '', [old])
+
+
+def test_explicit_full_stop_after_slot_is_not_duplicated():
+    statement = '甲企业有大额买入的余地，乙企业亦有定投的余地。'
+    prose = PROSE.replace('【持仓近况】', '【持仓近况】。')
+    assert write_intro(rows(), client=Client({'text': prose, 'signal_text': statement})) == PROSE.replace('【持仓近况】', statement)
+
+
+def test_abstract_negative_reflection_does_not_negate_the_independent_signal_clause():
+    prose = ('价格回落到某个位置，本身并不说明什么，它只是把一直存在的选择摆到眼前。'
+             '人容易在喧闹时高估自己的判断，在安静时又低估企业的耐力。'
+             '区间给的不是答案，而是一个让尺度替情绪说话的机会；【持仓近况】'
+             '剩下的，是时间对耐心与理解的缓慢结算。')
+    statement = '甲企业合乎大额买入的尺度，乙企业亦有定投的余地。'
+    assert write_intro(rows(), client=Client({'text': prose, 'signal_text': statement})) == prose.replace('【持仓近况】', statement)
+    bad = prose.replace('区间给的不是答案，而是一个让尺度替情绪说话的机会', '并非')
+    response = {'text': bad, 'signal_text': statement}
+    assert write_intro(rows(), client=Client(response, response)) is None

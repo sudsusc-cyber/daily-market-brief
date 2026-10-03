@@ -299,7 +299,9 @@ def test_email_keeps_numeric_cell_and_identifies_non_morningstar_exception(retai
     assert cell.select_one('.holding-valuation-main').get_text(strip=True) == "203.00"
     assert cell.select_one('.holding-implied-return').get_text(strip=True) == "IRR\xa045.0%"
     assert "待更新" not in cell.get_text()
-    assert "其余个股 Morningstar；泡泡玛特为大摩目标价（2026-08-21），非晨星" in html
+    date_note = '' if retained else '（2026-08-21）'
+    assert f"其余个股 Morningstar；泡泡玛特为大摩目标价{date_note}，非晨星" in html
+    assert html.count('2026-08-21') == 1
     assert ("最新报告本次未确认" in html) is retained
 
 
