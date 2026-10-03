@@ -50,6 +50,15 @@ valuation recipes, strategy, freshness limits and the 3-paragraph macro cap are 
   Calendar/fiscal grammar is excluded from product identity; genuine named models
   remain eligible. This defect came from the October 1 resend, not these two editions.
 
+## Dependency audit
+
+PR CI identified eight advisories in the existing locked `pypdf 6.16.2`:
+PYSEC-2026-4153 through PYSEC-2026-4160. Raise the minimum and lock to 6.19.0,
+which covers all reported fix versions, without ignoring any advisory or changing
+other dependency versions. The upstream [changelog](https://pypdf.readthedocs.io/en/stable/meta/CHANGELOG.html)
+documents bounded parsing/security fixes. Add a real two-page PDF extraction
+integration test through the production official-report reader.
+
 ## Verification
 
 27 new regression cases include immutable October 2/3 source mappings, full
@@ -60,7 +69,7 @@ sources (only the broker recommendation / price-only story is removed), and
 New translations used by offline replay are explicit test inputs checked by the
 production guard, not claims about a newly executed production LLM response.
 
-Final local validation: 2,382 tests passed; Ruff and `git diff --check` passed.
+Final local validation: 2,383 tests passed; Ruff and `git diff --check` passed.
 Production-renderer news previews were inspected in the browser. No SMTP was
 called by preview or tests. Existing full-template regression coverage is retained.
 

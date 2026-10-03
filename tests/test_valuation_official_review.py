@@ -113,3 +113,29 @@ def test_official_review_rejects_formula_override(monkeypatch) -> None:
             document=_document(),
             client=_Client(payload),
         )
+
+
+def test_real_pdf_text_extraction_after_security_upgrade():
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    from src.valuation.official_review import _extract_text
+
+    writer = PdfWriter()
+    font = DictionaryObject({NameObject('/Type'): NameObject('/Font'),
+                             NameObject('/Subtype'): NameObject('/Type1'),
+                             NameObject('/BaseFont'): NameObject('/Helvetica')})
+    expected = ['Net income 125.5 million USD', 'Free cash flow 90.0 million USD']
+    for line in expected:
+        page = writer.add_blank_page(width=612, height=792)
+        page[NameObject('/Resources')] = DictionaryObject({
+            NameObject('/Font'): DictionaryObject({NameObject('/F1'): font})})
+        stream = DecodedStreamObject()
+        stream.set_data(f'BT /F1 12 Tf 50 700 Td ({line}) Tj ET'.encode())
+        page[NameObject('/Contents')] = stream
+    output = BytesIO()
+    writer.write(output)
+    text = _extract_text(output.getvalue(), 'application/pdf')
+    assert text.splitlines() == expected
