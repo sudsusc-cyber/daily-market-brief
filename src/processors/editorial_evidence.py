@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 
 def editorial_issue(text: str) -> str | None:
     text = text.strip()
+    if re.search(r"\b(?:beware|be wary of)\b.{0,60}\bhype\b|警惕.{0,40}炒作", text, re.I):
+        return 'investment_opinion'
     if re.match(r"(?:NEWSLETTER|PODCAST|VIDEO)\s*[:：]", text, re.I) and re.search(r"Q&A|inside|a look|问答|解读", text, re.I):
         return 'reader_navigation'
     if re.match(r"(?:what|who|how|why|when|where)\s+(?:should|could|would|do|does|did|is|are|was|were|will|can|has|have)\b", text, re.I):

@@ -18,7 +18,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 10
+PRESENTATION_VERSION = 11
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -166,15 +166,21 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
                 return match[0]
             return ' ' if phrase.startswith('一家') else '，'
         record("corporate_description", re.sub(r'，((?:一家|这是一家)[^，。；]{3,90}(?:公司|企业|机构|云))，', appositive, text))
-    record("qualified_listing", _QUALIFIED.sub("", text))
+    qualified = _QUALIFIED
+    if _version >= 11:
+        qualified = re.compile(_QUALIFIED.pattern.replace(_EXCHANGES, _EXCHANGES + "|TW|OTC|OTCQX|OTCQB"), re.I)
+    record("qualified_listing", qualified.sub("", text))
     record("issuer_listing", _PARENS.sub(lambda m: _known_bare_listing(m, text), text))
     if _version >= 4:
         record("issuer_listing", re.sub(r"\s*[（(](\d{4,5})[)）]",
                lambda m: _known_bare_listing(m, text), text))
     for name, short in _LEGAL_NAMES.items():
+        name_pattern = re.escape(name)
+        if _version >= 11:
+            name_pattern = name_pattern.replace(r'\.', r'\.?')
         record(
             "entity_display_name",
-            re.sub(r"(?<![A-Za-z])" + re.escape(name) + r"(?![A-Za-z])", short, text, flags=re.I),
+            re.sub(r"(?<![A-Za-z])" + name_pattern + r"(?![A-Za-z])", short, text, flags=re.I),
         )
     terms = {**_FINANCIAL_TERMS, **(_LOCALIZED_TERMS_V9 if _version >= 9 else {})}
     for name, translated in terms.items():
@@ -271,12 +277,14 @@ def voice_text(text: str, person: str, *, _version: int = PRESENTATION_VERSION) 
     return body
 
 
-def company_body(text: str, ticker: str) -> str:
+def company_body(text: str, ticker: str, *, _version: int = PRESENTATION_VERSION) -> str:
     """Remove only a leading issuer repeated by the verified company label."""
     holding = next((h for h in HOLDINGS if h.ticker == ticker), None)
     if not holding:
         return text
     aliases = {holding.name, _issuer_key(holding.name), COMPANY_DISPLAY_NAMES.get(ticker, '')}
+    if _version >= 11:
+        aliases.add(ticker)
     # Issuer-name vocabulary only; never product names, executives or relevance keywords.
     aliases.update({'GOOG': ('Google', 'Alphabet'), 'TSM': ('TSMC', '台积电', '台積電'),
                     'AXP': ('Amex',)}.get(ticker, ()))
@@ -288,6 +296,12 @@ def company_body(text: str, ticker: str) -> str:
         match = re.match(pattern + (r'(?![A-Za-z])' if alias.isascii() else ''), text, re.I)
         if match:
             body = text[match.end():].lstrip(' ：:，,│|')
+            if _version >= 11:
+                # Legal suffixes are part of the issuer, not a new subject.
+                body = re.sub(r'^(?:Inc|Corp|Corporation|Incorporated|Ltd|Limited|LLC)\.?(?![A-Za-z])\s*', '', body, flags=re.I)
+                # Keep ownership/modifier and coordinated subjects intact.
+                if re.match(r"的|旗下|支持的|投资的|和|与|及|['’]s\b", body):
+                    return text
             # Possessive subjects must remain explicit (e.g. Google's supplier).
             if len(body) >= 6 and not re.match(r"的|['’]s\b", body):
                 return body
@@ -308,10 +322,10 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, 8, 9, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, 9, 10, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         if version >= 10 and row.get("presentation_company"):
-            output = company_body(output, row["presentation_company"])
+            output = company_body(output, row["presentation_company"], _version=version)
         return (
             voice_text(output, str(row.get("presentation_speaker", "")), _version=version)
             if row.get("presentation_speaker")

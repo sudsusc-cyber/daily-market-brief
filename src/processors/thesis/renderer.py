@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 6
+_VERSION = 7
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -184,11 +184,18 @@ def _rule_for(row: dict) -> WatchRule | None:
                      re.search(negated_change, original, re.I) or re.search(negated_change, text)))), None)
 
 
+def _named_product(title):
+    from src.processors.translation_guard import _MONTH
+    pattern = r"\b[A-Z][A-Za-z]+[- ]\d+(?:\.\d+)?(?: [A-Z][a-z]+)?\b"
+    return next((m for m in re.finditer(pattern, title)
+                 if not re.match(r"(?:" + _MONTH + r"|Q[1-4]|FY|Fiscal|Year|Quarter)\b", m[0], re.I)), None)
+
+
 def _event_subject(row):
     from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
     entity = _ENTITY.search(row['excerpt'])
     name = COMPANY_DISPLAY_NAMES.get(row.get('presentation_company'), entity[0] if entity else '')
-    product = re.search(r"\b[A-Z][A-Za-z]+[- ]\d+(?:\.\d+)?(?: [A-Z][a-z]+)?\b", row.get('original_title', ''))
+    product = _named_product(row.get('original_title', ''))
     return name + (' ' + product[0] if product else '')
 
 
@@ -198,7 +205,7 @@ def _event_key(row: dict, theme: str) -> str:
 
     title = row.get('original_title', '')
     entity = _ENTITY.search(title)
-    product = re.search(r"\b[A-Z][A-Za-z]+[- ]\d+(?:\.\d+)?(?: [A-Z][a-z]+)?\b", title)
+    product = _named_product(title)
     if theme != 'product-commercialization' or not entity or not product:
         return _fact_key(row)
     numbers = sorted(str(key) for key in set(_quantities(title)) | set(_quantities(row['excerpt'])))

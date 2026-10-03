@@ -42,7 +42,7 @@ OBJECTS = {
     "us_bonds": r"Treasuries|Treasury (?:yields?|bonds?|debt|selloff)|U\.?S\.? (?:government )?(?:bonds?|yields?|debt)|美债|美国国债",
     "policy_rates": r"(?:benchmark|interest|policy) rates?|基准利率|政策利率|降息|加息",
     "inflation": r"inflation|\bCPI\b|\bPCE\b|通胀|物价指数",
-    "employment": r"payroll|\b(?:un)?employment\b|labor market|非农|失业|就业",
+    "employment": r"payrolls?|\b(?:un)?employment\b|labor market|\bjobs?\b|非农|失业|就业",
     "growth": r"\bGDP\b|\bPMI\b|economic growth|recession|pro.growth|经济增长|经济衰退|增长政策|促增长",
     "budget": r"\bbudgets?\b|预算",
     "subsidy": r"subsid(?:y|ies|ize)|mortgage support|补贴|房贷支持",
@@ -88,6 +88,12 @@ REGIONS = {
     "other_gulf": r"Gulf of (?:Mexico|America|Finland|Guinea|Thailand)|墨西哥湾|美国湾|芬兰湾|几内亚湾|泰国湾",
     "other_partner": r"European|Europe|Japan|欧盟|欧洲|日本",
 }
+# Keep jurisdictions distinct when grouping a release with market reactions.
+REGIONS.update({
+    'canada': r"\bCanada|Canadian\b|加拿大", 'australia': r"\bAustralia|Australian\b|澳大利亚|澳洲",
+    'uk': r"\bUK\b|United Kingdom|Britain|British|英国", 'india': r"\bIndia|Indian\b|印度",
+    'euro_area': r"Eurozone|euro area|欧元区",
+})
 TOPICS = {
     "us_bonds": "美债市场",
     "policy_rates": "货币政策",
@@ -316,6 +322,26 @@ def edition_events(texts: list[str]) -> list[MacroEvent]:
     from dataclasses import replace
 
     events = [extract_event(text) for text in texts]
+    # Group a data release with market reactions explicitly citing that release.
+    # Mentioning an economy/market alone never joins unrelated stories.
+    from src.processors.translation_guard import _calendar_months
+
+    def months(text):
+        return {match[0][:3].casefold() for match in _calendar_months(text)}
+
+    for family in ('employment', 'inflation', 'growth'):
+        anchors = [e for e in events if e.family == family]
+        for i, event in enumerate(events):
+            if event.family not in {'us_bonds', 'bonds', 'fx', 'precious_metals'}:
+                continue
+            if not any(s.kind == 'object' and s.value == family for s in event.spans):
+                continue
+            if not re.search(r'\b(?:after|as|despite|following)\b|因|尽管|数据|报告', event.text, re.I):
+                continue
+            if (len(anchors) == 1 and not (set(event.geography) - set(anchors[0].geography))
+                    and not (months(event.text) and months(anchors[0].text)
+                             and months(event.text) != months(anchors[0].text))):
+                events[i] = replace(event, topic=TOPICS[family], decision='edition_data_release_reaction')
     if any(e.topic == "中美关系" for e in events):
         for i, event in enumerate(events):
             if (

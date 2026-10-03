@@ -26,6 +26,9 @@ _WIRE_DATELINE = re.compile(
 def reporting_text(text: str) -> str:
     """Drop a wire dateline/standfirst, never rewrite the reporting sentence."""
     text = strip_source_prefix(plain_source(text))
+    slash_wire = re.match(r"^[A-Z][A-Z .,’\'-]+ / [A-Za-z ]*(?:Newswire|Wire) / [A-Za-z]+ \d{1,2}, \d{4} /\s*", text)
+    if slash_wire:
+        return text[slash_wire.end():].strip()
     dateline = _WIRE_DATELINE.search(text[:600])
     if dateline and re.search(
             r"(?:^|(?<=[a-z]))[A-Z][A-Z .'-]{1,45},\s*(?:[A-Z][A-Za-z .'-]{1,30},\s*)?$",
@@ -65,6 +68,8 @@ def complete_excerpt(text: str, source_name: str = '') -> bool:
     if re.search(r'(?:\.{3}|…|\[\s*…\s*\])\s*[。.!！?？”’"\']*$', text):
         return False
     text = text.rstrip('。.!！?？ ”’"\'')
+    if re.match(r"^[,，;；]|^(?:Inc|Corp|Ltd|LLC)\.?\s", text, re.I):
+        return False
     return bool(text) and not bool(re.search(
         r'(?:\.{3}|…|\[\s*…\s*\]|read more)$|以.{1,80}为$|(?:用于|包括|以及|基于|关于)$'
         r'|\b(?:is expected to|plans to|according to|including|such as)$', text, re.I))
@@ -83,10 +88,11 @@ _PRICE_EDITORIAL = re.compile(
     r'|which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
     r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rises?|falls?|rall(?:y|ies)|surges?|jumps?|slumps?|edges? (?:higher|lower))'
     r'|wish you (?:had )?bought|regret not buying|unloved .*stock|别错过|后悔没买'
+    r'|\bhits? (?:a )?(?:new |record )?(?:all.time|record) high|\bmarket cap(?:italization)? (?:hits?|reaches?)'
     r'|哪.*股票|值得买|股价.*(?:上涨|下跌|飙升)', re.I)
 _BUSINESS_FACT = re.compile(
     r'\b(?:reported?.*(?:results|earnings|revenue)|earnings|revenue|sales|renew\w*.*(?:licen\w*|agreement)'
-    r'|(?:plans?|will|agrees? to) invest|announced|introduc\w*|appoint\w*|acqui\w*|merger|launch\w*'
+    r'|partner(?:s|ed|ing)? with|(?:plans?|will|agrees? to) invest|announced|introduc\w*|appoint\w*|acqui\w*|merger|launch\w*'
     r'|(?:paus\w*|cancel\w*).*(?:training|evaluation|launch)|settlement|lawsuit|litigation|patent verdict|court ruling|appeal|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
 
@@ -99,7 +105,7 @@ def business_fact(text: str) -> bool:
 def analyst_opinion(text: str) -> bool:
     """Broker ratings/targets are opinions, regardless of broker or issuer."""
     return bool(re.search(
-        r"\b(?:price targets?|target prices?|overweight|underweight|outperform|underperform|buy rating|sell rating|hold rating)\b"
+        r"\b(?:tactical ideas list|upside potential|price targets?|target prices?|overweight|underweight|outperform|underperform|buy rating|sell rating|hold rating)\b"
         r"|(?:analysts?|brokerage|broker)\b.{0,80}\b(?:ratings?|upgrades?|downgrades?)\b"
         r"|目标价|(?:分析师|券商).{0,50}评级|(?:增持|减持|买入|卖出|中性|跑赢大盘|跑输大盘)评级", text, re.I))
 
@@ -202,6 +208,13 @@ def publication_candidates(item, text: str) -> list[str]:
     result = list(parts)
     if ticker:
         for left, right in zip(parts, parts[1:], strict=False):
+            if (holding_in_excerpt(left, ticker) and not holding_in_excerpt(right, ticker)
+                    and re.match(r'(?:Instead,? )?(?:It|The (?:company|firm|group|tech giant))\b', right, re.I)
+                    and business_fact(right) and len(left + right) <= 900):
+                start = text.find(left)
+                end = text.find(right, start + len(left))
+                if start >= 0 and end >= 0:
+                    result.insert(0, text[start:end + len(right)])
             if (not holding_in_excerpt(left, ticker) and holding_in_excerpt(right, ticker)
                     and re.search(r"participat|invest|led by|partner|agreement|supply|customer|参与|投资|领投|合作|供应|客户", right, re.I)
                     and re.search(r"round|financing|deal|transaction|agreement|contract|project|Series|本轮|此次|该|这", right, re.I)
@@ -352,6 +365,9 @@ def factual_excerpt(item) -> str:
         return ''
     title = plain_source(getattr(item, 'title', ''))
     summary = plain_source(getattr(item, 'summary', '') or getattr(item, 'snippet', ''))
+    if (re.search(r"\b(?:global leader|leading (?:technology|provider)|first company capable|through your|not your)\b", summary, re.I)
+            and publishable_excerpt(item, title) and not re.search(r"\byour\b", title, re.I)):
+        return title
     if navigation_headline(title):
         return next((part for part in sentences(summary) if publishable_excerpt(item, part)), '')
     if re.search(r"\bsummary\b|摘要|概要", title, re.I) and not document_types(title):
@@ -393,7 +409,7 @@ def factual_excerpt(item) -> str:
     if eligible:
         return eligible[0]
     title_sentences = sentences(title)
-    if len(title_sentences) == 2 and re.match(r"How we got here|What to know|Here.s (?:why|the|what)|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
+    if len(title_sentences) == 2 and re.match(r"The (?:real|main) (?:prize|story|takeaway)\b|How we got here|What to know|Here.s (?:why|the|what)|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
         return title_sentences[0] if publishable_excerpt(item, title_sentences[0]) else ''
     # A rolling news-page title is navigation, not a fact. Prefer its actual
     # complete summary sentence even if it is not a company earnings item.
@@ -418,7 +434,8 @@ def company_candidate(item, ticker: str) -> bool:
     if _ROUNDUP.search(title):
         return bool(roundup_excerpt(item, ticker))
     excerpt = factual_excerpt(item)
-    if analyst_opinion(title) and (analyst_opinion(excerpt) or not business_fact(excerpt)):
+    if analyst_opinion(title) and (analyst_opinion(excerpt) or not (
+            _OPERATING_EVENT.search(excerpt) or has_event(excerpt, 'acquisition', 'launch', 'approval', 'completion'))):
         return False
     # An analysis headline is not rescued by another metaphorical fragment.
     # A complete operating announcement in the body remains eligible.
