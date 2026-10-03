@@ -167,7 +167,7 @@ def test_repair_cannot_authorize_unsupported_facts_or_erase_first_rejection(resp
     client = Client("▦ 1: yes | score=5 | 没有依据的摘要", response)
     result = filter_one(bundle([item]), client=client)
     assert not result.items and result.content_rejections and not result.processing_error
-    assert len(client.calls) == 2
+    assert len(client.calls) == 3  # selection plus the two shared recovery calls
     assert result.verification_audit[0]["rejected_indexes"]
     assert "private-token" not in json.dumps(result.verification_audit)
 
@@ -177,7 +177,7 @@ def test_recovery_budget_is_shared_and_editorial_no_does_not_trigger_repair():
         bundle([mention("Sam Altman says GPUs are useful.", i)], f"Person {i}") for i in range(4)
     ]
     yes = "▦ 1: yes | score=5 | 未核实摘要"
-    client = Client(yes, None, yes, None, yes, "▦ 1: no | score=1 | 没有重要的新发言")
+    client = Client(yes, None, None, yes, yes, "▦ 1: no | score=1 | 没有重要的新发言")
     results = filter_all(items, client=client)
     assert len(client.calls) == 6  # four selections, only two recovery batches
     assert all(not x.items for x in results)
