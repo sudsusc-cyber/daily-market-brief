@@ -87,7 +87,7 @@ def chinese_prose(text: str) -> bool:
 _PRICE_EDITORIAL = re.compile(
     r'(?:stock|shares?).*(?:best|worst|strongest|weakest).*(?:day|week|month|quarter|year)|股价.*(?:最佳|最差|最好|最坏).*表现'
     r'|which.*(?:stock|buy)|better stock|stock.*(?:to buy|worth buying)|undervalued.*(?:view|compelling)'
-    r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rises?|falls?|rall(?:y|ies)|surges?|jumps?|slumps?|edges? (?:higher|lower))'
+    r'|(?:stock|shares?|\([A-Z]+\)).*(?:is up|is down|holds flat|rises?|falls?|climbs?|advances?|declines?|rall(?:y|ies)|surges?|jumps?|slumps?|edges? (?:higher|lower))'
     r'|wish you (?:had )?bought|regret not buying|unloved .*stock|别错过|后悔没买'
     r'|\bhits? (?:a )?(?:new |record )?(?:all.time|record) high|\bmarket cap(?:italization)? (?:hits?|reaches?)'
     r'|哪.*股票|值得买|股价.*(?:上涨|下跌|飙升)', re.I)
@@ -147,6 +147,8 @@ def program_metadata(item, text: str) -> bool:
 
 def navigation_headline(text: str) -> bool:
     """An article promising reasons/tips is navigation, not those facts."""
+    if re.match(r"(?:What|Here['’]s what|Here is what) (?:this|that|it) means(?: for\b|[.?!]|$)|(?:这|那)(?:对.{1,40})?意味着什么", text, re.I):
+        return True
     interview_topic = re.search(r"\b(?:Chair|Secretary|Minister|CEO|Economist)\s+(?:[A-Z][A-Za-z.]*\s+){0,3}on\s+[^:：!?]+$", text)
     if interview_topic and not re.search(r'[“”"‘’]|\b(?:says|said|warns|expects)\b', text, re.I):
         return True
@@ -490,6 +492,8 @@ def factual_excerpt(item) -> str:
     if eligible:
         return eligible[0]
     title_sentences = sentences(title)
+    if len(title_sentences) >= 2 and navigation_headline(title_sentences[1]):
+        return title_sentences[0] if publishable_excerpt(item, title_sentences[0]) else ''
     if len(title_sentences) == 2 and re.match(r"The (?:real|main) (?:prize|story|takeaway)\b|How we got here|What to know|Here.s (?:why|the|what)|What.s next|Here.s where (?:the |this )?stock", title_sentences[1], re.I):
         return title_sentences[0] if publishable_excerpt(item, title_sentences[0]) else ''
     # A rolling news-page title is navigation, not a fact. Prefer its actual
