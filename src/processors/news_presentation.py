@@ -276,7 +276,7 @@ def voice_text(text: str, person: str, *, _version: int = PRESENTATION_VERSION) 
                         body = price['issuer'].strip() + body[2:]
                     # Preserve numerical/deal context, but lead with the speech.
                     has_context = re.search(r'投资|收购|协议|合同|之后|此前|后', background)
-                    return body.rstrip('。') + ('。（背景：' + background.rstrip('。') + '）' if has_context else '')
+                    return body.rstrip('。') + ('（背景：' + background.rstrip('。') + '）' if has_context else '')
     if _version >= 6:
         # Topic prefixes stay visible; only an exact configured speaker and a
         # neutral reporting verb are elided. Addressed audiences stay in prose.
