@@ -14,7 +14,7 @@ from src.processors.news_selection import macro_candidate
 ])
 def test_individual_incident_details_need_wider_impact(title):
     assert not macro_candidate(SimpleNamespace(title=title, summary=''))
-    assert macro_candidate(SimpleNamespace(title=title, summary='Government closes airspace and suspends international flights.'))
+    assert macro_candidate(SimpleNamespace(title=title, summary='Following the attack, government closes airspace and suspends international flights.'))
 
 
 @pytest.mark.parametrize('title', [
@@ -25,3 +25,9 @@ def test_individual_incident_details_need_wider_impact(title):
 ])
 def test_policy_market_and_cross_border_consequences_remain(title):
     assert macro_candidate(SimpleNamespace(title=title, summary=''))
+
+
+def test_unrelated_digest_items_cannot_supply_macro_impact():
+    title = 'Country had previously banned attacker from flying'
+    assert not macro_candidate(SimpleNamespace(title=title, summary='Plus, G7 releases oil and new jobs data arrive.'))
+    assert macro_candidate(SimpleNamespace(title=title, summary='Following the attack, oil supply was disrupted.'))
