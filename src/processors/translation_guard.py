@@ -149,6 +149,8 @@ def _quantities(text: str) -> Counter:
             greater = r"(?:\bmore than|\bover|超过|逾)\s*$"
         if re.search(greater, before, re.I):
             result[("bound", value, unit, "gt")] += 1
+        elif re.search(r"(?:\bup to|(?:最多|最高|至多)(?:可|将)?(?:增派|派遣|提供|借出|发行|投入|投资|支付|筹集|融资)?)\s*$", before, re.I):
+            result[("bound", value, unit, "le")] += 1
         elif re.search(r"(?:\bless than|\bunder|不足|少于|不到)\s*$", before, re.I):
             result[("bound", value, unit, "lt")] += 1
     return result
@@ -179,6 +181,22 @@ def _entity_order(text: str) -> list[str]:
         if hits:
             positions.append((min(hits), entity))
     return [entity for _, entity in sorted(positions)]
+
+
+def _claim_entity_order(text: str) -> list[str]:
+    # Attribution order is independent of the actor/object order in the claim.
+    name = r"[A-Z][a-z]+(?: [A-Z][a-z]+){0,3}"
+    patterns = [r"[，,]\s*(?P<speaker>" + name + r")\s*(?:称|表示|说)(?=\s*(?:[-–—|]|[。.]?$))",
+                r",\s*(?P<speaker>" + name + r")\s+(?i:says|said)\b(?=\s*(?:[-–—|]|[。.]?$))",
+                r"^(?P<speaker>" + name + r")\s+(?i:says|said)\s+",
+                r"^(?P<speaker>" + name + r")\s*(?:称|表示|说)[，,:：]?\s*"]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            speaker = [match['speaker'].casefold()]
+            claim = text[:match.start()] + text[match.end():]
+            return ['speaker:' + '/'.join(speaker), *_entity_order(claim)]
+    return _entity_order(text)
 
 
 def _scoped_states(text: str) -> set[tuple]:
@@ -396,13 +414,15 @@ def translation_errors(original: str, translated: str) -> list[str]:
     for entity, aliases in _ENTITIES.items():
         if any(_contains(original, alias) for alias in aliases) != any(_contains(translated, alias) for alias in aliases):
             errors.append('entity:' + entity)
-    if _entity_order(original) != _entity_order(translated):
+    if _claim_entity_order(original) != _claim_entity_order(translated):
         errors.append('entity_order')
     if _scoped_states(original) != _scoped_states(translated):
         errors.append('event_scope')
     # Preserve identifiers, model names and acronyms literally (including unknown ones).
     # Match versioned model names first and greedily; a grammatical acronym
     # plural must not erase a model suffix (e.g. Claude-3-Sonnet -> Claude-3-Opus).
+    original = re.sub(r'^EXCLUSIVE\s*[:：-]\s*', '', original, flags=re.I)
+    translated = re.sub(r'^独家\s*[:：-]\s*', '', translated)
     tokens = re.findall(r'\b(?:[A-Za-z]+[-.]\d[\w.-]*|[A-Z]{2,}[A-Z0-9-]*s?)\b', original + ' ' + translated)
     identifiers = {token[:-1] if re.fullmatch(r"[A-Z]{2,}s", token) else token for token in tokens}
     location_tokens = {'NEW', 'YORK'} if _contains(original, 'New York') else set()
