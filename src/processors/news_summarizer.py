@@ -100,7 +100,14 @@ _TASK_INSTRUCTION = """\
 
 【内容标准】
 
-值得报道:业绩 / 重大合作 / 监管动作 / 产品发布 / 人事变动 / 资本动作 / 并购
+按长期价值投资的用途选稿，而非按热度或为每家公司填满一行。
+值得报道：影响持续盈利、现金流、竞争优势、客户需求、定价权、资本配置、治理或重大风险的事实。
+包括业绩质量与业务结构、重大合同和商业化进展、研发与产能、重大监管/诉讼、关键管理层和并购。
+早期产品/技术变化可以入选，不要求已有收入或金额，但原文须有具体进展和清楚的业务关联。
+联名/合作本身不等于有价值：优先渠道、授权经济性、客户采用和销量证据；仅换包装、礼盒、配色从略。
+只有第三方使用或兼容某平台、获奖宣传、参会站台、资金流/持仓排名、使用教程与折扣推广，不应占据持仓动态。
+不必写额外的“利好长期价值”结论；正文只报道来源支持的事实，不代替读者作投资判断。
+同等重要时优先新增经营信息；有价值的消息少时允许少刊，不以低信息量材料凑数。
 不值得报道:股价波动本身、"分析师上调评级"类二手观点、KOL 评论、八卦花边、
   已被市场充分消化的旧闻、列表/排行类文章
 
@@ -425,12 +432,21 @@ def summarize(
 ) -> CompanyNewsSummary | None:
     if not bundles:
         return None
+    from src.processors.investment_relevance import long_term_noise_reason
+
+    editorial_exclusions = [
+        {"ticker": b.holding.ticker, "url": it.url, "reason": reason}
+        for b in bundles if not b.error for it in b.items
+        if (reason := long_term_noise_reason(it.title, it.summary or '',
+                         holding_is_subject=company_fact_matches(it.title, b.holding.ticker)))
+    ]
+    editorial_audit = {"phase": "long_term_relevance", "excluded": editorial_exclusions[:120]}
     payload, flat_items = _format_input(bundles)
     if not flat_items:
-        return CompanyNewsSummary(summary_html="", is_silence=True) if any(b.items and not b.error for b in bundles) else None
+        return CompanyNewsSummary(summary_html="", is_silence=True, selection_audit=[editorial_audit]) if any(b.items and not b.error for b in bundles) else None
     last_error: str | None = None
     recovery_attempted = False
-    audit = [{"phase": "candidate_window", "available": sum(len(b.items) for b in bundles if not b.error),
+    audit = [editorial_audit, {"phase": "candidate_window", "available": sum(len(b.items) for b in bundles if not b.error),
               "considered": len(flat_items), "per_company_limit": 15}]
     for attempt in range(1, _MAX_SUMMARY_ATTEMPTS + 1):
         task_instruction = _TASK_INSTRUCTION + INSTRUCTION
@@ -460,7 +476,7 @@ def summarize(
         raw_text = resp.text.strip()
         if _is_no_important_output(raw_text):
             logger.info("news_summarizer.silence attempt=%d", attempt)
-            return CompanyNewsSummary(summary_html="", is_silence=True)
+            return CompanyNewsSummary(summary_html="", is_silence=True, selection_audit=audit)
 
         indexes = list(dict.fromkeys(footnote_idx(m) for m in FOOTNOTE_RE.finditer(raw_text)))
         selected = [flat_items[i - 1] for i in indexes if 1 <= i <= len(flat_items)]

@@ -424,6 +424,11 @@ def factual_excerpt(item) -> str:
 def company_candidate(item, ticker: str) -> bool:
     title = plain_source(getattr(item, 'title', ''))
     text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
+    from src.processors.investment_relevance import long_term_noise_reason
+
+    if long_term_noise_reason(title, plain_source(getattr(item, 'summary', '') or ''),
+                              holding_is_subject=company_fact_matches(title, ticker)):
+        return False
     if re.search(r"\b(?:net worth|wealth.*shares|richest|biography)\b", title, re.I) and re.search(r"\?|profile|who is|what is", title, re.I):
         return False
     # Appointment beneficiary is the grammatical subject, not the appointee's
