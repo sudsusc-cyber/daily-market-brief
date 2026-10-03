@@ -809,7 +809,7 @@ def main() -> int:
     report["quality_details"] = quality_details(report)
     report["judgment_mapping"] = judgment_section.items if judgment_section else []
     report["judgment_selection"] = judgment_audit
-    audit_directory = archive_publication(html, generated_at=now_bj, report=report, inline_images=inline_images)
+    audit_directory = archive_publication(html, generated_at=now_bj, report=report, inline_images=inline_images, subject=subject)
     if report["status"] == "degraded" or len(html.encode()) > 98304:
         for detail in report["quality_details"] or ["内容核验降级；详见结构化审计"]:
             _record_quality_alert(detail)

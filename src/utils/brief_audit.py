@@ -144,7 +144,7 @@ def _finite(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def archive_publication(html: str, *, generated_at, report: dict, inline_images=()) -> Path:
+def archive_publication(html: str, *, generated_at, report: dict, inline_images=(), subject: str = "") -> Path:
     root = Path(os.environ.get("BRIEF_AUDIT_DIR", ".brief-audit"))
     run_id = os.environ.get("GH_RUN_ID", "local")
     attempt = os.environ.get("GH_RUN_ATTEMPT", os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
@@ -175,6 +175,7 @@ def archive_publication(html: str, *, generated_at, report: dict, inline_images=
     if report["html_bytes"] > 98304:
         report["status"] = "degraded"
     manifest = {
+        "subject": subject,
         "run_id": run_id,
         "run_attempt": attempt,
         "edition": edition,
