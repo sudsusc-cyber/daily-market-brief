@@ -110,6 +110,7 @@ def _quantities(text: str) -> Counter:
     text = re.sub(r"[一二三四五六七八九]?十[一二三四五六七八九]?(?=多?年|个月|天|周)|[一二两三四五六七八九](?=多?年|个月|天|周)", chinese_count, text)
     text = re.sub(r"(\d+)多年", r" more than \1年", text)
     text = re.sub(r"(\d+)(年|个月|天|周)多", r" more than \1\2", text)
+    text = re.sub(r'(?<=\d)\s+consecutive(?=\s+(?:years?|months?|days?|weeks?)\b)', '', text, flags=re.I)
     for match in _NUMBER.finditer(text):
         value = Decimal(match['n'].replace(',', '')) * _SCALE.get((match['scale'] or '').lower(), 1)
         unit = (match['unit'] or '').lower()
@@ -335,6 +336,10 @@ def translation_errors(original: str, translated: str) -> list[str]:
     # Starting an investigation is a procedural event, not a product launch.
     original = re.sub(r"\blaunch(?:es|ed|ing)?(?=\s+(?:(?:an?|the|broad|new|formal|antitrust|regulatory|criminal|civil|independent|joint|sweeping|comprehensive)\s+){0,3}investigation\b)", "opens", original, flags=re.I)
     translated = re.sub(r"(?:启动|发起)(?=(?:对[^，。；,;]{1,40}的)?(?:广泛|全面|正式|新|反垄断|刑事|民事)?调查)", "展开", translated)
+    # Agentic is already an agent concept; a Chinese explanatory AI prefix
+    # does not introduce an unrelated acronym. Preserve explicit source AI tokens.
+    if re.search(r'\bagentic\b', original, re.I) and not re.search(r'\bAI\b', original):
+        translated = re.sub(r'\bAI\s*(?=智能体)', '', translated)
     original = normalize_event_text(original)
     translated = normalize_event_text(translated)
     errors = []

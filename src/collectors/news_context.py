@@ -11,12 +11,16 @@ from urllib.parse import urlsplit
 import requests
 from bs4 import BeautifulSoup
 
-from src.processors.technical_context import contextual_excerpt, needs_technical_context
+from src.processors.technical_context import (
+    contextual_excerpt,
+    needs_institution_context,
+    needs_technical_context,
+)
 from src.utils.news_facts import canonical_fact
 from src.utils.runtime_budget import RuntimeBudget
 
 logger = logging.getLogger(__name__)
-_HOSTS = {'www.digitaltoday.co.kr', 'digitaltoday.co.kr', 'www.cnbc.com'}
+_HOSTS = {'www.digitaltoday.co.kr', 'digitaltoday.co.kr', 'www.cnbc.com', 'www.tomshardware.com', 'tomshardware.com'}
 _MAX_BYTES = 1_000_000
 
 
@@ -63,7 +67,7 @@ def _body(html, title, source):
     headings = [canonical_fact(h.get_text(' ', strip=True)) for h in soup.select('h1')]
     if canonical_fact(headline) not in headings:
         raise ValueError('article_title_mismatch')
-    article = soup.select_one('#article-view-content-div, [itemprop="articleBody"], .ArticleBody-articleBody, article')
+    article = soup.select_one('#article-view-content-div, [itemprop="articleBody"], .ArticleBody-articleBody, article, #article-body')
     if article is None:
         raise ValueError('article_body_missing')
     for tag in article.select('script, style, nav, aside, figure, footer'):
@@ -88,7 +92,10 @@ def enrich_technical_context(items):
     cache = {}
     attempts = 0
     for item in items:
-        if not needs_technical_context(item.title) or contextual_excerpt(item):
+        institutional = needs_institution_context(item.title)
+        if not (needs_technical_context(item.title) or institutional):
+            continue
+        if contextual_excerpt(item) and (not institutional or getattr(item, 'source_body', '')):
             continue
         url = item.url
         key = (url, item.title, item.source)
@@ -112,5 +119,9 @@ def enrich_technical_context(items):
         for field, value in cache[key].items():
             setattr(item, field, value)
         if getattr(item, 'source_body', ''):
-            item.context_diagnostic = 'verified_context' if contextual_excerpt(item) else 'insufficient_context'
+            from src.processors.news_selection import plain_source
+
+            excerpt = contextual_excerpt(item)
+            item.context_diagnostic = ('verified_context' if excerpt and excerpt in plain_source(item.source_body)
+                                       else 'headline_lead_only' if institutional and excerpt else 'insufficient_context')
         logger.info('news.context_result status=%s', item.context_diagnostic)

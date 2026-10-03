@@ -1,0 +1,13 @@
+# Full-edition editorial audit follow-up
+
+Evidence: formal run 37120832506, attempt 1, sent at 19:54 Beijing. The archived candidate window demonstrates that the previously fixed employment translation still disappeared when interview headings were present. The new fixture retains the entire selected translation window and paragraph membership, not just a two-article example.
+
+Changes:
+- Release anchors require reported measurements, not dates, interview headings or topic mentions. The full candidate-window regression retains payrolls, unemployment and the policy reaction under the existing three-paragraph cap. Interview topic headings are not published in place of their substantive summaries.
+- Financial ability, fund-style nouns, orbital launches, cheque-writing and consecutive durations are normalized in the shared semantic checks. Actual source/translation replays of the four company failures now pass; wrong amounts, executed-versus-capable payments and opposite actions remain rejected. Agentic terminology allows its explanatory Chinese AI prefix without permitting arbitrary added technology claims.
+- Ambiguous institutional acronyms trigger bounded article enrichment, preserving the existing URL allowlist, no-redirect fetch, size and shared time limits. Tom's Hardware is added as an explicit supported publisher. When body context cannot establish the institution, only an independently complete headline lead may remain; negative/corrective tails cannot be cut away. The acronym is never guessed to mean a federal agency. Raw source fields and article provenance remain separate.
+- Presentation v14 leads with the configured speaker's neutral-attribution statement rather than the preceding stock move. Relevant deal/amount background remains explicit afterwards. Other speakers, non-neutral attribution, and previous presentation versions remain intact and replayable.
+
+The preview is an offline replay using archived source snippets, not a fresh collection or independent verification of the underlying reporting. Body enrichment is tested with simulated publisher HTML and can still be unavailable live; its fallback preserves only the supported complete lead. There was no real SMTP send during these changes, and no modification to strategy, valuation, recipients or scheduling.
+
+Validation: 2458 tests passed, 1 deselected by existing configuration; Ruff and git diff whitespace checks passed. New tests cover the full live macro candidate window, semantic positive/negative pairs, context enrichment and safe fallback, corrective-tail preservation, speaker identity/background preservation, and historical presentation replay.
