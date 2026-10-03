@@ -570,7 +570,7 @@ def macro_candidate(item) -> bool:
     wider_impact = re.search(r'sanctions?|trade|oil|shipping|supply|interest rates?|markets? (?:fall|drop|close)'
                             r'|制裁|贸易|石油|航运|供应|利率|市场(?:下跌|关闭)', text, re.I)
     symbolic_colour = re.search(r"panda diplomacy|熊猫外交", title, re.I)
-    personal_colour = re.search(r'\b(?:unusual breaks|health concerns|health speculation|appearance|sleeping|napping)\b|休息安排|健康传闻|健康猜测|打瞌睡', title, re.I)
+    personal_colour = re.search(r'\b(?:(?:unusual )?(?:rest|coffee|meal|bathroom|sleep) breaks|private downtime|unusual breaks|health concerns|health speculation|appearance|sleeping|napping)\b|休息安排|健康传闻|健康猜测|打瞌睡', title, re.I)
     if personal_colour and not wider_impact:
         return False
     return not ((local_colour and crime or symbolic_colour) and not wider_impact)
