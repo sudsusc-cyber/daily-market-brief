@@ -128,6 +128,8 @@ def program_metadata(item, text: str) -> bool:
     Match the original metadata sentence, not a publisher or a person's name.
     A separate reported statement or the article's factual headline survives.
     """
+    if re.search(r'\b(?:speaks|spoke|talks|talked)\s+with\b.{0,100}\bon\b.{0,80}(?:["“]|program|programme|show)', text, re.I):
+        return True
     if _PROGRAM_METADATA.search(text):
         return True
     for key in ("summary", "snippet", "source_body"):
