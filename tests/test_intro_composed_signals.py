@@ -264,3 +264,46 @@ def test_neutral_present_adverb_swaps_are_not_new_wording():
     old = '甲企业现处大额买入区间，乙企业仍在定投区间。'
     new = '甲企业目前处大额买入区间，乙企业依然在定投区间。'
     assert _signal_errors(new, rows(), [old]) == ['recent_signal_repeat']
+
+
+THIRD_PREVIEW_PROSE = ('把注意力放在企业本身，时间会替判断打分。'
+                       '价格给出位置，位置给出选择，而选择的质量取决于此前做了多少功课。'
+                       '【持仓近况】看似平淡的等待，往往是认知在暗处生长的阶段。')
+
+
+@pytest.mark.parametrize('sentence', [
+    '腾讯控股在大额买入的区间内，泡泡玛特落在定投的位置。',
+    '腾讯控股现处大额买入的位置，泡泡玛特则在定投的区间之内。',
+])
+def test_actual_third_preview_neutral_positions_pass_without_retry_or_fixed_fallback(sentence):
+    signals = [signal('腾讯控股', 'LUMP_SUM'), signal('泡泡玛特', 'DCA')]
+    client = Client({'text': THIRD_PREVIEW_PROSE, 'signal_text': sentence})
+    assert write_intro(signals, client=client) == THIRD_PREVIEW_PROSE.replace('【持仓近况】', sentence)
+    assert len(client.calls) == 1
+
+
+def test_positive_spatial_states_compose_independently_across_strategy_verb_noun_and_locative():
+    from itertools import product
+
+    for category, strategy in [('LUMP_SUM', '大额买入'), ('DCA', '定投')]:
+        signals = [signal('示例企业', category)]
+        for verb, modifier, noun, locative in product(
+                ['在', '现处', '仍位于', '落在'], ['', '的'],
+                ['区间', '范围', '位置'], ['', '内', '之内', '以内']):
+            sentence = f'示例企业{verb}{strategy}{modifier}{noun}{locative}。'
+            assert not _signal_errors(sentence, signals, []), sentence
+            opposite = '定投' if category == 'LUMP_SUM' else '大额买入'
+            assert _signal_errors(sentence.replace(strategy, opposite), signals, []), sentence
+            assert _signal_errors(sentence.replace('示例企业', '无关企业'), signals, []), sentence
+
+
+def test_expanded_spatial_grammar_never_inverts_status_or_invents_a_transition():
+    from itertools import product
+
+    signals = [signal('示例企业', 'DCA')]
+    for verb, noun, outside in product(['在', '现处', '落在'], ['区间', '范围', '位置'], ['外', '之外', '以外']):
+        assert _signal_errors(f'示例企业{verb}定投的{noun}{outside}。', signals, [])
+    for verb, noun in product(['不在', '未处于', '即将进入', '首次进入', '刚刚跌入', '曾在'], ['区间', '范围', '位置']):
+        assert _signal_errors(f'示例企业{verb}定投的{noun}以内。', signals, [])
+    for invented in ['现价100元处在', '跌幅20%后落在', '已跌破120周均线而处在']:
+        assert _signal_errors(f'示例企业{invented}定投的区间内。', signals, [])
