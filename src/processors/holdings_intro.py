@@ -16,14 +16,16 @@ _PROSE_TARGET_MAX = 110
 _PROSE_HARD_MAX = 120  # Small counting variance must not force a fixed-template fallback.
 _INSTRUCTION = """为持仓信号栏目写一段克制、有哲理、雅而不晦的中文卷首语。
 只输出 JSON 对象，字段 text 和 signal_text，不加标题。
-先写signal_text这句当期近况，再写text，让它们读起来是同一段文字，而不是哲理段落后附一行报表。
-text为60-110字原创思考，关于理解企业、耐心、判断或时间；只在完整句子边界放一次【持仓近况】。
+先构思整段的意思与节奏，再把当期近况拆入signal_text，其余保留在text；两字段合起来应是一段连贯的文字。
+text为60-110字原创思考，关于理解企业、耐心、判断或时间；在完整句子或分号边界放一次【持仓近况】。
 【持仓近况】是稍后自动替换的占位符，不是标题；text里严禁在它前后再写信号原句、公司名称、买入或定投状态。
-text前后的意象、语气与signal_text彼此照应，插入后承接自然，不固定放在开头或末尾，不另起段。
+可写成“前文；【持仓近况】；后文”或在完整句子之间衔接，占位符旁不要用逗号、冒号，不把事实放在假设、否定或猜测的语境里。
+text前后的意思应当承接这句具体近况，不只共享几个意象；不固定放在开头或末尾，不另起段，不加报幕式引导语。
 signal_text为不超过50字的一句话，由你根据本次正文独立遣词；不要复刻近期句子，也不要每次沿用相同的句法骨架。
 语气宜疏朗温润，文意须明白；两个主体的措辞与节奏可以有变化，不要把“已符合某条件、仍处于某区间”两行报表并排照录。
+优先简洁、自然的谓语，少用公文式的“现处某位置”，不要层叠“落在某某的区间以内”；不用额外方位词拖长已有的意思。
 也不要用“纪律先行”等标语、押韵口号或故作古雅的“候买、候定投”；这些会把现有条件改成尚待发生的事情。
-输入中的每组主体与状态都须准确表达；每个分句先原样写给定主体，再以肯定语气写它现有的买入位置。
+输入中的每组主体与状态都须准确表达；每个分句先原样写给定主体，再以肯定语气写现有状态，主体也可作领属语。
 LUMP_SUM必须保留“大额买入”，DCA必须保留“定投”；可以用尺度的契合、区间内的位置、留有的余地来表达，只写现状，不增添隐喻中的新事实。
 不同主体的分句用逗号或分号连接，最后用句号；不能改主体、漏组、颠倒策略，也不要在信号句前后另添一句总结。
 这只是现存位置，不说明今天新触发；禁止加入走势、价格、收益、因果推测、否定真实状态或额外行动建议。
@@ -146,7 +148,8 @@ _STATE_FORMS = (
     r"(?:合乎|符合|满足|契合){q}{k}(?:的)?(?:条件|尺度|标准|要求)",
     r"与{q}{k}(?:的)?(?:尺度|条件|区间|节奏|节拍)(?:相合|相应|相契|吻合)",
     r"为{k}(?:留有|留出)(?:余地|空间)",
-    r"(?:留有|留出){k}(?:的)?(?:余地|空间)",
+    r"(?:有|留有|留出){k}(?:的)?(?:余地|空间)",
+    r"的{k}(?:的)?(?:余地|空间)(?:尚在|仍在|犹在)",
 )
 
 
@@ -200,7 +203,40 @@ def _signal_errors(text: str, signals: list[Any], recent: list[str]) -> list[str
 
 
 def _with_daily_signal(prose: str, signals: list[Any], variant: int) -> str:
-    return prose + daily_signal_sentence(signals, variant)
+    observation = daily_signal_sentence(signals, variant)
+    if not observation:
+        return prose
+    # Preserve the reflection verbatim, but give the factual sentence a place
+    # within it instead of always appending a report-like last line.
+    boundaries = [match.end() for match in re.finditer('。', prose) if match.end() < len(prose)]
+    position = boundaries[variant % len(boundaries)] if boundaries else len(prose)
+    return prose[:position] + observation + prose[position:]
+
+
+def _signal_slot_errors(text: str) -> list[str]:
+    if text.count(_SIGNAL_SLOT) != 1:
+        return ['signal_slot_boundary']
+    before, after = text.split(_SIGNAL_SLOT)
+    if ((before and before[-1] not in '。！？；')
+            or (after and after[0] in '，：、')):
+        return ['signal_slot_boundary']
+    # A semicolon joins independent statements, never a conditional premise
+    # with a portfolio fact. Keep negation/uncertainty outside that join.
+    if before.endswith('；'):
+        lead = re.split('[。！？]', before)[-1]
+        if (re.search(r'如果|假如|假设|倘若|若是|要是|一旦|除非|也许|或许|未必', lead)
+                or re.search(r'(?:并非|不是|不能说|不意味着)[，；\s]*$', lead)):
+            return ['signal_slot_scope']
+    return []
+
+
+def _compose_intro(text: str, observation: str) -> str:
+    before, after = text.split(_SIGNAL_SLOT)
+    # The model supplies the join punctuation in text. The validated factual
+    # sentence stays intact; only its final full stop yields to that separator.
+    if after.startswith(('；', '。')):
+        observation = observation.removesuffix('。')
+    return before + observation + after
 
 
 def _recent(history) -> list[str]:
@@ -223,7 +259,7 @@ _CONTEXT_VARIANTS = (
 def _reflection(text: str) -> str:
     # Compare the literary prose separately from a potentially long, verified
     # signal sentence; changing that sentence must not permit copied prose.
-    text = ''.join(sentence for sentence in re.split(r'(?<=[。！？])', text)
+    text = ''.join(sentence for sentence in re.split(r'(?<=[。！？；])', text)
                    if not re.search(r'大额买入|定投|买入信号|买入区间|数据待核|数据尚待|持仓数据', sentence))
     for group in _CONTEXT_VARIANTS:
         for phrase in group:
@@ -255,7 +291,7 @@ def _intro_retry(errors: list[str], *, accepted_text: str, accepted_signal: str)
     if accepted_text:
         parts.append("text已通过校验，请原样保留，不要重写：" + json.dumps(accepted_text, ensure_ascii=False))
     else:
-        parts.append("只把text修成简洁的完整思考，在完整句子边界保留一次【持仓近况】，前后不要重复公司或信号。")
+        parts.append("只把text修成简洁的连贯思考，在完整句子或分号边界保留一次【持仓近况】，前后不要重复公司或信号；用分号时各分句须独立陈述，不设假定前提。")
         if 'format_or_length' in errors:
             parts.append(f"text去掉占位符后以60-{_PROSE_TARGET_MAX}字为目标；压缩修辞和重复意思，不改动signal_text来补救长度。")
     if accepted_signal:
@@ -264,7 +300,7 @@ def _intro_retry(errors: list[str], *, accepted_text: str, accepted_signal: str)
         parts.append("只按输入的主体和LUMP_SUM/DCA状态修正signal_text，写现有位置，保留正文的疏朗语气。")
         if 'signal_state_not_bound' in errors:
             parts.append("每个分句以原样主体开头；主体后的表达可自然组合：中性位置动词（在、现处、落在、位于等）+策略词（大额买入或定投）+区间、范围、位置，末尾可用内、之内或以内。")
-            parts.append("也可以表达与策略尺度相合、合乎策略条件或留有策略余地；这些是现存状态的语义边界，不是要求照抄的固定句。不要写区间之外、尚待达到或首次进入。")
+            parts.append("也可以表达与策略尺度相合、合乎策略条件、有策略余地，或主体的策略余地尚在；这些是现存状态的语义边界，不是要求照抄的固定句。选简短自然的说法，不要写区间之外、尚待达到或首次进入。")
     parts.append("输入没有提供价格、均线周期或触发时间，任何字段都不得自行补这些数字和事实；也不能添加行动建议。")
     parts.append("仍输出text和signal_text两个字段的完整JSON；这是字段修复，不是重新撰写整段。")
     return "\n" + "\n".join(parts)
@@ -295,10 +331,7 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
             text, signal_text, modern, errors = '', '', False, ['invalid_prose_json']
         if text and modern:
             text_errors = _intro_errors(text.replace(_SIGNAL_SLOT, ''), '', recent)
-            if (text.count(_SIGNAL_SLOT) != 1
-                    or not re.search(r'(?:^|[。！？])' + re.escape(_SIGNAL_SLOT), text)
-                    or re.search(re.escape(_SIGNAL_SLOT) + r'[，；：、]', text)):
-                text_errors.append('signal_slot_boundary')
+            text_errors.extend(_signal_slot_errors(text))
             signal_errors = _signal_errors(signal_text, signals, recent)
             # Fields are checked independently. A failed repair cannot erase a
             # previously verified field or smuggle in new reference-line facts.
@@ -310,7 +343,7 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
         if accepted_text and accepted_signal:
             if errors:
                 logger.info("holdings_intro.repaired_with_verified_field reasons=%s", errors)
-            result = accepted_text.replace(_SIGNAL_SLOT, accepted_signal)
+            result = _compose_intro(accepted_text, accepted_signal)
             logger.info("holdings_intro.ok chars=%d attempt=%d signal_mode=composed", len(result), attempt + 1)
             return result
         from src.processors.source_grounding import diagnostic_text

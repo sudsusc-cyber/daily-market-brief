@@ -40,5 +40,8 @@ def test_fallback_preserves_prose_exactly_and_adds_same_verified_observation():
     when = datetime(2026, 10, 3, tzinfo=UTC)
     rows = [signal('甲公司', 'DCA')]
     plain = fallback_intro([], when)
-    assert fallback_intro(rows, when) == plain + daily_signal_sentence(rows, when.date().toordinal())
+    observation = daily_signal_sentence(rows, when.date().toordinal())
+    composed = fallback_intro(rows, when)
+    assert composed.replace(observation, '', 1) == plain
+    assert not composed.endswith(observation)
     assert daily_signal_sentence([]) == ''
