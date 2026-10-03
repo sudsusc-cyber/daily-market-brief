@@ -346,7 +346,7 @@ def macro_context_text(text: str, antecedent: str) -> str:
     if 8 <= len(antecedent) <= 100 and reverse:
         return '相关背景是' + reverse[1]
     if 8 <= len(antecedent) <= 100 and text.rstrip('。.').endswith('，' + antecedent):
-        return text.rstrip('。.')[:-(len(antecedent) + 1)]
+        return re.sub(r'^(?:随着|由于|因为|鉴于|因)', '', text.rstrip('。.')[:-(len(antecedent) + 1)])
     return text
 
 

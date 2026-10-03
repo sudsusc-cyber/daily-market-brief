@@ -63,8 +63,27 @@ def _has_quote_marker(item: FigureMention) -> bool:
     text = f"{title} {plain_source(item.snippet or '')}"
     # A company statement is not the configured person's speech. HTML href /
     # target attributes are not direct quotes either, even when RSS repeats it.
-    if re.match(r"(?:Nvidia|Microsoft|OpenAI|Anthropic|AMD|TSMC|Berkshire|Google|Alphabet|"
-                r"英伟达|微软|台积电|谷歌)\s*(?:says?\b|said\b|announc(?:e|es|ed)\b|表示|宣布|称)", title, re.I):
+    from src.collectors.company_news import _RELEVANCE_KEYWORDS
+    from src.collectors.figures import _FINNHUB_FALLBACK_ALIASES, FIGURES
+    from src.collectors.frontier_labs import FRONTIER_LABS
+    from src.config import HOLDINGS
+    from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
+
+    companies = {h.name for h in HOLDINGS} | {lab.name for lab in FRONTIER_LABS} | set(COMPANY_DISPLAY_NAMES.values())
+    companies.update(alias for aliases in _RELEVANCE_KEYWORDS.values() for alias in aliases)
+    statement = re.match(r"^(.{1,80}?)\s+(?:says?|said|warns?|warned|announces?|announced|predicts?|expects?|believes?)\b", title, re.I)
+    if statement:
+        subject = statement[1].strip()
+        names = {name for cn, _, _, en in FIGURES for name in (cn, en)}
+        names.update(alias for aliases in _FINNHUB_FALLBACK_ALIASES.values() for alias in aliases)
+        person_subject = (any(name.casefold() in subject.casefold() for name in names)
+                          or re.search(r'\b(?:CEO|CFO|chairman|chairwoman|founder|president|minister)\b', subject, re.I))
+        corporate_subject = (subject.casefold() in {name.casefold() for name in companies}
+                             or re.search(r'\b(?:Inc|Corp|Corporation|Limited|Ltd)\.?$', subject, re.I))
+        corporate_document = re.search(r'\bin (?:its |the |an? )?(?:own )?(?:IPO |annual |regulatory )?(?:filing|report|prospectus)\b', title, re.I)
+        if not person_subject and (corporate_subject or corporate_document):
+            return False
+    if re.match(r"(?:" + '|'.join(re.escape(name) for name in companies) + r")\s*(?:表示|宣布|称|警告|预计)", title, re.I):
         return False
     return bool(_QUOTE_MARKERS_RE.search(text))
 
