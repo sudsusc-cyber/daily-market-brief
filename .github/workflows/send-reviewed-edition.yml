@@ -1,0 +1,66 @@
+name: send-reviewed-edition
+on:
+  workflow_dispatch:
+    inputs:
+      preview_run_id:
+        description: Successful reviewed preview run at the same main commit
+        required: true
+        type: string
+      html_sha256:
+        description: SHA256 of the exact reviewed email.html
+        required: true
+        type: string
+      recipients:
+        description: Explicit recipients separated by commas
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: send-formal-test
+  cancel-in-progress: false
+jobs:
+  send:
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_RUN_ID: ${{ github.run_id }}
+      GH_RUN_ATTEMPT: ${{ github.run_attempt }}
+      PYTHONPATH: .
+      DELIVERY_RECEIPT_PATH: ${{ github.workspace }}/.delivery-receipt.json
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: "0.11.28"
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Send exact reviewed edition
+        run: uv run python -m scripts.send_reviewed_edition
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEWED_RUN_ID: ${{ inputs.preview_run_id }}
+          REVIEWED_HTML_SHA256: ${{ inputs.html_sha256 }}
+          EMAIL_RECIPIENT: ${{ inputs.recipients }}
+          QQ_EMAIL_ADDRESS: ${{ secrets.QQ_EMAIL_ADDRESS }}
+          QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
+      - name: Confirm SMTP acceptance
+        if: ${{ always() && hashFiles('.delivery-receipt.json') != '' }}
+        run: uv run python -m src.utils.delivery accepted .delivery-receipt.json
+      - name: Confirm full email delivery
+        if: ${{ always() && hashFiles('.delivery-receipt.json') != '' }}
+        run: uv run python -m src.utils.delivery full .delivery-receipt.json
+      - name: Archive reviewed publication
+        if: ${{ always() && hashFiles('.brief-audit/**/manifest.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: brief-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .brief-audit/
+          include-hidden-files: true
+          retention-days: 30
