@@ -44,6 +44,7 @@ def test_financial_loss_and_real_cut_are_still_protected():
     assert translation_errors('Acme reports a loss.', 'Acme 公布盈利。')
     assert translation_errors('Acme cuts dividends.', 'Acme 提高股息。')
     assert not translation_errors('Acme cut another quarterly check.', 'Acme 又支付了季度支票。')
+    assert not translation_errors('Acme cut another quarterly check.', 'Acme 开出了季度支票。')
     assert translation_errors('Acme cut another quarterly check.', 'Acme 削减了季度支票。')
 
 
