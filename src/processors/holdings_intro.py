@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.processors.llm_client import LLMClient
 
@@ -55,6 +56,40 @@ def signal_context(signals: list[Any]) -> str:
     if len(active) == len(valid):
         return "持仓均处于各自既定的买入区间。"
     return "持仓信号有所分化，部分标的处于既定买入区间。"
+
+
+def daily_signal_sentence(signals: list[Any], variant: int = 0) -> str:
+    """One bounded observation from validated signals, never a claim of a new trigger."""
+    if not signals:
+        return ""
+    valid = [s for s in signals if not s.error and s.signal in {"NONE", "DCA", "LUMP_SUM"}]
+    pending = len(signals) - len(valid)
+    active = [s for s in valid if s.signal != "NONE"]
+    if not valid:
+        return "持仓数据尚待核实，暂不判断买入位置。"
+    if not active:
+        return ("已核实的持仓暂无买入信号，另有数据待核。" if pending else
+                ("眼下还没有持仓触及买入条件。", "持仓都在买入区间之外，耐心仍有用武之地。", "买入信号暂未出现，可以从容观察。")[variant % 3])
+    clauses = []
+    for kind, phrases in (
+        ("LUMP_SUM", ("在大额买入区间", "满足大额买入条件", "位于大额买入线内")),
+        ("DCA", ("在定投区间", "满足定投条件", "位于定投线内")),
+    ):
+        rows = [s for s in active if s.signal == kind]
+        if not rows:
+            continue
+        names = [getattr(getattr(s, "holding", None), "name", "") for s in rows]
+        named = all(n and len(n) <= 12 and not re.search(r"[<>{}\n]", n) for n in names)
+        subject = "、".join(names) if named and len(rows) <= 2 else f"{len(rows)}项持仓"
+        clauses.append(subject + phrases[variant % 3])
+    text = "，".join(clauses) + ("，另有数据待核" if pending else "") + "。"
+    if len(text) > 50:
+        text = f"{len(active)}项持仓满足买入条件" + ("，另有数据待核。" if pending else "。")
+    return text
+
+
+def _with_daily_signal(prose: str, signals: list[Any], variant: int) -> str:
+    return prose + daily_signal_sentence(signals, variant)
 
 
 def _recent(history) -> list[str]:
@@ -123,7 +158,8 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
             errors += _intro_errors(text, context, recent)
         if not errors:
             logger.info("holdings_intro.ok chars=%d attempt=%d", len(text), attempt + 1)
-            return text
+            day = history.today if history is not None else datetime.now(ZoneInfo("Asia/Shanghai")).date()
+            return _with_daily_signal(text, signals, day.toordinal())
         from src.processors.source_grounding import diagnostic_text
         logger.warning("holdings_intro.rejected attempt=%d reasons=%s response=%r", attempt + 1, errors, diagnostic_text(raw, 500))
         payload += "\n上次未通过：" + ",".join(errors) + "；请输出完整 text JSON，只写普遍思考，不描述本期持仓和市场事实。"
@@ -142,4 +178,4 @@ def fallback_intro(signals: list[Any], generated_at) -> str:
         "耐心的意义，并不只是把等待拉长，而是知道自己究竟在等待什么。持续辨认一家企业创造价值的能力，分清暂时的波折与根本的变化，才有可能在漫长的路途中保持清醒而不失从容。",
         "好的判断往往始于一个朴素的问题：这门生意如何让客户愿意一次次回来。沿着这个问题看产品、成本与管理，许多纷杂的信息便有了轻重，理解也会在日复一日的观察中逐渐扎实。",
     )
-    return frames[day % len(frames)]
+    return _with_daily_signal(frames[day % len(frames)], signals, day)

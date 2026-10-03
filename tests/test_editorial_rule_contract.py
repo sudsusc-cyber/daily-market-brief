@@ -41,7 +41,7 @@ def signal(kind="NONE", error=None):
 def test_dynamic_intro_uses_only_actual_signal_context(states, expected):
     client = Client(json.dumps({"text": "在安静中细读规则，" + PROSE}, ensure_ascii=False))
     text = holdings_intro.write_intro(states, client=client)
-    assert expected not in text and 60 <= len(text) <= 110
+    assert 60 <= len(text) <= 160
     assert PROSE in text and "只处于" not in text
     assert len(client.calls) == 1 and client.calls[0][1]["thinking"] is False
 

@@ -86,7 +86,7 @@ def test_structured_intro_owns_signal_clause_and_checks_frame():
     client = Mock()
     client.chat.return_value = SimpleNamespace(text=json.dumps({'text': prose}, ensure_ascii=False))
     signals = [SimpleNamespace(error=None, signal='DCA'), SimpleNamespace(error=None, signal='NONE')]
-    assert write_intro(signals, client=client) == prose
+    assert write_intro(signals, client=client).startswith(prose)
     client.chat.return_value.text = json.dumps({'text': prose + '其余标的全部上涨，建议立即买入。'}, ensure_ascii=False)
     assert write_intro(signals, client=client) is None
 
