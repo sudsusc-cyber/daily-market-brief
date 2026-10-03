@@ -409,6 +409,8 @@ def publishable_excerpt(item, text: str) -> bool:
         return False
     if getattr(item, 'holding_ticker', None) and long_term_noise_reason(text):
         return False
+    if re.search(r"\b(?:should (?:increasingly )?worry|well.positioned)\b|(?:应|应该).{0,6}(?:越来越)?担心|处于有利位置", text, re.I) and not re.search(r"\d", text):
+        return False
     if dependent_excerpt(text):
         return False
     return ((not requires_action_context(item) or text == action_context(item))
@@ -499,6 +501,10 @@ def company_candidate(item, ticker: str) -> bool:
     text = title + ' ' + plain_source(getattr(item, 'summary', '') or '')
     from src.processors.investment_relevance import long_term_noise_reason
 
+    # A first-person trade preference or bare forecast is not a company event.
+    # Other concrete sentences remain eligible through the usual source selection.
+    if re.search(r'\b(?:keeps? me|makes? me|I (?:keep|am|will|would))\s+(?:buying|selling|holding)\b|(?:让我|我会|我仍|我持续).{0,6}(?:买入|卖出|持有)', title, re.I):
+        return False
     if long_term_noise_reason(title, plain_source(getattr(item, 'summary', '') or ''),
                               holding_is_subject=company_fact_matches(title, ticker)):
         return False
@@ -564,4 +570,7 @@ def macro_candidate(item) -> bool:
     wider_impact = re.search(r'sanctions?|trade|oil|shipping|supply|interest rates?|markets? (?:fall|drop|close)'
                             r'|制裁|贸易|石油|航运|供应|利率|市场(?:下跌|关闭)', text, re.I)
     symbolic_colour = re.search(r"panda diplomacy|熊猫外交", title, re.I)
+    personal_colour = re.search(r'\b(?:unusual breaks|health concerns|health speculation|appearance|sleeping|napping)\b|休息安排|健康传闻|健康猜测|打瞌睡', title, re.I)
+    if personal_colour and not wider_impact:
+        return False
     return not ((local_colour and crime or symbolic_colour) and not wider_impact)

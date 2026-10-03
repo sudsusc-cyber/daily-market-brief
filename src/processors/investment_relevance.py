@@ -39,6 +39,8 @@ def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=
         r'(?:进入|拓展|扩大).{0,20}(?:市场|销售渠道|分销)|'
         r'(?:sales|销量|销售额).{0,35}(?:\d|grow|rise|fall|增长|下降)', context, re.I))
     noise = {
+        'personal_trade_opinion': r'\b(?:keeps? me|makes? me|I (?:keep|am|will|would))\s+(?:buying|selling|holding)\b|(?:让我|我会|我仍|我持续).{0,6}(?:买入|卖出|持有)',
+        'unquantified_outlook': r'\b(?:well.positioned|in a good position|should (?:increasingly )?worry|should be worried)\b|(?:应|应该).{0,6}(?:越来越)?担心|处于有利位置',
         'market_price_roundup': r'(?:指数|[沪深恒纳]指|恒科指|股市).{0,80}(?:上涨|下跌|下挫|跌幅|涨幅|新低|新高)|(?:均|齐)(?:涨|跌)\s*\d|股价.{0,30}(?:上涨|下跌|大涨|大跌)',
         'price_milestone': r'\b(?:stock|shares?|share price)\b.{0,65}\b(?:record|high|low)\b|股价.{0,30}(?:新高|新低|纪录)',
         'historical_retrospective': r'\b(?:look back|looking back|over the decades|years ago)\b|回顾.{0,30}(?:投资|押注)|数十年前',

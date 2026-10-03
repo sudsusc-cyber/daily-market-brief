@@ -66,3 +66,9 @@ def test_cause_first_translation_compacts_same_fact_and_preserves_cause():
     assert '欧洲和中东的战争制约燃料供应' in html and len(notes) == 2
     from src.processors.news_presentation import replay_presentation
     assert replay_presentation(evidence[1]['validated_text'],evidence[1]) == evidence[1]['output_text']
+
+
+def test_exact_repeated_terminal_fact_does_not_need_a_causal_keyword():
+    from src.processors.news_presentation import macro_context_text
+    assert macro_context_text('欧洲和中东的战争制约燃料供应，G7 国家将释放柴油库存。','G7 国家将释放柴油库存') == '欧洲和中东的战争制约燃料供应'
+    assert macro_context_text('供应紧张，G7 国家已释放柴油库存。','G7 国家将释放柴油库存') == '供应紧张，G7 国家已释放柴油库存。'
