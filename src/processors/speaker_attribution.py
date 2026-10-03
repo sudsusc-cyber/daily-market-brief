@@ -10,6 +10,7 @@ from src.processors.news_selection import plain_source
 
 _SPEECH = (r"(?:says?|said|tells?|told|warns?|warned|expects?|expected|believes?|"
            r"argues?|argued|predicts?|predicted|announces?|announced|noted|stated|"
+           r"describes?|described|characterizes?|characterized|(?:calls?|called)(?=.{0,240}[\"“‘])|"
            r"explains?|explained|adds?|added|称|表示|认为|警告|预计|指出|强调|宣布|说)")
 _ROLE = r"(?:CEO|CFO|chief executive(?: officer)?|chairman|chairwoman|president|founder|首席执行官|董事长|总裁|创始人)"
 _LOCAL_NAMES = {'纳德拉': '萨提亚·纳德拉', '苏妈': '苏姿丰', '皮叉': '桑达尔·皮查伊',
@@ -102,21 +103,34 @@ def _surname_unambiguous(raw, full):
     return True
 
 
-def attribution(item, person, person_en='', *, excerpt=None):
-    """Replayable proof from the actual claim. No translations or office lookup."""
-    fields = [(field, plain_source(getattr(item, field, '') or ''))
-              for field in ('title', 'snippet', 'summary', 'source_body')]
-    claims = [('excerpt', plain_source(excerpt))] if excerpt is not None else fields
+def source_date_error(item):
+    """Return a date-specific reason without conflating it with speaker identity."""
+    from src.collectors.news_context import requires_speaker_date
+
     source_date = getattr(item, 'source_published_at', '')
+    if (getattr(item, 'speaker_date_required', False) or requires_speaker_date(item)) and not source_date:
+        return 'speaker_date_unverified'
     if source_date:
         try:
             original = datetime.fromisoformat(str(source_date).replace('Z', '+00:00'))
             feed = getattr(item, 'published_at', None)
             feed = datetime.fromisoformat(feed.replace('Z', '+00:00')) if isinstance(feed, str) else feed
-            if isinstance(feed, datetime) and not 0 <= (feed.astimezone(UTC).date() - original.astimezone(UTC).date()).days <= 7:
-                return None
+            if original.tzinfo is None or not isinstance(feed, datetime) or feed.tzinfo is None:
+                return 'speaker_date_invalid'
+            if not 0 <= (feed.astimezone(UTC).date() - original.astimezone(UTC).date()).days <= 7:
+                return 'speaker_date_outside_window'
         except (TypeError, ValueError):
-            return None
+            return 'speaker_date_invalid'
+    return ''
+
+
+def attribution(item, person, person_en='', *, excerpt=None):
+    """Replayable proof from the actual claim. No translations or office lookup."""
+    if source_date_error(item):
+        return None
+    fields = [(field, plain_source(getattr(item, field, '') or ''))
+              for field in ('title', 'snippet', 'summary', 'source_body')]
+    claims = [('excerpt', plain_source(excerpt))] if excerpt is not None else fields
     for field, text in claims:
         if text and _named_speech(text, person, person_en) and not _old_speech(item, text):
             return {'person': person, 'person_en': person_en, 'kind': 'named_speech',

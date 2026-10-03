@@ -18,7 +18,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 15
+PRESENTATION_VERSION = 16
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -250,7 +250,7 @@ def publication_text(text: str, *, source_name: str = "") -> str:
     return present(text, source_name=source_name).text
 
 
-def voice_text(text: str, person: str, *, _version: int = PRESENTATION_VERSION) -> str:
+def voice_text(text: str, person: str, *, binding: dict | None = None, _version: int = PRESENTATION_VERSION) -> str:
     from src.collectors.figures import FIGURES
 
     # Alias data identifies the speaker; neutral-attribution grammar is shared.
@@ -266,18 +266,30 @@ def voice_text(text: str, person: str, *, _version: int = PRESENTATION_VERSION) 
     )
     if not person:
         return text
+    bound = (_version >= 16 and isinstance(binding, dict) and binding.get('person') == person)
+    if bound and binding.get('kind') == 'resolved_surname':
+        full = str(binding.get('full_name', ''))
+        if full in names and ' ' in full:
+            names.add(full.rsplit(' ', 1)[-1])
     name = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
     role = r"(?P<role>(?:[^，。；:：!?]{1,50}?\s*)?(?:CEO|CFO|CTO|首席执行官|董事长|总裁)\s*)?"
     # Parenthesized local-script spelling may accompany an exact known name.
     spelling = r"(?:\s*[（(][가-힣ぁ-ゟ゠-ヿ· ]{2,20}[)）])?"
     leading = "^" + role + "(?:" + name + ")" + spelling + r"\s*"
+    if bound:
+        # The name is redundant with the byline, but warning/denial/expectation
+        # is part of the claim. Keep that speech act verbatim. Surnames require
+        # the same-source identity proof, never a configured search alias.
+        speech = re.match(leading + r'(?P<body>(?:警告|否认|预计|预测|强调|承认)(?:称)?[^。]{6,}.*)$', text, re.I)
+        if speech and not re.search(r'称|表示|否认|批评|警告|said|warn|denied', speech.group('role') or '', re.I):
+            return speech['body']
     if _version >= 14:
         pieces = re.split(r'\s*——\s*|\s+[—–]\s+', text, maxsplit=1)
         if len(pieces) == 2:
             background, speech = pieces
             price = re.match(r'^(?P<issuer>[A-Za-z][A-Za-z .&-]{0,35}|[一-鿿]{2,12})\s*股价', background)
             if price and re.match(leading + r'(?:表示|认为|指出|称|说)', speech):
-                body = voice_text(speech, person, _version=_version)
+                body = voice_text(speech, person, binding=binding, _version=_version)
                 if body != speech:
                     if body.startswith('公司'):
                         body = price['issuer'].strip() + body[2:]
@@ -289,7 +301,7 @@ def voice_text(text: str, person: str, *, _version: int = PRESENTATION_VERSION) 
         # neutral reporting verb are elided. Addressed audiences stay in prose.
         topic, separator, rest = text.partition("：")
         if separator and not re.search(r"称|表示|说|否认|警告|said|says|warn", topic, re.I) and re.match(leading, rest.strip(), re.I):
-            return topic + separator + voice_text(rest.strip(), person, _version=_version)
+            return topic + separator + voice_text(rest.strip(), person, binding=binding, _version=_version)
         addressed = re.match(leading + r"(?P<audience>对[^，。；：:]{1,40})(?:表示|说|称)\s*[：:]?\s*(?P<body>.+)$", text, re.I)
         if addressed and not re.search(r"称|表示|否认|批评|警告|said|warn|denied", addressed.group("role") or "", re.I):
             return addressed['audience'] + '表示：' + addressed['body']
@@ -364,14 +376,14 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         if version >= 13 and row.get('macro_context_antecedent'):
             output = macro_context_text(output, row['macro_context_antecedent'])
         if version >= 10 and row.get("presentation_company"):
             output = company_body(output, row["presentation_company"], _version=version)
         return (
-            voice_text(output, str(row.get("presentation_speaker", "")), _version=version)
+            voice_text(output, str(row.get("presentation_speaker", "")), binding=row.get('speaker_attribution'), _version=version)
             if row.get("presentation_speaker")
             else output
         )

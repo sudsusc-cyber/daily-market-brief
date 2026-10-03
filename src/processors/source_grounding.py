@@ -58,6 +58,7 @@ class SourceEvidence:
     source_kind: str = "reported"
     source_body: str = ""
     source_published_at: str = ""
+    speaker_date_required: bool = False
     context_url: str = ""
     context_fetched_at: str = ""
     event_date: str = ""
@@ -158,6 +159,7 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
                     event_date_basis="dated_source_excerpt" if action_context_date(item, excerpt) else "",
                     source_body=str(getattr(item, "source_body", "") or ""),
                     source_published_at=str(getattr(item, "source_published_at", "") or ""),
+                    speaker_date_required=bool(getattr(item, "speaker_date_required", False)),
                     context_url=str(getattr(item, "context_url", "") or ""),
                     context_fetched_at=str(getattr(item, "context_fetched_at", "") or ""),
                     original_title=item.title,
@@ -221,6 +223,7 @@ def publication_diagnostic(item) -> dict:
         "source": diagnostic_text(getattr(item, "source", ""), 100),
         "published_at": diagnostic_text(getattr(item, "published_at", ""), 80),
         "source_published_at": diagnostic_text(getattr(item, "source_published_at", ""), 80),
+        "speaker_date_required": bool(getattr(item, "speaker_date_required", False)),
         "source_excerpt": diagnostic_text(excerpt),
         "translated_excerpt": diagnostic_text(translated),
         "errors": list(dict.fromkeys(errors)),
