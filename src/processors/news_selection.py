@@ -583,6 +583,13 @@ def macro_candidate(item) -> bool:
                             r'|制裁|贸易|石油|航运|供应|利率|市场(?:下跌|关闭)', text, re.I)
     symbolic_colour = re.search(r"panda diplomacy|熊猫外交", title, re.I)
     personal_colour = re.search(r'\b(?:(?:unusual )?(?:rest|coffee|meal|bathroom|sleep) breaks|private downtime|unusual breaks|health concerns|health speculation|appearance|sleeping|napping)\b|休息安排|健康传闻|健康猜测|打瞌睡', title, re.I)
+    # A suspect's biography, individual licence history or weapon description
+    # is an incident detail, not a macro development without a wider consequence.
+    incident_actor = re.search(r"\b(?:attacker|suspect|assailant|co.pilot|gunman)\b|袭击者|嫌疑人|副驾驶|凶手", title, re.I)
+    incident_detail = re.search(r"\b(?:previously|had been|used|background|biography)\b|此前|曾因|背景|使用了?", title, re.I)
+    systemic_consequence = re.search(r"airspace.{0,25}(?:clos|restrict)|(?:suspend|cancel).{0,25}flights|aviation.{0,25}(?:rules|regulation)|领空.{0,12}(?:关闭|限制)|航班.{0,12}(?:停飞|取消)|航空.{0,12}(?:新规|监管)", text, re.I)
+    if incident_actor and incident_detail and not (wider_impact or systemic_consequence):
+        return False
     if personal_colour and not wider_impact:
         return False
     return not ((local_colour and crime or symbolic_colour) and not wider_impact)
