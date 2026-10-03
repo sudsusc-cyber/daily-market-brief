@@ -1,0 +1,13 @@
+# October 3 editorial contract follow-up
+
+Scope: the archived formal run 37118949140, attempt 1 (19:18 Beijing), not the older browser preview. No live mail was sent during this repair. Source snippets establish the pipeline failures; this is not an independent verification of every underlying news article.
+
+- Shared bilingual event features now accept negative attitude predicates, prospective expenditure, employment additions, and directional paraphrases. Employment additions are object-bound so additional buyback authorization is not mistaken for growth. Opposite polarity, direction and completed-versus-planned counterexamples remain rejected.
+- Publication excerpts reject price milestones, unsupported retrospective/editorial headlines and ambiguous monetary metaphors. Complete operating sentences in the source summary remain eligible. Quantities additionally retain explicit economic roles (managed assets, market size, revenue or expenditure).
+- Macro release/reaction grouping includes explicit monetary-policy reactions. Release dates are taken from the referenced release clause, not the future policy meeting date. Originating data appear before reactions; the maximum remains three paragraphs. Exact repeated causal antecedents may be elided, with a replayable mapping and an explicit requirement that the antecedent remains in the published body. New object/state/amount variants are never elided.
+- Forward estimates remain eligible for bounded long-term watchpoints, labelled as expectations rather than realised evidence, with follow-up on actual revenue/profit/capital expenditure.
+- Presentation version 13 localizes common technical terms and removes redundant pressure wording. Versions 1–12 remain replayable. The translator is instructed to render financial idioms naturally; a literal market “make peace” mistranslation is rejected for retry.
+
+Validation: full offline suite passed (2435 tests before the final three additional conflict cases); Ruff and diff whitespace checks passed. Tests include original defect classes plus changed-fact counterexamples and historical rendering replay. The one deselected dry-run test follows the existing project configuration. No SMTP, recipient, pricing, valuation, scheduling, freshness or strategy changes.
+
+Limitations: deterministic language features are bounded checks, not universal semantic proof. Ambiguous source-only headlines still require a better source excerpt; they are not force-published. The offline preview reuses archived source snippets and demonstrates the changed news sections, not a newly collected full edition. Live source availability and future translation coverage remain runtime concerns.

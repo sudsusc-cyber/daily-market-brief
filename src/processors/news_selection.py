@@ -354,6 +354,12 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 
 
 def publishable_excerpt(item, text: str) -> bool:
+    from src.processors.investment_relevance import ambiguous_money_claim, long_term_noise_reason
+
+    if ambiguous_money_claim(text):
+        return False
+    if getattr(item, 'holding_ticker', None) and long_term_noise_reason(text):
+        return False
     if dependent_excerpt(text):
         return False
     return ((not requires_action_context(item) or text == action_context(item))

@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 7
+_VERSION = 8
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -235,13 +235,16 @@ def _publication_item(section: str, row: dict, today: date):
     rule = _rule_for(row)
     if not rule:
         return None, "no_bounded_long_term_watchpoint"
+    # A forward estimate is useful, but cannot become realised operating evidence.
+    forecast = bool(re.search(r"\b(?:forecasts?|estimates?|projects?|expects?|could|may)\b|预测|预计|估计|可能", row['excerpt'] + ' ' + row['output_text'], re.I))
     key = _fact_key(row)
     item = {
         "theme": rule.key,
-        "thesis": rule.title,
+        "thesis": "收入预期仍需业务兑现与利润贡献验证" if forecast and rule.key == "operating-performance" else rule.title,
         "subject": _event_subject(row),
         "event_key": _event_key(row, rule.key),
-        "marker": (
+        "evidence_type": "forecast" if forecast else "reported_event",
+        "marker": "预期变化" if forecast else (
             "新变量"
             if rule.key
             in {"payment-commercialization", "product-commercialization", "product-release-risk", "regulatory-access"}
@@ -249,7 +252,7 @@ def _publication_item(section: str, row: dict, today: date):
         ),
         "updated": True,
         "fact": row["output_text"],
-        "watch": rule.watch,
+        "watch": "后续披露的实际业务收入、利润贡献与相关资本投入是否兑现本次预期。" if forecast and rule.key == "operating-performance" else rule.watch,
         "url": row["url"],
         "section": _SECTION_NAMES[section],
         "source_section": section,

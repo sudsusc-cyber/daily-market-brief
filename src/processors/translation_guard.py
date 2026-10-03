@@ -301,6 +301,25 @@ def _capital_amount_bindings(text: str) -> dict:
     return result
 
 
+def _economic_amount_roles(text: str) -> dict:
+    """Bind monetary quantities to explicit economic nouns, independent of issuer."""
+    roles = {
+        'managed_assets': r'assets under management|managed assets|管理资产|资产管理规模',
+        'market_size': r'market opportunity|addressable market|市场空间|潜在市场规模',
+        'revenue': r'\brevenues?\b|营收|收入',
+        'expenditure': r'\b(?:spent|spend|spending|invested|invests?)\b|实际投入|投入|花费|支出',
+    }
+    result = {}
+    for clause in re.split(r'[，；;。]|(?<!\d),(?!\d)', text):
+        amounts = Counter({key: n for key, n in _quantities(clause).items()
+                           if len(key) == 2 and key[1] in {'USD', 'HKD', 'EUR'}})
+        matches = [role for role, pattern in roles.items() if re.search(pattern, clause, re.I)]
+        # Ambiguous clauses are not assigned an invented single economic role.
+        if amounts and len(matches) == 1:
+            result.setdefault(matches[0], Counter()).update(amounts)
+    return result
+
+
 def translation_errors(original: str, translated: str) -> list[str]:
     from src.processors.news_selection import strip_source_prefix
 
@@ -319,6 +338,12 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = normalize_event_text(original)
     translated = normalize_event_text(translated)
     errors = []
+    if re.search(r"\bmake peace with\b", original, re.I) and '和解' in translated:
+        errors.append('literal_financial_idiom')
+    source_roles = _economic_amount_roles(original)
+    output_roles = _economic_amount_roles(translated)
+    if source_roles and output_roles and source_roles != output_roles:
+        errors.append('economic_amount_role')
     places = _localization_mentions(original)
     # Only explicit source names constrain their localized equivalents. Existing
     # finance conventions (Treasuries -> 美国国债) must not invent an extra

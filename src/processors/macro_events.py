@@ -318,6 +318,12 @@ def extract_event(text: str) -> MacroEvent:
     )
 
 
+def _release_context(text, family):
+    """Only dates attached to the cited release identify it, not next policy dates."""
+    clauses = re.split(r'[,，;；]|\b(?:after|following|despite)\b', text, flags=re.I)
+    return ' '.join(c for c in clauses if re.search(OBJECTS[family], c, re.I))
+
+
 def edition_events(texts: list[str]) -> list[MacroEvent]:
     from dataclasses import replace
 
@@ -331,16 +337,19 @@ def edition_events(texts: list[str]) -> list[MacroEvent]:
 
     for family in ('employment', 'inflation', 'growth'):
         anchors = [e for e in events if e.family == family]
+        # Duplicate reporting on one release must not make its identity ambiguous.
+        anchor_keys = {(tuple(e.geography), tuple(sorted(months(e.text)))) for e in anchors}
+
         for i, event in enumerate(events):
-            if event.family not in {'us_bonds', 'bonds', 'fx', 'precious_metals'}:
+            if event.family not in {'us_bonds', 'bonds', 'fx', 'precious_metals', 'policy_rates'}:
                 continue
             if not any(s.kind == 'object' and s.value == family for s in event.spans):
                 continue
             if not re.search(r'\b(?:after|as|despite|following)\b|因|尽管|数据|报告', event.text, re.I):
                 continue
-            if (len(anchors) == 1 and not (set(event.geography) - set(anchors[0].geography))
-                    and not (months(event.text) and months(anchors[0].text)
-                             and months(event.text) != months(anchors[0].text))):
+            if (len(anchor_keys) == 1 and anchors and not (set(event.geography) - set(anchors[0].geography))
+                    and not (months(_release_context(event.text, family)) and months(anchors[0].text)
+                             and months(_release_context(event.text, family)) != months(anchors[0].text))):
                 events[i] = replace(event, topic=TOPICS[family], decision='edition_data_release_reaction')
     if any(e.topic == "中美关系" for e in events):
         for i, event in enumerate(events):

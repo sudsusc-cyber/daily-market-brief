@@ -62,12 +62,24 @@ EVENTS['investment'] += r'|\bcapital expenditures?\b'
 EVENTS['announcement'] = r"\bannounc(?:e|es|ed|ing|ement|ements)\b|宣布|公布"
 
 
+# Predicate families, shared across sources and all publication sections.
+NEGATION += r"|(?:并)?不(?=畏惧|惧|担心|害怕|认同|支持|接受|认为)|并非"
+MODALITY += r"|将(?=投入|花费|耗资|支出|培训|建设|扩建|增加|减少)"
+EVENTS['raise'] += r"|新增(?=\s*(?:[0-9,]+\s*(?:个|名)?\s*)?(?:就业|岗位))|\blifting\b"
+EVENTS['raise'] += r"|升至|升到"
+
+
 def normalize_event_text(text: str) -> str:
     """Mask roles and disambiguate event objects without deleting quantities.
 
     Only used for semantic features; immutable source and published text retain
     every word. An investor is a role, not proof of a fresh capital investment.
     """
+    # Directional predicates share semantics regardless of tense or word order.
+    text = re.sub(r"\b(?:coming|comes?|came|going|goes|went) down\b", 'fall', text, flags=re.I)
+    text = re.sub(r'\badded(?=\s+(?:just\s+)?[0-9,]+\s+jobs\b)', 'increased', text, flags=re.I)
+    # Raising children is not raising a financial quantity.
+    text = re.sub(r"\brais(?:e|es|ed|ing) (?=children|kids|a child)\b", 'parenting ', text, flags=re.I)
     # Published statistical data are a report, not a product rollout.
     text = re.sub(r"\b(data|figures|statistics) (?:released|published)\b", r"\1 announced", text, flags=re.I)
     # An agreed action is a commitment, not an unqualified infinitive forecast.

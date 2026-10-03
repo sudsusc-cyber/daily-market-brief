@@ -273,7 +273,10 @@ def _rebuild_safe_html(
         ][:60]})
     parts, footnotes = [], []
     for (topic, _), related in selected:
+        # Report the originating release before reactions to it.
+        related.sort(key=lambda g: g['event']['decision'] == 'edition_data_release_reaction')
         facts, paragraph_citations = [], []
+        prior_texts = []
         for group in related:
             citations = []
             for item in group["items"]:
@@ -281,9 +284,19 @@ def _rebuild_safe_html(
                 footnotes.append(Footnote(index=index, url=item.url, source=item.source or ""))
                 citations.append("<sup>" + safe_anchor(item.url, f"[{index}]", style=FOOTNOTE_ANCHOR_STYLE) + "</sup>")
             paragraph_citations.extend(citations)
+            text = group["text"].rstrip()
+            antecedent = text.split('，因', 1)[0] if '，因' in text else ''
+            if antecedent and any(re.search(r'(?:^|[。；]|因\s*)' + re.escape(antecedent) + r'(?=[，。；]|$)', prior) for prior in prior_texts):
+                from src.processors.news_presentation import macro_context_text
+                compact = macro_context_text(text, antecedent)
+                if compact != text:
+                    for row in group['evidence']:
+                        row['macro_context_antecedent'] = antecedent
+                        row['output_text'] = compact
+                    text = compact
+            prior_texts.append(group['text'])
             if evidence is not None:
                 evidence.extend({**row, "macro_topic": topic, "macro_event": group["event"]} for row in group["evidence"])
-            text = group["text"].rstrip()
             if text[-1:] not in '。！？!?':
                 text = text.rstrip('.') + '。'
             facts.append(f'<span data-macro-fact="true">{escape_text(text)}</span>')
