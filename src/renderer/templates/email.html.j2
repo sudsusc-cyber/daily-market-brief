@@ -440,7 +440,7 @@
                   {% else %}
                   <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_display }}; font-size:16px; color:{{ color_ink }}; font-weight:500; letter-spacing:0; {{ numeric_features }}">{{ m.current | metric_num }}</td>
                   <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:13px; color:{{ color_muted }}; letter-spacing:0; {{ numeric_features }}">{{ m.prior | metric_num }}</td>
-                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:12.5px; color:{{ color_muted }}; letter-spacing:0; {{ numeric_features }}">{{ m.delta | metric_delta }}</td>
+                  <td valign="middle" align="right" style="padding:14px 0 14px 16px; border-bottom:1px solid {{ color_hairline }}; font-family:{{ serif_body }}; font-size:12.5px; color:{{ color_muted }}; letter-spacing:0; {{ numeric_features }}">{{ m.current | display_metric_delta(m.prior) }}</td>
                   {% endif %}
                 </tr>
                 {% endfor %}

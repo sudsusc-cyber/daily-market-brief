@@ -83,7 +83,7 @@ ACTORS = {
 REGIONS = {
     "china": r"China|Chinese|Xi Jinping|中国|中方|对华|习近平",
     "us": r"\bUS\b(?!\$|\s*dollars?)|U\.S\.(?!\s*dollars?)|United States|America\w*|Trump|美国|美方|特朗普",
-    "middle_east": r"Iran|Saudi|Israel|Gaza|Hormuz|Middle East|Persian Gulf|伊朗|沙特|以色列|加沙|霍尔木兹|中东|美伊|红海|波斯湾",
+    "middle_east": r"Iran|Saudi|Israel|Gaza|Hormuz|Middle East|Persian Gulf|\bU\.?A\.?E\.?\b|United Arab Emirates|\b(?:Qatar|Bahrain|Kuwait|Oman|Jordan|Lebanon|Syria|Yemen|Iraq)\b|伊朗|沙特|以色列|加沙|霍尔木兹|中东|美伊|红海|波斯湾|阿联酋|卡塔尔|巴林|科威特|阿曼|约旦|黎巴嫩|叙利亚|也门|伊拉克",
     "russia_ukraine": r"Russia|Ukraine|俄乌|俄罗斯|乌克兰",
     "other_gulf": r"Gulf of (?:Mexico|America|Finland|Guinea|Thailand)|墨西哥湾|美国湾|芬兰湾|几内亚湾|泰国湾",
     "other_partner": r"European|Europe|Japan|欧盟|欧洲|日本",

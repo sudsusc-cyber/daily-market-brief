@@ -204,6 +204,14 @@ def _filter_metric_num(value: float | None, unit: str = "") -> str:
         return "—"
 
 
+def _filter_display_metric_delta(current: float | None, prior: float | None) -> str:
+    """Subtract the displayed observations; keep raw inputs/scoring untouched."""
+    current, prior = _finite_number(current), _finite_number(prior)
+    if current is None or prior is None:
+        return "—"
+    return _filter_metric_delta(float(f"{current:.2f}") - float(f"{prior:.2f}"))
+
+
 def _filter_metric_delta(delta: float | None, unit: str = "") -> str:
     """情绪指标变化值,带正负号。None / 接近零 → '—',避免 '+0.00' 噪音。
     unit 参数为兼容保留,不再附在数字尾(单位由模板侧标注)。"""
@@ -281,6 +289,7 @@ def _build_env() -> Environment:
     env.filters["rate"] = _filter_rate
     env.filters["metric_num"] = _filter_metric_num
     env.filters["metric_delta"] = _filter_metric_delta
+    env.filters["display_metric_delta"] = _filter_display_metric_delta
     env.filters["bj_time"] = _filter_bj_time
     env.filters["bj_date_cn"] = _filter_bj_date_cn
     env.filters["iso_date_md"] = _filter_iso_date_md
