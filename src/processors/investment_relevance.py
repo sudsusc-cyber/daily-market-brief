@@ -39,6 +39,7 @@ def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=
         r'(?:进入|拓展|扩大).{0,20}(?:市场|销售渠道|分销)|'
         r'(?:sales|销量|销售额).{0,35}(?:\d|grow|rise|fall|增长|下降)', context, re.I))
     noise = {
+        'market_price_roundup': r'(?:指数|[沪深恒纳]指|恒科指|股市).{0,80}(?:上涨|下跌|下挫|跌幅|涨幅|新低|新高)|(?:均|齐)(?:涨|跌)\s*\d|股价.{0,30}(?:上涨|下跌|大涨|大跌)',
         'price_milestone': r'\b(?:stock|shares?|share price)\b.{0,65}\b(?:record|high|low)\b|股价.{0,30}(?:新高|新低|纪录)',
         'historical_retrospective': r'\b(?:look back|looking back|over the decades|years ago)\b|回顾.{0,30}(?:投资|押注)|数十年前',
         'empty_opinion': r'\b(?:era|future|story)\b.{0,40}\b(?:needs? more|more than|not enough)\b|时代.{0,25}(?:不仅|不只是|需要)',

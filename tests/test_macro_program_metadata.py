@@ -53,3 +53,16 @@ def test_changed_state_is_not_elided_as_repeated_fact():
     html, notes = _rebuild_safe_html('<p>[1][2]</p>',rows)
     assert '将释放' in html and '已释放' in html
     assert len(notes) == 2
+
+
+def test_cause_first_translation_compacts_same_fact_and_preserves_cause():
+    rows = [item('Oil prices lower as G7 nations to release diesel stocks, Saudis reportedly plan attack on Houthis',
+                 '油价下跌，G7 国家将释放柴油库存，据报道沙特计划袭击 Houthis',1),
+            item('G7 nations to release diesel stocks as wars in Europe and Middle East constrain fuel supplies',
+                 '由于欧洲和中东的战争制约燃料供应，G7 国家将释放柴油库存。',2)]
+    evidence=[]
+    html, notes = _rebuild_safe_html('<p>[1][2]</p>',rows,evidence)
+    assert html.count('G7 国家将释放柴油库存') == 1
+    assert '欧洲和中东的战争制约燃料供应' in html and len(notes) == 2
+    from src.processors.news_presentation import replay_presentation
+    assert replay_presentation(evidence[1]['validated_text'],evidence[1]) == evidence[1]['output_text']
