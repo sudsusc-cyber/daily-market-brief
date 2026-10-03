@@ -318,6 +318,19 @@ def extract_event(text: str) -> MacroEvent:
     )
 
 
+def _is_data_release(text):
+    """A topic mention or interview heading cannot identify a released dataset."""
+    from decimal import Decimal
+
+    from src.processors.translation_guard import _quantities
+
+    measured = any(isinstance(key[0], Decimal) and not (key[1] == '' and 1900 <= key[0] <= 2100)
+                   for key in _quantities(text))
+    return bool(measured and re.search(
+        r'\b(?:adds?|added|increases?|increased|decreases?|decreased|rises?|rose|falls?|fell|grew|contracted|reports?|reported|released|showed|recorded)\b|'
+        r'新增|增加|减少|升至|降至|增长|下降|公布|录得', text, re.I))
+
+
 def _release_context(text, family):
     """Only dates attached to the cited release identify it, not next policy dates."""
     clauses = re.split(r'[,，;；]|\b(?:after|following|despite)\b', text, flags=re.I)
@@ -336,7 +349,7 @@ def edition_events(texts: list[str]) -> list[MacroEvent]:
         return {match[0][:3].casefold() for match in _calendar_months(text)}
 
     for family in ('employment', 'inflation', 'growth'):
-        anchors = [e for e in events if e.family == family]
+        anchors = [e for e in events if e.family == family and _is_data_release(e.text)]
         # Duplicate reporting on one release must not make its identity ambiguous.
         anchor_keys = {(tuple(e.geography), tuple(sorted(months(e.text)))) for e in anchors}
 

@@ -78,6 +78,11 @@ def normalize_event_text(text: str) -> str:
     # Directional predicates share semantics regardless of tense or word order.
     text = re.sub(r"\b(?:coming|comes?|came|going|goes|went) down\b", 'fall', text, flags=re.I)
     text = re.sub(r'\badded(?=\s+(?:just\s+)?[0-9,]+\s+jobs\b)', 'increased', text, flags=re.I)
+    text = re.sub(r'开(?:出|具)(?:了)?(?:又)?(?:一张)?(?:季度)?支票', '支付支票', text)
+    # Nominal classifications and abilities are not executed financial events.
+    text = re.sub(r'\bgrowth fund\b|成长基金|增长型基金', 'fund_style', text, flags=re.I)
+    text = re.sub(r'\bcan afford (?:its |the |a )?dividends?\b|(?:有能力|能够|能)(?:支付|负担)(?:其|该公司)?(?:的)?股息', 'dividend_affordability', text, flags=re.I)
+    text = re.sub(r'送入(?=轨道)|送上(?=[^，。；]{1,25}火箭进入轨道)', '发射进入', text)
     # Raising children is not raising a financial quantity.
     text = re.sub(r"\brais(?:e|es|ed|ing) (?=children|kids|a child)\b", 'parenting ', text, flags=re.I)
     # Published statistical data are a report, not a product rollout.

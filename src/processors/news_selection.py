@@ -11,6 +11,7 @@ from src.processors.html_safe import strip_all_tags
 from src.processors.technical_context import (
     context_allows,
     contextual_excerpt,
+    needs_institution_context,
     needs_technical_context,
 )
 
@@ -117,6 +118,9 @@ def source_boilerplate(text: str) -> bool:
 
 def navigation_headline(text: str) -> bool:
     """An article promising reasons/tips is navigation, not those facts."""
+    interview_topic = re.search(r"\b(?:Chair|Secretary|Minister|CEO|Economist)\s+(?:[A-Z][A-Za-z.]*\s+){0,3}on\s+[^:：!?]+$", text)
+    if interview_topic and not re.search(r'[“”"‘’]|\b(?:says|said|warns|expects)\b', text, re.I):
+        return True
     return bool(re.search(
         r"^\s*(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:reasons?|ways?|things?|tips?)\b"
         r"|(?:的|有)[一二三四五六七八九十\d]+个(?:原因|理由|要点|方法)[。.!！?？]?\s*$", text, re.I))
@@ -380,7 +384,7 @@ def factual_excerpt(item) -> str:
     """
     if requires_action_context(item):
         return action_context(item)
-    if needs_technical_context(str(getattr(item, 'title', ''))):
+    if needs_technical_context(str(getattr(item, 'title', ''))) or needs_institution_context(str(getattr(item, 'title', ''))):
         return contextual_excerpt(item)
     if old_event_recap(item):
         return ''

@@ -18,7 +18,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 13
+PRESENTATION_VERSION = 14
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -264,6 +264,19 @@ def voice_text(text: str, person: str, *, _version: int = PRESENTATION_VERSION) 
     # Parenthesized local-script spelling may accompany an exact known name.
     spelling = r"(?:\s*[（(][가-힣ぁ-ゟ゠-ヿ· ]{2,20}[)）])?"
     leading = "^" + role + "(?:" + name + ")" + spelling + r"\s*"
+    if _version >= 14:
+        pieces = re.split(r'\s*——\s*|\s+[—–]\s+', text, maxsplit=1)
+        if len(pieces) == 2:
+            background, speech = pieces
+            price = re.match(r'^(?P<issuer>[A-Za-z][A-Za-z .&-]{0,35}|[一-鿿]{2,12})\s*股价', background)
+            if price and re.match(leading + r'(?:表示|认为|指出|称|说)', speech):
+                body = voice_text(speech, person, _version=_version)
+                if body != speech:
+                    if body.startswith('公司'):
+                        body = price['issuer'].strip() + body[2:]
+                    # Preserve numerical/deal context, but lead with the speech.
+                    has_context = re.search(r'投资|收购|协议|合同|之后|此前|后', background)
+                    return body.rstrip('。') + ('（背景：' + background.rstrip('。') + '）' if has_context else '')
     if _version >= 6:
         # Topic prefixes stay visible; only an exact configured speaker and a
         # neutral reporting verb are elided. Addressed audiences stay in prose.
@@ -339,7 +352,7 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         if version >= 13 and row.get('macro_context_antecedent'):
             output = macro_context_text(output, row['macro_context_antecedent'])

@@ -31,6 +31,8 @@ def _same_speaker(title: str, text: str) -> bool:
 
 def contextual_excerpt(item) -> str:
     """Use one complete paragraph, not a keyword inserted into a vague title."""
+    if needs_institution_context(str(getattr(item, 'title', ''))):
+        return institution_excerpt(item)
     if not needs_technical_context(str(getattr(item, 'title', ''))):
         return ''
     from src.processors.news_selection import complete_excerpt, plain_source
@@ -50,7 +52,42 @@ def contextual_excerpt(item) -> str:
 
 
 def context_allows(item, text: str) -> bool:
+    if needs_institution_context(str(getattr(item, 'title', ''))):
+        return bool(institution_excerpt(item) and strip_all_tags(text).strip() == institution_excerpt(item))
     if not needs_technical_context(str(getattr(item, 'title', ''))):
         return True
     context = contextual_excerpt(item)
     return bool(context and strip_all_tags(text).strip() == context)
+
+
+def needs_institution_context(title: str) -> bool:
+    """Ambiguous institutional acronyms need their actual jurisdiction, not guessing."""
+    return bool(re.search(r'\b(?:DOJ|AG|DPA)\b', title)
+                and re.search(r'subpoena|investigat|liability|enforcement|诉讼|传票|调查', title, re.I))
+
+
+def institution_excerpt(item) -> str:
+    from src.processors.news_selection import complete_excerpt, plain_source
+    from src.processors.translation_guard import _ENTITIES
+
+    title = plain_source(str(getattr(item, 'title', '')))
+    if not needs_institution_context(title):
+        return ''
+    entities = [name for name, aliases in _ENTITIES.items()
+                if any(re.search(r'\b' + re.escape(alias) + r'\b', title, re.I) for alias in aliases)]
+    for field in ('source_body', 'summary', 'snippet'):
+        for paragraph in str(getattr(item, field, '') or '').splitlines():
+            text = plain_source(paragraph)
+            if (re.search(r'Department of Justice|Attorney General|Data Protection Authority', text, re.I)
+                    and re.search(r'subpoena|investigat|liability|enforcement', text, re.I)
+                    and (not entities or any(name.casefold() in text.casefold() for name in entities))
+                    and complete_excerpt(text) and len(text) <= 1200):
+                return text
+    # Preserve an independently complete lead instead of guessing the agency in
+    # an appended headline clause. No truncation inside a clause is permitted.
+    lead, *tail = re.split(r'\s+[—–]\s+', title, maxsplit=1)
+    independent_tail = bool(tail and re.match(r'(?:DOJ|AG|DPA)\s+(?:seeks?|requests?|examines?|investigates?)\b', tail[0], re.I)
+                            and not re.search(r'\b(?:not|denies?|unconfirmed|retracted|false)\b', tail[0], re.I))
+    if independent_tail and not re.search(r'\b(?:DOJ|AG|DPA)\b', lead) and re.search(r'\b(?:subpoenas?|investigates?)\b', lead, re.I) and complete_excerpt(lead):
+        return lead
+    return ''
