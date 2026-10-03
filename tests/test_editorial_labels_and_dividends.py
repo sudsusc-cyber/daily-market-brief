@@ -56,3 +56,20 @@ def test_media_credit_cleanup_retains_an_exact_verifiable_source_span():
 def test_price_only_roundup_needs_operating_disclosure(title):
     assert long_term_noise_reason(title)
     assert not long_term_noise_reason(title,'公司公布营收增长20%。')
+
+
+def test_personal_trade_and_empty_forecast_are_not_company_facts():
+    from src.processors.news_selection import publishable_excerpt
+    item=SimpleNamespace(title='OpenAI IPO keeps me buying Microsoft',summary='',source='News',holding_ticker='MSFT')
+    assert not company_candidate(item,'MSFT')
+    item=SimpleNamespace(title='Costco Outlook',summary='',source='News')
+    assert not publishable_excerpt(item,'But as its market share grows, grocers should increasingly worry about Costco.')
+    assert publishable_excerpt(item,'Costco reported revenue of $50 billion.')
+
+
+def test_summit_personal_colour_needs_policy_impact():
+    from src.processors.news_selection import macro_candidate
+    item=SimpleNamespace(title='A leader’s unusual breaks consumed summit hours',summary='')
+    assert not macro_candidate(item)
+    item.summary='Leaders agreed to reduce trade tariffs.'
+    assert macro_candidate(item)
