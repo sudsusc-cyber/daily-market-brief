@@ -259,6 +259,9 @@ def _format_input(items: list[FigureMention]) -> str:
         if snippet:
             line += f" / 摘要={snippet}"
         line += f" / 来源={it.source}"
+        line += f" / RSS日期={it.published_at}"
+        if getattr(it, 'source_published_at', ''):
+            line += f" / 原报道发布日期={it.source_published_at}（不可用RSS重发日期代替）"
         lines.append(line)
     return "\n".join(lines)
 

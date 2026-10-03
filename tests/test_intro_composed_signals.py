@@ -161,3 +161,28 @@ def test_general_investment_reflection_remains_allowed_outside_verified_signal_s
     statement = '甲企业合乎大额买入的条件，乙企业留有定投的余地。'
     assert write_intro(rows(), client=Client({'text': prose + '【持仓近况】',
                                               'signal_text': statement})) == prose + statement
+
+
+
+def test_actual_preview_duplicate_signal_failure_repairs_to_integrated_non_report_prose():
+    signals = [signal('腾讯控股', 'LUMP_SUM'), signal('泡泡玛特', 'DCA')]
+    bad = {
+        'text': '理解一家企业，往往不是靠某个季度的数字，而是靠时间慢慢显影它的选择。价格波动容易被误当成信息，其实多数时候只是噪声。当规则替代情绪做决定，耐心才有立足处。【持仓近况】腾讯控股已符合大额买入条件，泡泡玛特已符合定投条件。判断力不体现在预测上，而体现在区间到来时是否愿意照做。',
+        'signal_text': '区间已至，纪律先行；腾讯控股候大额买入，泡泡玛特候定投。',
+    }
+    sentence = '腾讯控股与大额买入的尺度相契，泡泡玛特为定投留有余地。'
+    client = Client(bad, {'text': PROSE, 'signal_text': sentence})
+    result = write_intro(signals, client=client)
+    assert result == PROSE.replace('【持仓近况】', sentence)
+    assert result.count('腾讯控股') == result.count('泡泡玛特') == 1
+    assert len(client.calls) == 2
+
+
+@pytest.mark.parametrize('sentence', [
+    '甲企业与大额买入的尺度相契，乙企业为定投留有余地。',
+    '甲企业合乎既定的大额买入尺度，乙企业亦留有定投空间。',
+    '乙企业与定投的节奏相应，甲企业在大额买入的尺度之内。',
+])
+def test_literary_current_state_can_vary_without_new_trigger_or_grammar_relaxation(sentence):
+    assert not _signal_errors(sentence, rows(), [])
+    assert _signal_errors(sentence.replace('甲企业', '丙企业'), rows(), [])
