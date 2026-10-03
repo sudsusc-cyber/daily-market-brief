@@ -452,8 +452,11 @@ def translation_errors(original: str, translated: str) -> list[str]:
     # Preserve identifiers, model names and acronyms literally (including unknown ones).
     # Match versioned model names first and greedily; a grammatical acronym
     # plural must not erase a model suffix (e.g. Claude-3-Sonnet -> Claude-3-Opus).
-    original = re.sub(r'^EXCLUSIVE\s*[:：-]\s*', '', original, flags=re.I)
-    translated = re.sub(r'^独家\s*[:：-]\s*', '', translated)
+    # Delimited editorial format labels are ordinary translatable words, not
+    # tickers/model names. Remove only this leading syntactic role from the
+    # identifier comparison, leaving the immutable source and other checks intact.
+    original = re.sub(r'^(?:(?:FULL|EXCLUSIVE|LIVE)\s+(?:INTERVIEW|REPORT|COVERAGE)|BREAKING\s+NEWS|EXCLUSIVE)\s*[:：-]\s*', '', original, flags=re.I)
+    translated = re.sub(r'^(?:(?:完整|独家|现场)(?:采访|访谈|报道)|突发新闻|独家)\s*[:：-]\s*', '', translated)
     tokens = re.findall(r'\b(?:[A-Za-z]+[-.]\d[\w.-]*|[A-Z]{2,}[A-Z0-9-]*s?)\b', original + ' ' + translated)
     identifiers = {token[:-1] if re.fullmatch(r"[A-Z]{2,}s", token) else token for token in tokens}
     location_tokens = {'NEW', 'YORK'} if _contains(original, 'New York') else set()

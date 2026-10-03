@@ -9,6 +9,24 @@ import re
 
 def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=True) -> str:
     context = title + ' ' + summary
+    # Dividend commentary needs a disclosed change/amount, not simply the
+    # assertion that a firm can pay or has written its routine quarterly check.
+    dividend_commentary = re.search(
+        r"\b(?:can afford (?:its |the )?dividend|(?:cut|wrote|written) another quarterly check)\b"
+        r"|(?:有能力|能够|能)支付.{0,8}股息|又.{0,8}(?:季度支票|季度派息)", context, re.I)
+    disclosed = any(
+        re.search(r"dividend|payout|股息|分红|派息", part, re.I)
+        and re.search(
+            r"(?:\$|USD|HKD)\s*\d|\d[\d.,]*\s*(?:%|cents?|per share|美元|港元|每股)"
+            r"|(?:raises?|raised|increases?|increased|cuts?|reduced|suspends?|suspended)\s+(?:its |the )?dividend"
+            r"|(?:提高|削减|暂停|取消).{0,8}(?:股息|分红)", part, re.I)
+        for part in re.split(r"(?<=[。!?])|(?<=\.)\s+(?=[A-Z])", context)
+    )
+    disclosed = disclosed or bool(re.search(
+        r"\b(?:reported|reports|announced)\b.{0,45}\b(?:revenue|earnings|cash flow|profit)\b.{0,30}\d"
+        r"|(?:公布|报告).{0,20}(?:营收|利润|现金流).{0,15}\d", context, re.I))
+    if dividend_commentary and not disclosed:
+        return 'undisclosed_dividend_commentary'
     impact = bool(re.search(
         r'\b(?:revenue|earnings|profit|margins?|cash flow|royalt\w*|licensing (?:income|revenue)|'
         r'paid subscribers?|market share|production capacity|retention|renewal rate)\b|'

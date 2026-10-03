@@ -239,11 +239,27 @@ def dependent_excerpt(text: str) -> bool:
     return bool(re.match(r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Today|Yesterday|This|That|It)\b.{0,45}\b(?:relief|respite|reaction|reprieve)\b|(?:周[一二三四五六日]|这|其|昨日|今日).{0,25}(?:缓解|喘息|反应)", text, re.I))
 
 
+def editorial_headline_excerpt(text: str) -> str:
+    """An exact headline span without delimited format labels or video credits."""
+    start = re.match(r"(?:(?:FULL|EXCLUSIVE|LIVE)\s+(?:INTERVIEW|REPORT|COVERAGE)|BREAKING\s+NEWS)\s*[:：]\s*", text, re.I)
+    cleaned = text[start.end():] if start else text
+    # Only a labelled media headline plus an explicit trailing opaque media ID
+    # provides enough structure to distinguish credits from factual clauses.
+    if start:
+        tail = re.search(r"\s+\|\s+[^|\n]{1,100}\((?=[A-Za-z0-9_-]{8,20}\))(?=[^)]*\d)[A-Za-z0-9_-]+\)(?:\s+[-–—]\s+[^|]+)?$", cleaned)
+        if tail:
+            cleaned = cleaned[:tail.start()]
+    return cleaned if cleaned != text else ''
+
+
 def publication_candidates(item, text: str) -> list[str]:
     """Include adjacent evidence so a financing's investor isn't lost."""
     parts = sentences(text)
     ticker = getattr(item, 'holding_ticker', None)
     result = list(parts)
+    headline = editorial_headline_excerpt(text)
+    if headline:
+        result.insert(0, headline)
     for left, right in zip(parts, parts[1:], strict=False):
         if dependent_excerpt(right) and complete_excerpt(left) and len(left + right) <= 900:
             start = text.find(left)
@@ -419,6 +435,9 @@ def factual_excerpt(item) -> str:
         return ''
     title = plain_source(getattr(item, 'title', ''))
     summary = plain_source(getattr(item, 'summary', '') or getattr(item, 'snippet', ''))
+    headline = editorial_headline_excerpt(title)
+    if headline and publishable_excerpt(item, headline):
+        return headline
     if (re.search(r"\b(?:global leader|leading (?:technology|provider)|first company capable|through your|not your)\b", summary, re.I)
             and publishable_excerpt(item, title) and not re.search(r"\byour\b", title, re.I)):
         return title
