@@ -23,7 +23,7 @@ from src.processors.html_safe import (
     strip_all_tags,
 )
 from src.processors.llm_client import LLMClient
-from src.processors.macro_events import edition_events
+from src.processors.macro_events import _is_data_release, edition_events
 from src.processors.macro_topics import macro_importance
 from src.processors.news_selection import macro_candidate
 from src.processors.source_grounding import (
@@ -274,7 +274,10 @@ def _rebuild_safe_html(
     parts, footnotes = [], []
     for (topic, _), related in selected:
         # Report the originating release before reactions to it.
-        related.sort(key=lambda g: g['event']['decision'] == 'edition_data_release_reaction')
+        related.sort(key=lambda g: (
+            not (g['event']['family'] in {'employment', 'inflation', 'growth'}
+                 and not g['event']['states'] and _is_data_release(g['evidence'][0]['excerpt'])),
+            g['event']['decision'] == 'edition_data_release_reaction'))
         facts, paragraph_citations = [], []
         prior_texts = []
         for group in related:
