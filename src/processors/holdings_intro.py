@@ -12,6 +12,8 @@ from src.processors.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 _SIGNAL_SLOT = "【持仓近况】"
+_PROSE_TARGET_MAX = 110
+_PROSE_HARD_MAX = 120  # Small counting variance must not force a fixed-template fallback.
 _INSTRUCTION = """为持仓信号栏目写一段克制、有哲理、雅而不晦的中文卷首语。
 只输出 JSON 对象，字段 text 和 signal_text，不加标题。
 先写signal_text这句当期近况，再写text，让它们读起来是同一段文字，而不是哲理段落后附一行报表。
@@ -127,10 +129,12 @@ def _signal_facts(signals: list[Any]) -> str:
 # to the immutable subject/category; a generic language-model self-check cannot
 # establish this. Vocabulary denotes a current condition, never a price move,
 # new trigger, forecast, recommendation or a change to the investment rule.
-_STATE_ADVERBS = r"(?:(?:已然|依然|仍然|已经|恰好|也已|则已|如今|眼下|当下|仍|已|正|尚|也|则|亦|恰))*"
+_STATE_ADVERB_WORDS = ("已然", "依然", "仍然", "已经", "恰好", "也已", "则已", "如今", "眼下", "当下",
+                       "目前", "现在", "现今", "现时", "现", "仍", "已", "正", "尚", "也", "则", "亦", "恰")
+_STATE_ADVERBS = "(?:(?:" + "|".join(_STATE_ADVERB_WORDS) + "))*"
 _STATE_QUALIFIER = r"(?:既定的?|预设的?)?"
 _STATE_FORMS = (
-    r"(?:在|于|处在|处于|落在|落于|留在){q}{k}(?:的)?(?:区间内?|范围内?|尺度之内|门槛之内|线内)",
+    r"(?:在|于|处|处在|处于|位处|位于|居于|身在|置身于|落在|落于|留在){q}{k}(?:的)?(?:区间内?|范围内?|尺度之内|门槛之内|线内)",
     r"(?:合乎|符合|满足|契合){q}{k}(?:的)?(?:条件|尺度|标准|要求)",
     r"与{q}{k}(?:的)?(?:尺度|条件|区间|节奏|节拍)(?:相合|相应|相契|吻合)",
     r"为{k}(?:留有|留出)(?:余地|空间)",
@@ -180,7 +184,7 @@ def _signal_errors(text: str, signals: list[Any], recent: list[str]) -> list[str
     # must not disguise another copy of yesterday's signal wording.
     def wording(value: str) -> str:
         value = re.sub(r'[，；。\s]', '', value)
-        return re.sub(r'已然|依然|仍然|已经|恰好|如今|眼下|当下|仍|已|正|尚|也|则|亦|恰', '', value)
+        return re.sub('|'.join(_STATE_ADVERB_WORDS), '', value)
 
     compact = wording(text)
     if any(compact in wording(old) for old in recent):
@@ -222,7 +226,7 @@ def _reflection(text: str) -> str:
 
 def _intro_errors(text: str, context: str, recent: list[str]) -> list[str]:
     errors = []
-    if (context and text.count(context) != 1) or not 60 <= len(text) <= 110:
+    if (context and text.count(context) != 1) or not 60 <= len(text) <= _PROSE_HARD_MAX:
         errors.append("format_or_length")
     tail = text.replace(context, "", 1)
     # No current portfolio or market facts belong in this literary paragraph.
@@ -238,12 +242,31 @@ def _intro_errors(text: str, context: str, recent: list[str]) -> list[str]:
     return errors
 
 
+def _intro_retry(errors: list[str], *, accepted_text: str, accepted_signal: str) -> str:
+    """Repair only the failed field; validated prose/facts survive a format retry."""
+    parts = ["上次未通过：" + ",".join(errors)]
+    if accepted_text:
+        parts.append("text已通过校验，请原样保留，不要重写：" + json.dumps(accepted_text, ensure_ascii=False))
+    else:
+        parts.append("只把text修成简洁的完整思考，在完整句子边界保留一次【持仓近况】，前后不要重复公司或信号。")
+        if 'format_or_length' in errors:
+            parts.append(f"text去掉占位符后以60-{_PROSE_TARGET_MAX}字为目标；压缩修辞和重复意思，不改动signal_text来补救长度。")
+    if accepted_signal:
+        parts.append("signal_text已通过事实核验，请原样保留，不要补充事实：" + json.dumps(accepted_signal, ensure_ascii=False))
+    else:
+        parts.append("只按输入的主体和LUMP_SUM/DCA状态修正signal_text，写现有位置，保留正文的疏朗语气。")
+    parts.append("输入没有提供价格、均线周期或触发时间，任何字段都不得自行补这些数字和事实；也不能添加行动建议。")
+    parts.append("仍输出text和signal_text两个字段的完整JSON；这是字段修复，不是重新撰写整段。")
+    return "\n" + "\n".join(parts)
+
+
 def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=None) -> str | None:
     """Generate within the shared LLM budget; failed output uses the template fallback."""
     if not signals or client is None:
         return None
     recent = _recent(history)
     payload = "当期已核实的信号事实：\n" + _signal_facts(signals) + "\n近期已刊卷首语：\n" + "\n".join(recent)
+    accepted_text = accepted_signal = ""
     for attempt in range(2):
         try:
             response = client.chat(payload, task_extra=_INSTRUCTION, max_tokens=500,
@@ -261,20 +284,28 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
         except (ValueError, TypeError, KeyError):
             text, signal_text, modern, errors = '', '', False, ['invalid_prose_json']
         if text and modern:
-            if text.count(_SIGNAL_SLOT) != 1 or not re.search(r'(?:^|[。！？])' + re.escape(_SIGNAL_SLOT), text):
-                errors.append('signal_slot_boundary')
-            errors += _signal_errors(signal_text, signals, recent)
-            errors += _intro_errors(text.replace(_SIGNAL_SLOT, ''), '', recent)
-        if not errors:
-            result = text.replace(_SIGNAL_SLOT, signal_text)
+            text_errors = _intro_errors(text.replace(_SIGNAL_SLOT, ''), '', recent)
+            if (text.count(_SIGNAL_SLOT) != 1
+                    or not re.search(r'(?:^|[。！？])' + re.escape(_SIGNAL_SLOT), text)
+                    or re.search(re.escape(_SIGNAL_SLOT) + r'[，；：、]', text)):
+                text_errors.append('signal_slot_boundary')
+            signal_errors = _signal_errors(signal_text, signals, recent)
+            # Fields are checked independently. A failed repair cannot erase a
+            # previously verified field or smuggle in new reference-line facts.
+            if not text_errors:
+                accepted_text = text
+            if not signal_errors:
+                accepted_signal = signal_text
+            errors += text_errors + signal_errors
+        if accepted_text and accepted_signal:
+            if errors:
+                logger.info("holdings_intro.repaired_with_verified_field reasons=%s", errors)
+            result = accepted_text.replace(_SIGNAL_SLOT, accepted_signal)
             logger.info("holdings_intro.ok chars=%d attempt=%d signal_mode=composed", len(result), attempt + 1)
             return result
         from src.processors.source_grounding import diagnostic_text
         logger.warning("holdings_intro.rejected attempt=%d reasons=%s response=%r", attempt + 1, errors, diagnostic_text(raw, 500))
-        payload += ("\n上次未通过：" + ",".join(errors)
-                    + "；text只写思考和一次【持仓近况】，不要在占位符前后重复写公司或信号。"
-                    "signal_text逐主体肯定描述现有位置，不用候买、候定投、区间已至或额外总结。"
-                    "修复格式时也保留正文的疏朗语气，不退成已符合、仍处于的两行报表；输出完整JSON。")
+        payload += _intro_retry(errors, accepted_text=accepted_text, accepted_signal=accepted_signal)
     return None
 
 

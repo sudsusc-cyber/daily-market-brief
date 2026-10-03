@@ -186,3 +186,81 @@ def test_actual_preview_duplicate_signal_failure_repairs_to_integrated_non_repor
 def test_literary_current_state_can_vary_without_new_trigger_or_grammar_relaxation(sentence):
     assert not _signal_errors(sentence, rows(), [])
     assert _signal_errors(sentence.replace('甲企业', '丙企业'), rows(), [])
+
+
+ACTUAL_TOLERANT_PROSE = (
+    '企业的价值从不在一两个季度里显形，它藏在那些无人催促的日常经营里。'
+    '判断一家公司是否值得托付，靠的不是聪明，而是愿意把时间拉长，让复利自己说话。'
+    '【持仓近况】而耐心之所以稀缺，是因为它要求人在看不清时依然按既定尺度行事，不被一时的喧嚣带走。'
+)
+
+
+def test_actual_112_character_prose_and_neutral_current_position_do_not_force_fallback():
+    statement = '腾讯控股现处大额买入区间，泡泡玛特则落在定投的尺度之内。'
+    signals = [signal('腾讯控股', 'LUMP_SUM'), signal('泡泡玛特', 'DCA')]
+    assert len(ACTUAL_TOLERANT_PROSE.replace('【持仓近况】', '')) == 112
+    client = Client({'text': ACTUAL_TOLERANT_PROSE, 'signal_text': statement})
+    result = write_intro(signals, client=client)
+    assert result == ACTUAL_TOLERANT_PROSE.replace('【持仓近况】', statement)
+    assert len(client.calls) == 1
+
+
+@pytest.mark.parametrize('predicate', [
+    '现处', '目前处于', '如今位于', '眼下在', '现在位处', '现今居于', '依然身在', '仍置身于',
+])
+def test_neutral_current_location_grammar_is_not_limited_to_one_verb(predicate):
+    statement = f'甲企业{predicate}大额买入区间，乙企业仍在定投区间。'
+    assert not _signal_errors(statement, rows(), [])
+    assert _signal_errors(statement.replace('甲企业', '丙企业'), rows(), [])
+    assert _signal_errors(statement.replace('大额买入', '定投'), rows(), [])
+
+
+@pytest.mark.parametrize('predicate', ['现不处', '曾处于', '即将位于', '刚刚落入', '首次进入'])
+def test_present_grammar_does_not_accept_negation_history_prediction_or_new_trigger(predicate):
+    assert _signal_errors(f'甲企业{predicate}大额买入区间，乙企业仍在定投区间。', rows(), [])
+
+
+def test_small_length_tolerance_has_a_hard_limit_and_never_truncates_prose():
+    from src.processors.holdings_intro import _intro_errors
+
+    prose = ACTUAL_TOLERANT_PROSE.replace('【持仓近况】', '')
+    assert not _intro_errors(prose, '', [])
+    oversized = prose + '时间会检验耐心，也会检验判断。'
+    assert len(oversized) > 120
+    assert 'format_or_length' in _intro_errors(oversized, '', [])
+
+
+def test_length_repair_keeps_verified_signal_when_second_response_invents_reference_facts():
+    statement = '甲企业现处大额买入区间，乙企业为定投留有余地。'
+    too_long = ACTUAL_TOLERANT_PROSE + '时间会检验耐心，也会检验判断。'
+    invented = '甲企业现价落在200周均线以内，可作大额买入；乙企业在120周均线以内，适合小额定投。'
+    client = Client({'text': too_long, 'signal_text': statement},
+                    {'text': PROSE, 'signal_text': invented})
+    result = write_intro(rows(), client=client)
+    assert result == PROSE.replace('【持仓近况】', statement)
+    assert not any(term in result for term in ('200', '120', '均线', '现价'))
+    assert 'signal_text已通过事实核验' in client.calls[1][0]
+    assert statement in client.calls[1][0]
+    assert len(client.calls) == 2
+
+
+def test_signal_repair_cannot_destroy_previously_validated_literary_text():
+    statement = '甲企业现处大额买入区间，乙企业为定投留有余地。'
+    client = Client({'text': PROSE, 'signal_text': '甲企业首次跌入大额买入区间，乙企业仍在定投区间。'},
+                    {'text': '甲企业并不满足大额买入条件。' + OTHER_PROSE, 'signal_text': statement})
+    result = write_intro(rows(), client=client)
+    assert result == PROSE.replace('【持仓近况】', statement)
+    assert 'text已通过校验' in client.calls[1][0]
+    assert '并不满足' not in result
+
+
+def test_sentence_placeholder_cannot_leave_a_comma_after_its_inserted_full_stop():
+    response = {'text': PROSE.replace('【持仓近况】', '【持仓近况】，'),
+                'signal_text': '甲企业合乎大额买入的条件，乙企业留有定投的余地。'}
+    assert write_intro(rows(), client=Client(response, response)) is None
+
+
+def test_neutral_present_adverb_swaps_are_not_new_wording():
+    old = '甲企业现处大额买入区间，乙企业仍在定投区间。'
+    new = '甲企业目前处大额买入区间，乙企业依然在定投区间。'
+    assert _signal_errors(new, rows(), [old]) == ['recent_signal_repeat']

@@ -357,11 +357,11 @@ def _parse_output_result(text: str, items: list[FigureMention], *, person='', pe
                 )
                 continue
             if person:
-                from src.processors.speaker_attribution import attribution
+                from src.processors.speaker_attribution import attribution, source_date_error
 
                 bindings = [attribution(src_item, person, person_en, excerpt=row['excerpt']) for row in mapping]
                 if not all(bindings):
-                    rejected_indexes[source_index] = 'speaker_identity_unverified'
+                    rejected_indexes[source_index] = source_date_error(src_item) or 'speaker_identity_unverified'
                     continue
                 for row, binding in zip(mapping, bindings, strict=True):
                     row['speaker_attribution'] = binding
@@ -473,7 +473,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
         for point in kept:
             point.history_text = '；'.join(dict.fromkeys(row.get('validated_text', row['output_text']) for row in point.evidence))
             for row in point.evidence:
-                displayed = voice_text(row['output_text'], bundle.person)
+                displayed = voice_text(row['output_text'], bundle.person, binding=row.get('speaker_attribution'))
                 if displayed != row['output_text']:
                     row['presentation_operations'] = (*row.get('presentation_operations', ()), 'speaker_attribution')
                 row['output_text'] = displayed

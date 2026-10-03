@@ -112,11 +112,17 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
     published = plain_source(str(_value(obj, "summary_html", "") or _value(obj, "text", "")))
     source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""),
                              published_at=row.get("published_at"), url=row.get("url", ""), source=row.get("source_name", ""),
-                             source_body=row.get("source_body", ""), source_published_at=row.get('source_published_at', ''))
-    if row.get('speaker_attribution'):
+                             source_body=row.get("source_body", ""), source_published_at=row.get('source_published_at', ''),
+                             speaker_date_required=row.get('speaker_date_required', False))
+    if row.get('speaker_attribution') or row.get('presentation_speaker'):
         from src.processors.speaker_attribution import attribution
 
-        binding = row['speaker_attribution']
+        binding = row.get('speaker_attribution')
+        # Legacy mappings predate stored bindings. They may replay only if the
+        # original excerpt independently proves identity and passes today's
+        # source-date check. A version downgrade never waives either check.
+        if binding is None and row.get('presentation_version') in range(1, 16):
+            binding = attribution(source, row.get('presentation_speaker', ''), excerpt=excerpt)
         if (not isinstance(binding, dict) or row.get('presentation_speaker') != binding.get('person')
                 or attribution(source, binding.get('person', ''), binding.get('person_en', ''), excerpt=excerpt) != binding):
             return None

@@ -102,6 +102,19 @@ def test_binding_is_archived_and_revalidated_by_thesis():
     assert not _verified_grounding_row(point, dict(row, presentation_speaker='巴菲特'))
     forged = dict(row, speaker_attribution=dict(row['speaker_attribution'], excerpt='unrelated'))
     assert not _verified_grounding_row(point, forged)
+    missing_binding = {key: value for key, value in row.items() if key != 'speaker_attribution'}
+    assert not _verified_grounding_row(point, missing_binding)
+    unknown_date = dict(row, url='https://news.google.com/rss/articles/example', speaker_date_required=True)
+    assert not _verified_grounding_row(point, unknown_date)
+    unknown_date.pop('speaker_attribution')
+    assert not _verified_grounding_row(point, unknown_date)
+    assert not _verified_grounding_row(point, dict(unknown_date, presentation_version=2))
+
+
+def test_characterization_is_speech_but_a_phone_call_is_not():
+    assert attribution(item('Jensen Huang called model distillation "competition".'), '黄仁勋')
+    assert attribution(item('Jane Smith described the chip market as competitive.'), 'Jane Smith')
+    assert not attribution(item('Jensen Huang called a taxi after the conference.'), '黄仁勋')
 
 
 def test_context_recovery_is_bounded_and_keeps_rss_immutable(monkeypatch):
