@@ -32,7 +32,7 @@ EVENTS = {
 EVENTS["raise"] += "|" + EVENTS.pop("rise") + r"|\bexpanding\b"
 EVENTS["cut"] += r"|\blayoffs?\b|走低"
 EVENTS["launch"] += r"|\bintroduc(?:e|es|ed|ing)\b|\bgoes live\b|上线|出台"
-EVENTS["payment"] += r"|\bpayments?\b|\bpayable\b"
+EVENTS["payment"] += r"|开(?:出|具)(?:了)?(?:一张|季度|新的|另一张|又一张|一笔|新的季度|季度的|另一张季度)?支票|\bpayments?\b|\bpayable\b"
 EVENTS["payment_completed"] = r"\b(?:has|have|had|already)\s+paid\b|已(?:经)?支付|已付"
 EVENTS["payment_order"] = r"\b(?:orders?|ordered|requires?|required)\b.*\bpay\b|命令.*支付|责令.*支付|判令.*支付|判赔"
 EVENTS["person_release"] = r"\bperson_release\b|释放"
@@ -40,13 +40,16 @@ EVENTS["pause"] = r"\b(?:paus\w*|suspend\w*|halt\w*)\b|暂停|中止"
 EVENTS["delay"] = r"\b(?:delay\w*|postpon\w*|defer(?:s|red|ring)?)\b|推迟|延期|延后"
 EVENTS["cancel"] = r"\b(?:cancel\w*|scrap\w*|abandon\w*|shelv\w*)\b|取消|放弃|搁置"
 EVENTS["raise"] += r"|\b(?:scal(?:es|ed|ing)|powers?)\s+to\b|\b(?:intensif\w*|enhanc\w*)\b|\bfans?\s+(?:[\w-]+\s+){0,2}(?:fears?|concerns?|inflation)\b|扩展|提振|增强|加剧|劲升|激增|\b(?:sales|revenues?|profits?|earnings)\s+up\b|\bscal(?:e|es|ed|ing)\s+(?:energy|power|capacity|production|compute|computing|operations?|business)\b"
-EVENTS["fall"] += r"|\bslips?\b|跌幅"
+EVENTS['low_probability'] = r"\b(?:little|small|low) chance\b|可能性很小|概率很低|机会渺茫"
+EVENTS['high_probability'] = r"\b(?:high|strong) chance\b|可能性很大|概率很高"
+EVENTS["reserve_drawdown"] = r"\breserve_drawdown\b"
+EVENTS["fall"] += r"|\b(?:slips?|dips?|dipped)\b|跌幅"
 # Maintaining control/resilience is not a rate/price hold. Bind this polysemous
 # verb to a financial state instead of requiring its Chinese word everywhere.
 _HOLD_OBJECT = r"rates?|prices?|guidance|outlook|ratings?|dividends?|revenue|profit|production|利率|价格|指引|展望|评级|分红|营收|利润|产量"
 EVENTS["hold"] = (r"\bunchanged\b|不变|持平(?=$|[，。；、！？,.;!?\s]|于|在|至|的|状态|水平)|\b(?:holds?|maintains?)\s+(?:\w+\s+){0,3}(?:" + _HOLD_OBJECT
                    + r")|(?:" + _HOLD_OBJECT + r").{0,12}(?:保持|维持)|(?:保持|维持).{0,8}(?:" + _HOLD_OBJECT + r")")
-MODALITY += r"|\bawait(?:s|ed)?\b|将(?=对|向|提供|给予|补贴|调整|进行)"
+MODALITY += r"|机会渺茫|概率很低|概率很高|\b(?:little|small|low|high|strong) chance\b|\bawait(?:s|ed)?\b|将(?=对|向|提供|给予|补贴|调整|进行)"
 
 # Inflections belong to the event family; consumers must not maintain their own
 # shorter synonym lists for the same action.
@@ -65,6 +68,21 @@ def normalize_event_text(text: str) -> str:
     Only used for semantic features; immutable source and published text retain
     every word. An investor is a role, not proof of a fresh capital investment.
     """
+    # Published statistical data are a report, not a product rollout.
+    text = re.sub(r"\b(data|figures|statistics) (?:released|published)\b", r"\1 announced", text, flags=re.I)
+    # An agreed action is a commitment, not an unqualified infinitive forecast.
+    text = re.sub(r"\b(agreed|agrees) to (?=release\b)", r"\1 ", text, flags=re.I)
+    # Bind polysemous words to their objects on both language sides.
+    text = re.sub(r"\b(?:service|signal|connection|connectivity|data|packet|power)[ -]loss\b|(?:通信)?(?:服务|信号|连接|数据|电力)(?:中断|丢失)|断网", 'service_interruption', text, flags=re.I)
+    reserve = r"(?:diesel|crude(?: oil)?|oil|fuel|petroleum|strategic|emergency|stocks?|reserves?|million|billion|barrels?|of|and|the|its|their|[0-9.,]+)"
+    text = re.sub(r"\b(to\s+)?releas(?:e|es|ed|ing)\s+((?:" + reserve + r"[ -]+){0,12}(?:stocks?|reserves?|barrels?))\b",
+                  lambda m: ('will ' if m[1] else '') + 'reserve_drawdown ' + m[2], text, flags=re.I)
+    text = re.sub(r"释放(?=[^，。；,;]{0,35}(?:库存|储备|桶))", ' reserve_drawdown ', text)
+    text = re.sub(r"将(?=\s*reserve_drawdown)", ' will ', text)
+    # Writing a check is payment, not a reduction in the amount paid.
+    text = re.sub(r"\bcut(?:s)? (?=(?:another |a |the )?(?:quarterly )?check\b)", 'paid ', text, flags=re.I)
+    # Price adjectives and verbs express the same directional event.
+    text = re.sub(r"\b(prices?|stocks?|shares?) lower\b", r"\1 fall", text, flags=re.I)
     text = re.sub(r"\binvestor(?:s)?(?: relations)?\b|投资者关系|投资者|投资人", 'capital_provider', text, flags=re.I)
     text = re.sub(r"\binvestment (?:banks?|banking|firms?|managers?|management)\b|投资银行|投资公司|投资机构|投资管理", 'financial_institution', text, flags=re.I)
     # Participation in a financing round is an investment relation, unlike

@@ -214,6 +214,8 @@ def _is_nonterminal_english_period(text: str, index: int) -> bool:
 def one_sentence_summary(value: object) -> str:
     """把模型或历史缓存中的多句总结收束为第一句完整结论。"""
     text = re.sub(r"\s+", " ", str(value or "")).strip()
+    # Publication boundary also covers old cached or model-generated wording.
+    text = re.sub(r"[，；,;]?\s*指标变化不参与评分[。.!！]?", "", text).strip()
     if not text:
         return ""
     match = _SENTENCE_END_RE.search(text)
@@ -238,7 +240,7 @@ _TASK_INSTRUCTION = """\
 - 无需谈及 Shiller PE 的长期含义；这是短情绪说明，不是估值评论
 - 只解释指标与固定档位，不推导 DCA 触发概率、加仓减仓或现金比例；每个数字所在分句须写明指标名和当前/上期/变化角色，不复述总分
 - 不要写"今日"等时间副词,直接陈述
-- 不要 AI 腔,不要"让我们"
+- 不要 AI 腔,不要"让我们"；不向读者解释指标变化是否参与评分等实现细节
 - 若某指标标注"(数据源故障,沿用 X 的值)",**不得**把它作为论据主角,只能作为"参考"轻轻带过或干脆不引用;不得写"今日 VIX 上升 / 下降"这类暗示是当天数据的措辞
 
 输出**严格 JSON**(无 markdown 代码块):
@@ -322,7 +324,7 @@ def _deterministic_argument(bundle: SentimentBundle, verdict: str) -> str:
         direction = '偏冷' if value < 40 else '偏热' if value >= 60 else '中性'
         number = f"{metric.current:.2f}".rstrip('0').rstrip('.')
         parts.append(f"{label} {number}{metric.unit}{stamp}当前水平对应{direction}信号")
-    return '，'.join(parts) + f"；各项当前水平按确定性规则与有效权重综合为{verdict}，指标变化不参与评分。"
+    return '，'.join(parts) + f"；综合来看，市场情绪处于{verdict}区间。"
 
 
 def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[str]:
@@ -341,11 +343,31 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
         errors.append("delta_cannot_explain_level_score")
     aliases = {"CNN Fear & Greed": r"CNN|恐惧.*?贪婪", "VIX": r"VIX",
                "DXY": r"DXY|美元指数", "高收益债利差": r"高收益债|信用利差", "Shiller PE": r"Shiller|席勒"}
+    scored = score_sentiment(bundle)
+    weights = {name: weight for name, _, weight in (scored or {}).get('breakdown', [])}
+    def verified_role(match):
+        role, raw = match[1], match[2]
+        value = float(raw)
+        expected = (scored or {}).get('score')
+        if expected is None or abs(value - expected) > .011:
+            errors.append('unsupported_computed_number')
+        return role
+    text = re.sub(r'(总分|评分|得分|落在)(?:为|是|[:：])?\s*(\d+(?:\.\d+)?)', verified_role, text)
     mentioned = False
     metric_start = "|".join(aliases.values())
+    last_metric = None
     for clause in re.split(r"[，,；;。]|、(?=(?:" + metric_start + r"))", text, flags=re.I):
+        weight_match = re.search(r'权重(?:为|是)?\s*(\d+(?:\.\d+)?)', clause)
+        if weight_match:
+            names = [m.name for m in bundle.metrics if re.search(aliases.get(m.name, r"(?!)"), clause, re.I)]
+            if not names and last_metric and re.fullmatch(r'\s*权重(?:为|是)?\s*\d+(?:\.\d+)?\s*', clause):
+                names = [last_metric]
+            if len(names) != 1 or abs(float(weight_match[1]) - weights.get(names[0], -1)) > .001:
+                errors.append('unsupported_weight')
+            clause = clause[:weight_match.start()] + clause[weight_match.end():]
         numbers = re.findall(r"[+-]?\d+(?:\.\d+)?", clause)
         metrics = [m for m in bundle.metrics if re.search(aliases.get(m.name, r"(?!)"), clause, re.I)]
+        last_metric = metrics[0].name if len(metrics) == 1 else None
         if numbers and len(metrics) != 1:
             errors.append("ambiguous_metric_numbers")
         for m in metrics:

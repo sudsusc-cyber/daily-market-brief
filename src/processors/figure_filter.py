@@ -51,7 +51,7 @@ _QUOTE_MARKERS_RE = re.compile(
     r"|他说|她说|他表示|她表示|他认为|她认为|他指出|她指出"
     r"|表示称|声称|明确表示|公开表示|强调说"
     r"|\bsaid\b|\bsays\b|told|stated|told reporters|in an interview|argued|claimed"
-    r"|warned|cautioned|noted|admitted|added"
+    r"|\b(?:warns?|warned|cautioned|noted|admitted|added|announces?|announced|expects?|predicts?|believes?|argues?)\b|表示|认为|指出|称|宣布"
     r"|发声|发表演讲|演讲中|采访中|公开信|致股东信",
     re.IGNORECASE,
 )
@@ -64,7 +64,7 @@ def _has_quote_marker(item: FigureMention) -> bool:
     # A company statement is not the configured person's speech. HTML href /
     # target attributes are not direct quotes either, even when RSS repeats it.
     if re.match(r"(?:Nvidia|Microsoft|OpenAI|Anthropic|AMD|TSMC|Berkshire|Google|Alphabet|"
-                r"英伟达|微软|台积电|谷歌)\s*(?:says?\b|said\b|announces?\b|表示|宣布|称)", title, re.I):
+                r"英伟达|微软|台积电|谷歌)\s*(?:says?\b|said\b|announc(?:e|es|ed)\b|表示|宣布|称)", title, re.I):
         return False
     return bool(_QUOTE_MARKERS_RE.search(text))
 
@@ -128,7 +128,7 @@ def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
 _TASK_INSTRUCTION = """\
 任务:对下面"{PERSON}的候选发言列表"做三件事:
 1. **质量门槛(严判!)**:判断每条是否真的是**该{PERSON}本人本周(过去 7 天内)的公开发声**
-   (直接引语 / 演讲 / 采访 / 正式声明 / 公开信)。下列情况一律 no:
+   (直接引语 / 演讲 / 采访 / 正式声明 / 公开信 / 媒体明确归属于本人的转述)。无需逐字引号；可靠报道中“某人表示/预计/宣布”也是发言。不得仅因没有逐字原话而淘汰，但人物身份、实际观点及近期性必须有来源支持。下列情况一律 no:
    - **历史发言追忆/旧闻回顾**(关键!):任何"X 年 X 月某场会议曾说""19 年股东大会
      表示""巴菲特 2019 年的判断""老黄当年讲过"——历史发言不是当前发声,一律 no。
      即使现在某媒体重新引用 2018-2024 年的旧话,也是 no。**只接受过去 7 天内本人
@@ -172,7 +172,7 @@ _TASK_INSTRUCTION = """\
 - "AI 是未来""我们很兴奋""客户需求强劲"这类空泛口号
 - 没有新信息的产品发布宣传
 - 只是复述财报数字,没有人物本人判断
-- 分析师、媒体、KOL 对人物观点的二手转述
+- 分析师或评论者猜测、推断人物观点（不包括明确归属于本人的新闻报道）
 - 标题党:"某某重磅发声",但正文没有原话
 - 老发言被重新包装
 - 股价涨跌评论、花边、人物传记、排行榜、语录合集
@@ -187,7 +187,7 @@ _TASK_INSTRUCTION = """\
 - score 必须打数字 1-5;score 1-2 必须打 no(即使本人原话,内容不够格也不展示)
 
 【跨媒体合并规则(重中之重!)】
-判定"是否同源"用以下信号(任一命中即合并):
+下列仅为查找同源的线索，任何单一线索都不足以合并；须确认同一场合且观点事实等价，数字、对象、否定、状态变化必须分别保留：
 - 提到的事件主体一致:同一公司财报、同一只股票、同一场会议名称
 - 提到的具体数字接近:股价、估值、百分比基本相同
 - 时间窗口相近:都是当周或近 3 天内的报道
@@ -407,14 +407,20 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
     """
     if not bundle.items:
         return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error)
-    feed_items = [item for item in bundle.items if meaningful_quote(item)][:max_items]
-    qualified = [it for it in feed_items if _has_quote_marker(it)]
+    feed_items = [item for item in bundle.items if meaningful_quote(item)]
+    qualified = [it for it in feed_items if _has_quote_marker(it)][:max_items]
     logger.info(
         "figure_filter.rule_pass person=%s in=%d qualified=%d",
         bundle.person, len(feed_items), len(qualified),
     )
+    preselection = {"phase": "rule_selection", "decisions": [
+        {"url": item.url, "title": diagnostic_text(item.title, 400),
+         "reason": ('selected' if item in qualified else 'low_information' if not meaningful_quote(item)
+                    else 'no_attributed_speech_marker' if not _has_quote_marker(item) else 'candidate_limit')}
+        for item in bundle.items][:120]}
     if not qualified:
-        return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error)
+        return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error,
+                             verification_audit=[preselection])
 
     payload = _format_input(qualified)
     last_error: str | None = None
@@ -426,7 +432,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
 
     def result(processing_error=None):
         for point in kept:
-            point.history_text = point.text
+            point.history_text = '；'.join(dict.fromkeys(row.get('validated_text', row['output_text']) for row in point.evidence))
             for row in point.evidence:
                 displayed = voice_text(row['output_text'], bundle.person)
                 if displayed != row['output_text']:
@@ -441,7 +447,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
                         else "evidence" if rejected else "")
         summary = FigureSummary(person=bundle.person, person_en=bundle.person_en, items=kept,
                                 error="; ".join(errors) or None, processing_error=processing_error,
-                                content_rejections=rejected, verification_audit=audit, failure_kind=failure_kind)
+                                content_rejections=rejected, verification_audit=[*audit, preselection], failure_kind=failure_kind)
         return history.filter_figure(summary) if history is not None else summary
 
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
