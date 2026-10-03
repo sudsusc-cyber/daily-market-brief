@@ -39,7 +39,12 @@ def signal(kind="NONE", error=None):
     ([signal(error="timeout")], "待核验"),
 ])
 def test_dynamic_intro_uses_only_actual_signal_context(states, expected):
-    client = Client(json.dumps({"text": "在安静中细读规则，" + PROSE}, ensure_ascii=False))
+    statement = {
+        "尚未出现": "持仓尚未出现既定买入信号。", "部分标的": "1项持仓留有定投的余地。",
+        "均处于": "1项持仓合乎大额买入的条件，1项持仓留有定投的余地。",
+        "待核验": "持仓数据尚待核实，暂不判断买入位置。",
+    }[expected]
+    client = Client(json.dumps({"text": "在安静中细读规则，" + PROSE + "【持仓近况】", "signal_text": statement}, ensure_ascii=False))
     text = holdings_intro.write_intro(states, client=client)
     assert 60 <= len(text) <= 160
     assert PROSE in text and "只处于" not in text
@@ -52,7 +57,7 @@ def test_published_history_retries_repeated_reflection_without_consuming_draft(t
     history.remember("holdings_intro", "", old)
     history.commit()
     before = history.path.read_bytes()
-    client = Client(json.dumps({"text": "在安静中细读规则，" + PROSE}, ensure_ascii=False), json.dumps({"text": "留些余地，" + OTHER}, ensure_ascii=False))
+    client = Client(json.dumps({"text": "在安静中细读规则，" + PROSE + "【持仓近况】", "signal_text": "1项持仓留有定投的余地。"}, ensure_ascii=False), json.dumps({"text": "留些余地，" + OTHER + "【持仓近况】", "signal_text": "1项持仓留有定投的余地。"}, ensure_ascii=False))
     new = holdings_intro.write_intro([signal("DCA")], client=client, history=history)
     assert new and OTHER in new and len(client.calls) == 2
     assert "recent_repeat" in client.calls[1][0][0]
@@ -64,7 +69,7 @@ def test_published_history_retries_repeated_reflection_without_consuming_draft(t
     "建议立即买入并加仓。", "收益率达到20%。", "今日港股普遍上涨。",
 ])
 def test_literary_intro_cannot_add_current_market_claims(invention):
-    client = Client(*[json.dumps({"text": "细读规则，" + invention + PROSE}, ensure_ascii=False)] * 2)
+    client = Client(*[json.dumps({"text": "细读规则，" + invention + PROSE + "【持仓近况】", "signal_text": "持仓尚未出现既定买入信号。"}, ensure_ascii=False)] * 2)
     assert holdings_intro.write_intro([signal()], client=client) is None
     assert len(client.calls) == 2
 

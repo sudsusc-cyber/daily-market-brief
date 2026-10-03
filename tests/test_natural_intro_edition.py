@@ -21,7 +21,8 @@ def client(text):
 def test_natural_intro_does_not_depend_on_signal_state():
     prose = PROSE.replace('；{信号背景}，', '，')
     for kind in ('NONE', 'DCA', 'LUMP_SUM'):
-        text = write_intro([SimpleNamespace(signal=kind, error=None)], client=client(json.dumps({'text': prose})))
+        observation = {'NONE': '持仓尚未出现既定买入信号。', 'DCA': '1项持仓留有定投的余地。', 'LUMP_SUM': '1项持仓合乎大额买入的条件。'}[kind]
+        text = write_intro([SimpleNamespace(signal=kind, error=None)], client=client(json.dumps({'text': prose + '【持仓近况】', 'signal_text': observation})))
         assert text.startswith(prose) and len(text[len(prose):]) <= 50
 
 

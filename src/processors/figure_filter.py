@@ -291,7 +291,7 @@ class _FigureParseResult:
         )
 
 
-def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseResult:
+def _parse_output_result(text: str, items: list[FigureMention], *, person='', person_en='') -> _FigureParseResult:
     kept: list[tuple[int, FigureKeyPoint]] = []
     index_counts: dict[int, int] = {}
     invalid_yes = False
@@ -353,6 +353,15 @@ def _parse_output_result(text: str, items: list[FigureMention]) -> _FigureParseR
                     else "publication_quality_rejected"
                 )
                 continue
+            if person:
+                from src.processors.speaker_attribution import attribution
+
+                bindings = [attribution(src_item, person, person_en, excerpt=row['excerpt']) for row in mapping]
+                if not all(bindings):
+                    rejected_indexes[source_index] = 'speaker_identity_unverified'
+                    continue
+                for row, binding in zip(mapping, bindings, strict=True):
+                    row['speaker_attribution'] = binding
             kept.append((source_index, FigureKeyPoint(
                 text=supported, evidence=mapping,
                 source_url=src_item.url, source_name=src_item.source,
@@ -501,7 +510,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
             )
             continue
 
-        parsed = _parse_output_result(resp.text, qualified)
+        parsed = _parse_output_result(resp.text, qualified, person=bundle.person, person_en=bundle.person_en)
         audit.append({"phase": "selection", "attempt": attempt, "decisions": parsed.decisions,
                       "rejected_indexes": dict(parsed.rejected_indexes),
                       "candidates": [{"index": index, **publication_diagnostic(item)}
@@ -512,7 +521,7 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
             if recovery_attempted:
                 # Revalidate the same selection; a new translation never changes
                 # its score/identity or bypasses original source binding.
-                parsed = _parse_output_result(resp.text, qualified)
+                parsed = _parse_output_result(resp.text, qualified, person=bundle.person, person_en=bundle.person_en)
         if parsed.covered_indexes:
             kept = parsed.items
             rejected = [f"index={index} reason={reason}" for index, reason in sorted(parsed.rejected_indexes.items())]

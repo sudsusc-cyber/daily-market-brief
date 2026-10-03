@@ -99,7 +99,8 @@ def test_original_prose_preserved_with_brief_signal_sentence():
     prose = '价格从不负责解释自己，它只是把选择摆在面前。真正的功课在别处：辨认那些在无人注视时依然一寸寸积累的价值，然后让事先写下的规则，替临场的情绪做决定。'
     for state in ['NONE','DCA','LUMP_SUM']:
         signals = [SimpleNamespace(signal=state,error=None)]
-        client = SimpleNamespace(chat=lambda *a,**k: SimpleNamespace(text=json.dumps({'text':prose})))
+        observation = {'NONE': '持仓尚未出现既定买入信号。', 'DCA': '1项持仓留有定投的余地。', 'LUMP_SUM': '1项持仓合乎大额买入的条件。'}[state]
+        client = SimpleNamespace(chat=lambda *a,observation=observation,**k: SimpleNamespace(text=json.dumps({'text':prose + '【持仓近况】', 'signal_text': observation})))
         assert write_intro(signals,client=client).startswith(prose)
         assert any(w in fallback_intro(signals,NOW) for w in ('买入', '定投'))
 

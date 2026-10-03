@@ -113,6 +113,13 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
     source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""),
                              published_at=row.get("published_at"), url=row.get("url", ""), source=row.get("source_name", ""),
                              source_body=row.get("source_body", ""))
+    if row.get('speaker_attribution'):
+        from src.processors.speaker_attribution import attribution
+
+        binding = row['speaker_attribution']
+        if (not isinstance(binding, dict) or row.get('presentation_speaker') != binding.get('person')
+                or attribution(source, binding.get('person', ''), binding.get('person_en', ''), excerpt=excerpt) != binding):
+            return None
     complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
     validated = str(row.get("validated_text", output))
     displayed = replay_presentation(validated, row)

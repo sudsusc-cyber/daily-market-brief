@@ -98,8 +98,11 @@ _PRICE_EDITORIAL = re.compile(
 _BUSINESS_FACT = re.compile(
     r'\b(?:reported?.*(?:results|earnings|revenue)|earnings|revenue|sales|renew\w*.*(?:licen\w*|agreement)'
     r'|partner(?:s|ed|ing)? with|(?:plans?|will|agrees? to) invest|announced|introduc\w*|appoint\w*|acqui\w*|merger|launch\w*'
+    r'|(?:updates?|updated|changes?|changed|revises?|revised|restricts?|restricted)\b.{0,65}(?:operating system|software|privacy|permissions?|pricing|fees|terms|data access|access to data)'
+    r'|updates?\b.{0,50}\b(?:notify|alert|inform)\b.{0,30}\b(?:users|customers)'
     r'|(?:paus\w*|cancel\w*).*(?:training|evaluation|launch)|settlement|lawsuit|litigation|patent verdict|court ruling|appeal|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
-    r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购', re.I)
+    r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购'
+    r'|(?:更新|修改|调整|限制).{0,30}(?:操作系统|软件|隐私|权限|收费|定价|服务条款|数据访问)', re.I)
 
 def business_fact(text: str) -> bool:
     """Use the same event families as translation and long-term watchpoints."""
@@ -449,6 +452,11 @@ def factual_excerpt(item) -> str:
         return contextual_excerpt(item)
     if old_event_recap(item):
         return ''
+    speaker_excerpt = getattr(item, 'speaker_source_excerpt', '')
+    if (speaker_excerpt and speaker_excerpt in plain_source(' '.join(str(getattr(item, key, '') or '')
+                         for key in ('snippet', 'summary', 'source_body')))
+            and publishable_excerpt(item, speaker_excerpt)):
+        return speaker_excerpt
     title = plain_source(getattr(item, 'title', ''))
     summary = plain_source(getattr(item, 'summary', '') or getattr(item, 'snippet', ''))
     headline = editorial_headline_excerpt(title)

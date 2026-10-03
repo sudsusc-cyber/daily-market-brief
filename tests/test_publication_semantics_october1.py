@@ -84,10 +84,10 @@ def test_best_quarter_price_colour_requires_business_fact(issuer, ticker):
 def test_structured_intro_owns_signal_clause_and_checks_frame():
     prose = '投资的尺度，需要在喧哗之外慢慢建立；真正值得反复打磨的是对生意的理解，把规则写在情绪之前，让耐心陪伴价值兑现，也为未知保留应有的位置。'
     client = Mock()
-    client.chat.return_value = SimpleNamespace(text=json.dumps({'text': prose}, ensure_ascii=False))
+    client.chat.return_value = SimpleNamespace(text=json.dumps({'text': prose + '【持仓近况】', 'signal_text': '1项持仓留有定投的余地。'}, ensure_ascii=False))
     signals = [SimpleNamespace(error=None, signal='DCA'), SimpleNamespace(error=None, signal='NONE')]
     assert write_intro(signals, client=client).startswith(prose)
-    client.chat.return_value.text = json.dumps({'text': prose + '其余标的全部上涨，建议立即买入。'}, ensure_ascii=False)
+    client.chat.return_value.text = json.dumps({'text': prose + '其余标的全部上涨，建议立即买入。【持仓近况】', 'signal_text': '1项持仓留有定投的余地。'}, ensure_ascii=False)
     assert write_intro(signals, client=client) is None
 
 

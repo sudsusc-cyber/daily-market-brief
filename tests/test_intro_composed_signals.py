@@ -1,0 +1,163 @@
+"""Fresh prose and factual signal phrasing share one generation and one gate."""
+import json
+from datetime import date
+from types import SimpleNamespace
+
+import pytest
+
+from src.processors.holdings_intro import _signal_errors, write_intro
+
+PROSE = ('价格从不负责解释自己，它只是把选择摆在面前。'
+         '【持仓近况】真正的功课在别处：辨认那些在无人注视时依然一寸寸积累的价值，'
+         '然后让事先写下的规则，替临场的情绪做决定。')
+OTHER_PROSE = ('树木的年轮从不催促季节，根系却始终在看不见的地方生长。'
+               '【持仓近况】认真理解一门生意的价值，也需要把热闹留在窗外，'
+               '给思考留下足够宽阔的余地，让耐心与判断一同生长。')
+
+
+def signal(name, kind, error=None):
+    return SimpleNamespace(holding=SimpleNamespace(name=name), signal=kind, error=error)
+
+
+def rows():
+    return [signal('甲企业', 'LUMP_SUM'), signal('乙企业', 'DCA'), signal('丙企业', 'NONE')]
+
+
+class Client:
+    def __init__(self, *responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def chat(self, payload, **kwargs):
+        self.calls.append((payload, kwargs))
+        return SimpleNamespace(text=json.dumps(self.responses.pop(0), ensure_ascii=False))
+
+
+@pytest.mark.parametrize('sentence', [
+    '甲企业已合乎大额买入的尺度，乙企业为定投留出余地。',
+    '甲企业落在大额买入线内，乙企业则与定投的节奏相合。',
+    '乙企业仍在定投区间，甲企业契合大额买入的条件。',
+    '甲企业依然满足既定的大额买入标准，乙企业尚留有定投空间。',
+])
+def test_model_writes_fresh_signal_sentence_and_places_it_inside_intact_prose(sentence):
+    client = Client({'text': PROSE, 'signal_text': sentence})
+    result = write_intro(rows(), client=client)
+    assert result == PROSE.replace('【持仓近况】', sentence)
+    assert len(client.calls) == 1
+    assert '甲企业' in client.calls[0][0] and 'LUMP_SUM' in client.calls[0][0]
+    assert '丙企业' not in sentence
+
+
+def test_same_day_sends_use_model_composition_not_date_modulo():
+    history = SimpleNamespace(today=date(2026, 10, 3), rows=[])
+    a = '甲企业合乎大额买入的条件，乙企业留有定投的余地。'
+    b = '甲企业已在大额买入线内，乙企业与定投的节拍相应。'
+    first = write_intro(rows(), client=Client({'text': PROSE, 'signal_text': a}), history=history)
+    second = write_intro(rows(), client=Client({'text': OTHER_PROSE, 'signal_text': b}), history=history)
+    assert a in first and b in second and first != second
+
+
+def test_changed_reflection_cannot_disguise_identical_published_signal_sentence():
+    old_signal = '甲企业已合乎大额买入的尺度，乙企业为定投留出余地。'
+    new_signal = '甲企业落在大额买入线内，乙企业则与定投的节奏相合。'
+    history = SimpleNamespace(today=date(2026, 10, 3), rows=[{
+        'date': '2026-10-03', 'section': 'holdings_intro',
+        'text': PROSE.replace('【持仓近况】', old_signal),
+    }])
+    client = Client({'text': OTHER_PROSE, 'signal_text': old_signal},
+                    {'text': OTHER_PROSE, 'signal_text': new_signal})
+    result = write_intro(rows(), client=client, history=history)
+    assert new_signal in result and len(client.calls) == 2
+    assert 'recent_signal_repeat' in client.calls[1][0]
+    assert len(history.rows) == 1  # Rendering a draft never publishes history.
+
+
+@pytest.mark.parametrize('sentence', [
+    '甲企业已合乎定投的尺度，乙企业为大额买入留出余地。',
+    '甲企业未合乎大额买入的尺度，乙企业为定投留出余地。',
+    '甲企业首次落在大额买入线内，乙企业则与定投的节奏相合。',
+    '甲企业跌入大额买入线内，乙企业则与定投的节奏相合。',
+    '甲企业落在大额买入线内，丙企业则与定投的节奏相合。',
+    '甲企业落在大额买入线内，乙企业应立即定投。',
+    '甲企业落在大额买入线内，乙企业则与定投的节奏相合，利润也在增长。',
+    '甲企业落在大额买入线内。',
+])
+def test_factual_binding_rejects_state_reversal_new_trigger_advice_or_extra_claim(sentence):
+    assert _signal_errors(sentence, rows(), [])
+
+
+def test_pending_row_cannot_disappear_from_generated_signal_context():
+    signals = [*rows(), signal('丁企业', 'NONE', 'timeout')]
+    statement = '甲企业合乎大额买入的条件，乙企业留有定投的余地'
+    assert _signal_errors(statement + '。', signals, []) == ['pending_signal_omitted']
+    assert not _signal_errors(statement + '，另有数据待核。', signals, [])
+
+
+@pytest.mark.parametrize('prose', [
+    PROSE.replace('【持仓近况】', '并非【持仓近况】'),
+    PROSE.replace('【持仓近况】', '【持仓近况】【持仓近况】'),
+    PROSE.replace('【持仓近况】', ''),
+])
+def test_prose_cannot_negate_or_duplicate_factual_slot(prose):
+    response = {'text': prose, 'signal_text': '甲企业合乎大额买入的条件，乙企业留有定投的余地。'}
+    assert write_intro(rows(), client=Client(response, response)) is None
+
+
+def test_no_signal_and_all_pending_remain_distinct():
+    assert not _signal_errors('持仓尚未出现既定买入信号。', [signal('甲', 'NONE')], [])
+    assert not _signal_errors('持仓数据尚待核实，暂不判断买入位置。', [signal('甲', 'NONE', 'timeout')], [])
+    assert _signal_errors('持仓尚未出现既定买入信号。', [signal('甲', 'NONE', 'timeout')], [])
+
+
+def test_missing_signal_field_is_repaired_instead_of_silently_appending_old_template():
+    sentence = '甲企业合乎大额买入的条件，乙企业留有定投的余地。'
+    client = Client({'text': PROSE.replace('【持仓近况】', '')},
+                    {'text': PROSE, 'signal_text': sentence})
+    assert sentence in write_intro(rows(), client=client)
+    assert len(client.calls) == 2
+    assert 'invalid_prose_fields' in client.calls[1][0]
+    failed = Client({'text': PROSE}, {'text': PROSE})
+    assert write_intro(rows(), client=failed) is None
+    assert len(failed.calls) == 2
+
+
+def test_adverb_only_changes_do_not_make_repeated_signal_wording_new():
+    old = '甲企业已合乎大额买入的尺度，乙企业为定投留出余地。'
+    new = '甲企业仍合乎大额买入的尺度，乙企业则为定投留出余地。'
+    assert _signal_errors(new, rows(), [PROSE.replace('【持仓近况】', old)]) == ['recent_signal_repeat']
+
+
+@pytest.mark.parametrize('sentence', ['持仓尚无买入信号。', '持仓未见既定买入信号。', '既定买入信号尚未出现。'])
+def test_no_active_signal_can_be_paraphrased_without_weakening_unknown_handling(sentence):
+    assert not _signal_errors(sentence, [signal('甲', 'NONE')], [])
+    assert _signal_errors(sentence, [signal('甲', 'DCA')], [])
+    assert _signal_errors(sentence, [signal('甲', 'NONE', 'timeout')], [])
+
+
+@pytest.mark.parametrize('claim', [
+    '甲企业并不满足大额买入条件。',
+    '乙企业已经不适合定投。',
+    '甲企业已经达到买入的门槛。',
+    '乙企业合乎加仓标准。',
+    '甲企业落在建仓区间。',
+])
+def test_slot_exterior_cannot_publish_a_second_unverified_strategy_claim(claim):
+    from src.processors.holdings_intro import _intro_errors
+
+    prose = claim + PROSE.replace('【持仓近况】', '')
+    assert 'unsupported_observation_or_action' in _intro_errors(prose, '', [])
+    response = {'text': claim + PROSE,
+                'signal_text': '甲企业合乎大额买入的条件，乙企业留有定投的余地。'}
+    assert write_intro(rows(), client=Client(response, response)) is None
+
+
+def test_general_investment_reflection_remains_allowed_outside_verified_signal_sentence():
+    from src.processors.holdings_intro import _intro_errors
+
+    prose = ('每次买入之前，都值得问清自己究竟理解了什么。'
+             '企业的价值常在不声不响中积累，判断也需要在反复求证中生长；'
+             '把耐心留给经营，把谦逊留给未知，让时间照见那些扎实而安静的努力。')
+    assert not _intro_errors(prose, '', [])
+    statement = '甲企业合乎大额买入的条件，乙企业留有定投的余地。'
+    assert write_intro(rows(), client=Client({'text': prose + '【持仓近况】',
+                                              'signal_text': statement})) == prose + statement
