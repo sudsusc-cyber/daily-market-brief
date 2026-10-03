@@ -39,7 +39,9 @@ def company_summary():
 
 def test_real_company_mail_keeps_sources_but_merges_lease_and_orders_product():
     summary = company_summary()
-    assert summary and len(summary.footnotes) == 11
+    assert summary and len(summary.footnotes) == 10
+    # Cosmetic gift-box promotion is intentionally excluded; every other source survives.
+    assert {f.url for f in summary.footnotes} == {r['url'] for r in ROWS['company'][:-1]}
     assert summary.summary_html.count('租赁10万片') == 1
     assert '租用10万枚' not in summary.summary_html
     assert '扩张可能还会更大' not in summary.summary_html
