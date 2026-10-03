@@ -87,6 +87,8 @@ def normalize_event_text(text: str) -> str:
     text = re.sub(r"\brais(?:e|es|ed|ing) (?=children|kids|a child)\b", 'parenting ', text, flags=re.I)
     # Published statistical data are a report, not a product rollout.
     text = re.sub(r"\b(data|figures|statistics) (?:released|published)\b", r"\1 announced", text, flags=re.I)
+    text = re.sub(r"发布(?=的?(?:数据|统计数字|统计结果)(?:显示|表明|[，。；]|$))", '公布', text)
+    text = re.sub(r"((?:数据|统计数字|统计结果)(?:于|在)?[^，。；]{0,12})(?:发布)", r"\1公布", text)
     # An agreed action is a commitment, not an unqualified infinitive forecast.
     text = re.sub(r"\b(agreed|agrees) to (?=release\b)", r"\1 ", text, flags=re.I)
     # Bind polysemous words to their objects on both language sides.

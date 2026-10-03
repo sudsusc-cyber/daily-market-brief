@@ -231,6 +231,13 @@ def _financial_bindings(text: str) -> dict:
 
 def _localization_spans(text: str) -> list[tuple[int, int, str]]:
     aliases = {**_LOCALIZED_TERMS_V9, **{name: name for name in _LOCALIZED_TERMS_V9.values()}}
+    # Diplomatic direction compounds name countries too; never treat a bare
+    # single character inside a product/company name as a country.
+    countries = {'China': '中国', 'United States': '美国', 'United Kingdom': '英国', 'Japan': '日本', 'South Korea': '韩国', 'Germany': '德国', 'France': '法国', 'Russia': '俄罗斯'}
+    aliases.update(countries)
+    aliases.update({name: name for name in countries.values()})
+    for short, full in {'华': '中国', '美': '美国', '英': '英国', '日': '日本', '韩': '韩国', '德': '德国', '法': '法国', '俄': '俄罗斯'}.items():
+        aliases.update({prefix + short: full for prefix in ('对', '赴', '访', '输')})
     # Longest-first matching treats Bank of Japan as an institution, not as a
     # separate country mention. Product identifiers are outside this glossary.
     alternatives = []
