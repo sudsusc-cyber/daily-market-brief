@@ -95,13 +95,13 @@ def test_forbidden_implementation_phrase_cannot_reappear_from_cache(text):
     assert '指标变化不参与评分' not in one_sentence_summary(text)
 
 
-def test_no_signal_clause_in_generated_or_fallback_intro():
+def test_original_prose_preserved_with_brief_signal_sentence():
     prose = '价格从不负责解释自己，它只是把选择摆在面前。真正的功课在别处：辨认那些在无人注视时依然一寸寸积累的价值，然后让事先写下的规则，替临场的情绪做决定。'
     for state in ['NONE','DCA','LUMP_SUM']:
         signals = [SimpleNamespace(signal=state,error=None)]
         client = SimpleNamespace(chat=lambda *a,**k: SimpleNamespace(text=json.dumps({'text':prose})))
-        assert write_intro(signals,client=client) == prose
-        assert '买入区间' not in fallback_intro(signals,NOW)
+        assert write_intro(signals,client=client).startswith(prose)
+        assert any(w in fallback_intro(signals,NOW) for w in ('买入', '定投'))
 
 
 def test_voices_prefilter_does_not_let_unqualified_rows_consume_limit():
