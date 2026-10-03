@@ -116,7 +116,9 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
     complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
     validated = str(row.get("validated_text", output))
     displayed = replay_presentation(validated, row)
-    display_supported = output == displayed
+    antecedent = row.get('macro_context_antecedent', '')
+    context_supported = not antecedent or antecedent in published
+    display_supported = output == displayed and context_supported
     output_supported = display_supported and (canonical_fact(validated) == canonical_fact(excerpt) or (
         row.get("mode") == "checked_translation" and not translation_errors(excerpt, validated)
     ))

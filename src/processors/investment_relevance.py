@@ -21,6 +21,10 @@ def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=
         r'(?:进入|拓展|扩大).{0,20}(?:市场|销售渠道|分销)|'
         r'(?:sales|销量|销售额).{0,35}(?:\d|grow|rise|fall|增长|下降)', context, re.I))
     noise = {
+        'price_milestone': r'\b(?:stock|shares?|share price)\b.{0,65}\b(?:record|high|low)\b|股价.{0,30}(?:新高|新低|纪录)',
+        'historical_retrospective': r'\b(?:look back|looking back|over the decades|years ago)\b|回顾.{0,30}(?:投资|押注)|数十年前',
+        'empty_opinion': r'\b(?:era|future|story)\b.{0,40}\b(?:needs? more|more than|not enough)\b|时代.{0,25}(?:不仅|不只是|需要)',
+
         'personality_dispute': r'\b(?:privately confront|confronted|feud|war of words|trades? barbs|sparring)\b|口水战|隔空互怼|私下.{0,15}质问',
         'cosmetic_merchandise': r'联名款?礼盒|联名.{0,25}(?:礼盒|配色|包装)|限定包装|'
                                r'\b(?:co.branded|limited.edition).{0,35}(?:gift box|colorway|packaging)\b',
@@ -36,3 +40,10 @@ def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=
             and re.search(r'\b(?:now )?integrated with\b|宣布.{0,35}与.{0,35}(?:集成|兼容)', title, re.I)):
         reason = 'incidental_vendor_integration'
     return reason if reason and not impact else ''
+
+
+def ambiguous_money_claim(text: str) -> bool:
+    """A headline metaphor supplies no auditable economic role for its amount."""
+    return bool(re.search(r'[$€£]\s*\d|\d\s*(?:亿|万|million|billion|trillion)', text, re.I)
+                and re.search(r'\b(?:on the table|up for grabs|at stake)\b|拿出|摆上桌|赌注', text, re.I)
+                and not re.search(r'\b(?:committed|invested|paid|spending|contract|revenue|assets under management)\b|承诺投入|实际支付|合同金额|收入|管理资产', text, re.I))

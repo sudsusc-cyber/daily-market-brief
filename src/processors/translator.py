@@ -30,6 +30,7 @@ _TASK_INSTRUCTION = """\
 - 原文所有 ticker 和缩写（AI、TPU、NASDAQ 等）保留，英文可紧邻中文
 - 数字、日期、百分号保持原样；金额单位可转为中文但金额、币种不得变化
 - 保留 AI 技术方法：distillation 译为蒸馏，fine-tuning 译为微调；不得泛化为使用，也不得凭空补充这些方法
+- 财经习语按完整句意译成自然中文，不照搬比喻；make peace with 市场变化是逐渐适应，不是和解。普通技术术语译为中文，如 tensor processing unit 为张量处理器，bug 为故障；保留原有缩写。
 - 使用自然中文语序；时间或风险“looms for”市场/资产时，译为该市场/资产“面临”或“迎来”相应时期/风险，不要写成“十月逼近国债”等字面语序；不得添加因果连接
 - 按事件语境译词：investigate 是调查，declined to 是拒绝；government debt rout 是国债遭抛售、债券价格下跌，不是政府债务规模下降。
 - 多义词依据动作对象翻译：服务/信号/数据的 loss 是中断或丢失，不是财务亏损；release 储备是释放/投放，release 人员是释放，release 产品是发布；cut a check 是开具支票/支付，不是削减支票。不得把这些不同事件混为一谈。
