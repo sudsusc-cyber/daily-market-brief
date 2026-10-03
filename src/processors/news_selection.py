@@ -116,6 +116,35 @@ def source_boilerplate(text: str) -> bool:
                           r"|(?:点击|访问).{0,30}(?:网站|全文)|(?:幻灯片|副本).{0,60}(?:发布|网站)", text, re.I))
 
 
+_PROGRAM_METADATA = re.compile(
+    r"\b(?:today['’]s |our |this (?:week|episode)['’]s )?(?:guests?|panelists?|speakers?)\s+(?:are|include|today|:)"
+    r"|\b(?:brings? you|tune in|watch live|join us).{0,100}\b(?:news|analysis|show|program|episode)\b"
+    r"|(?:本期|今日|节目|本场)(?:嘉宾|主持人)|嘉宾(?:名单|包括|：)", re.I)
+
+
+def program_metadata(item, text: str) -> bool:
+    """Reject broadcast credits, including fragments cut off after company suffixes.
+
+    Match the original metadata sentence, not a publisher or a person's name.
+    A separate reported statement or the article's factual headline survives.
+    """
+    if _PROGRAM_METADATA.search(text):
+        return True
+    for key in ("summary", "snippet", "source_body"):
+        raw = plain_source(str(getattr(item, key, "") or ""))
+        # Protect initials and corporate/title abbreviations only while locating
+        # sentence boundaries; offsets and evidence remain original substrings.
+        protected = re.sub(r"\b(?:Inc|Corp|Ltd|Dr|Mr|Mrs|Ms|Prof)\.|\b[A-Z]\.",
+                           lambda m: m[0].replace('.', '\uff0e'), raw)
+        start = 0
+        for boundary in re.finditer(r"(?<=[。！？])|(?<=[.!?])\s+(?=[A-Z])|$", protected):
+            sentence = raw[start:boundary.start()]
+            if text and text in sentence and _PROGRAM_METADATA.search(sentence):
+                return True
+            start = boundary.end()
+    return False
+
+
 def navigation_headline(text: str) -> bool:
     """An article promising reasons/tips is navigation, not those facts."""
     interview_topic = re.search(r"\b(?:Chair|Secretary|Minister|CEO|Economist)\s+(?:[A-Z][A-Za-z.]*\s+){0,3}on\s+[^:：!?]+$", text)
@@ -360,7 +389,7 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 def publishable_excerpt(item, text: str) -> bool:
     from src.processors.investment_relevance import ambiguous_money_claim, long_term_noise_reason
 
-    if ambiguous_money_claim(text):
+    if program_metadata(item, text) or ambiguous_money_claim(text):
         return False
     if getattr(item, 'holding_ticker', None) and long_term_noise_reason(text):
         return False

@@ -72,8 +72,8 @@ def daily_signal_sentence(signals: list[Any], variant: int = 0) -> str:
                 ("眼下还没有持仓触及买入条件。", "持仓都在买入区间之外，耐心仍有用武之地。", "买入信号暂未出现，可以从容观察。")[variant % 3])
     clauses = []
     for kind, phrases in (
-        ("LUMP_SUM", ("在大额买入区间", "满足大额买入条件", "位于大额买入线内")),
-        ("DCA", ("在定投区间", "满足定投条件", "位于定投线内")),
+        ("LUMP_SUM", ("在大额买入的尺度之内", "与大额买入的尺度相合", "落在大额买入区间")),
+        ("DCA", ("留有定投的余地", "落在定投的尺度之内", "与定投的尺度相合")),
     ):
         rows = [s for s in active if s.signal == kind]
         if not rows:

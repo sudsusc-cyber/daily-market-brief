@@ -286,7 +286,7 @@ def _rebuild_safe_html(
             paragraph_citations.extend(citations)
             text = group["text"].rstrip()
             antecedent = text.split('，因', 1)[0] if '，因' in text else ''
-            if antecedent and any(re.search(r'(?:^|[。；]|因\s*)' + re.escape(antecedent) + r'(?=[，。；]|$)', prior) for prior in prior_texts):
+            if antecedent and any(re.search(r'(?:^|[，。；]|因\s*)' + re.escape(antecedent) + r'(?=[，。；]|$)', prior) for prior in prior_texts):
                 from src.processors.news_presentation import macro_context_text
                 compact = macro_context_text(text, antecedent)
                 if compact != text:
