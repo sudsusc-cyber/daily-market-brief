@@ -96,3 +96,18 @@ English reader-navigation expressions are recognized in both “here's” and �
 forms, preventing a promotional standfirst from qualifying as context.
 The relative-period tests also distinguish rolling record descriptions from future
 calendar periods and prevent “上一季度” from being parsed as calendar Q1.
+
+## Signal comma width
+
+Preview 37203340270 passed all seven published source mappings and complete
+15-symbol data checks, but intro validation rejected a correct two-subject
+signal because the generated separator was an ASCII comma. Normalize prose
+commas and clause spacing in both generated fields before factual validation,
+preserving numeric thousands separators. Incorrect strategy binding still fails.
+The preview was withheld to regenerate at the corrected commit.
+The same preview also exposed that multi-line title/standfirst evidence was
+submitted as a numbered title followed by a bare unnumbered line. A selected
+translation kept only the headline and correctly failed quantity/time checks.
+Multi-line source spans are now one JSON-encoded numbered payload with an explicit
+full-span translation instruction. Omitted standfirst details still fail the same
+checks; a supported repair is required before publication.
