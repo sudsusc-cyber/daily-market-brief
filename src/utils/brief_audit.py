@@ -60,6 +60,9 @@ def content_report(
                 "source": item.source_url if item else None,
             }
         )
+        if item and getattr(item, "reference_origin", None) == "user_provided":
+            rows[-1].update(source="user_provided", source_type="user_provided",
+                provided_on=item.approved_at, reference_value=item.intrinsic_value)
     for signal in signals:
         rows.append(
             {

@@ -26,6 +26,7 @@ from src.valuation.morningstar import (
 from src.valuation.policy import POLICIES
 from src.valuation.pop_mart import TICKER as POP_MART_TICKER
 from src.valuation.pop_mart import load_target, refresh_target, target_display
+from src.valuation.user_reference import apply_user_references
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +231,8 @@ def cached_morningstar_displays(
     pop_mart = load_target(state_dir=state_dir, config_dir=config_dir, checked_at=checked_at)
     if pop_mart is not None:
         displays[POP_MART_TICKER] = target_display(pop_mart, price=prices.get(POP_MART_TICKER), retained=True)
-    return displays
+    return apply_user_references(displays, fair_values=values, prices=prices,
+        config_dir=config_dir, checked_at=checked_at)
 
 
 def prepare_valuation_displays(
@@ -284,6 +286,8 @@ def prepare_valuation_displays(
             failures=fair_value_failures,
             prices=prices,
         )
+        displays = apply_user_references(displays, fair_values=fair_values, prices=prices,
+            config_dir=config_dir, checked_at=checked_at)
         if pop_mart is not None:
             displays[POP_MART_TICKER] = pop_mart
         if qqqm_display is not None:

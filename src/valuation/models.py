@@ -84,6 +84,7 @@ class ValuationDisplay:
     data_note: str | None = None
     verified_at: str | None = None
     historical_reference: bool = False
+    reference_origin: str | None = None
 
     @property
     def is_attractive(self) -> bool:

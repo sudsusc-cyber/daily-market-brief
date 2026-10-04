@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "references": [
+    {
+      "ticker": "MCO",
+      "provider_code": "XNYS:MCO",
+      "currency": "USD",
+      "fair_value": 540,
+      "provided_on": "2026-10-04",
+      "claimed_provider": "Morningstar",
+      "replace_when": "verified_valuation_date_strictly_newer"
+    }
+  ]
+}
