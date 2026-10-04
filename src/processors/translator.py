@@ -40,7 +40,7 @@ _TASK_INSTRUCTION = """\
 - 回购金额必须保留口径：additional 为新增授权，remaining 为剩余授权额度；批准回购不等于已经执行回购
 - 文件类型必须准确：summary of opinions 是意见摘要，minutes 是会议纪要；普通 summary 不可译成会议纪要
 - 完整翻译，不概括、不补充判断；严格保留否定、可能/计划/待批等限定和事件状态
-- 输出仅这些行,不要任何前言、解释、Markdown
+- 输出仅这些行,不要任何前言、解释、Markdown；译文不要 JSON 外层引号或字面的转义换行，把各原文分句写成一行自然中文
 """
 
 _TASK_INSTRUCTION += "\n统一术语表：" + "；".join(f"{en}={zh}" for en, zh in _LOCALIZED_TERMS_V9.items())
@@ -59,7 +59,22 @@ def _parse_lines(text: str) -> dict[int, str]:
         if not m:
             continue
         try:
-            out[int(m.group(1))] = m.group(2).strip()
+            body = m.group(2).strip()
+            # Some providers echo the multi-line input's JSON transport format.
+            # Decode one complete string only, never interpret partial escapes.
+            if body.startswith('"') and re.search(r'\\[nr]', body):
+                try:
+                    decoded = json.loads(body)
+                except ValueError:
+                    decoded = None
+                if isinstance(decoded, str):
+                    parts = [part.strip() for part in decoded.splitlines() if part.strip()]
+                    body = ''
+                    for part in parts:
+                        if body and not re.search(r'''[。！？；，：.!?;,:][”’"')）]*$''', body):
+                            body += '。'
+                        body += part
+            out[int(m.group(1))] = body
         except ValueError:
             continue
     return out

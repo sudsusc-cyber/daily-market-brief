@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.processors.llm_client import LLMResponse, LLMUsage
 from src.processors.translator import translate_titles
 
@@ -86,3 +88,41 @@ def test_multiline_headline_only_translation_is_repaired_without_waiving_guards(
     assert len(client.calls) == 2 and not diagnostics
     assert json.loads(client.calls[1][0].splitlines()[0].removeprefix('▦ 1: ')) == raw
     assert 'relative_calendar_period' in client.calls[1][0]
+
+
+def test_json_transport_translation_is_decoded_before_strict_fact_checks():
+    import json
+
+    raw = 'China closes banks\nMore than 670 lenders closed last year.'
+    translated = '中国关闭银行\n去年有超过 670 家贷款机构关闭。'
+    client = _SequenceClient([_ok('▦ 1: ' + json.dumps(translated, ensure_ascii=False))])
+    assert translate_titles([raw], client=client) == ['中国关闭银行。去年有超过 670 家贷款机构关闭。']
+
+
+def test_transport_decode_cannot_hide_changed_quantity_or_time():
+    import json
+
+    raw = 'China closes banks\nMore than 670 lenders closed last year.'
+    wrong = json.dumps('中国关闭银行\n今年有超过 760 家贷款机构关闭。', ensure_ascii=False)
+    diagnostics = {}
+    client = _SequenceClient([_ok('▦ 1: ' + wrong)] * 2)
+    assert translate_titles([raw], client=client, diagnostics=diagnostics) == [raw]
+    assert set(diagnostics[0]['errors']) >= {'relative_calendar_period', 'quantities_or_units'}
+
+
+@pytest.mark.parametrize('first', ['中国关闭银行。', '“中国关闭银行。”', '银行数量变动：'])
+def test_transport_join_keeps_existing_sentence_punctuation_and_real_quotes(first):
+    import json
+
+    from src.processors.translator import _parse_lines
+
+    text = first + '\r\n“去年”有超过 670 家机构关闭。'
+    assert _parse_lines('▦ 1: ' + json.dumps(text, ensure_ascii=False))[1] == first + '“去年”有超过 670 家机构关闭。'
+    assert _parse_lines('▦ 1: “观点仍待证实”。')[1] == '“观点仍待证实”。'
+
+
+def test_unquoted_or_malformed_literal_escapes_are_never_publication_authority():
+    from src.processors.translation_guard import translation_errors
+
+    assert 'serialized_translation_boundary' in translation_errors('China closes banks', r'中国关闭银行\n去年关闭机构')
+    assert 'serialized_translation_boundary' in translation_errors('China closes banks', r'"中国关闭银行\n机构关闭')
