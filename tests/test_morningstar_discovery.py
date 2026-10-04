@@ -163,3 +163,48 @@ def test_yahoo_embedded_index_metadata_binds_image_to_same_report():
 def test_curated_report_images_all_match_their_actual_report_dates():
     for report_id, _, image in _CURATED_REPORTS.values():
         assert YahooMorningstarProvider._snapshot_matches('https://s.yimg.com/uc/fin/img/ms-reports-thumbnails/' + image, report_id)
+
+
+def test_valueless_new_article_does_not_block_latest_readable_estimate(monkeypatch):
+    from src.valuation.morningstar import _Candidate
+    security = SECURITIES['AAPL']
+    provider = MorningstarPublicProvider(session=Mock(), secondary_provider=None)
+    candidates = [
+        _Candidate('https://www.morningstar.com/stocks/new-company-news', datetime(2026, 10, 1, tzinfo=UTC)),
+        _Candidate('https://www.morningstar.com/stocks/latest-valuation', datetime(2026, 9, 30, tzinfo=UTC)),
+    ]
+    monkeypatch.setattr(provider, '_discover', lambda _: candidates)
+    def read(candidate, _):
+        if candidate == candidates[0]:
+            raise ValueError('页面未找到可归属于该标的的 Morningstar 公允价值')
+        return MorningstarFairValue('AAPL', security.provider_code, 310, 'USD', 'published-research',
+            '2026-09-30', '2026-10-04T00:00:00Z', 'Morningstar', candidate.url)
+    monkeypatch.setattr(provider, '_read', read)
+    values, failures = provider.fetch_all({'AAPL': security}, checked_at=datetime(2026, 10, 4, tzinfo=UTC))
+    assert values['AAPL'].fair_value == 310 and not failures
+
+
+def test_latest_analysis_date_does_not_suppress_earlier_public_value_discovery(monkeypatch):
+    import sys
+    security = SECURITIES['AAPL']
+    session = Mock()
+    session.headers = {}
+    session.get.return_value.content = b'''<rss><channel><item><source>Morningstar</source><pubDate>Wed, 30 Sep 2026 12:00:00 GMT</pubDate><link>https://news.google.com/rss/articles/test</link></item></channel></rss>'''
+    provider = MorningstarPublicProvider(session=session, secondary_provider=None)
+    quote = Mock()
+    quote.text = '''## Company Report
+### [Apple analyst update](http://www.morningstar.com/stocks/xnas/aapl/analysis)
+Analyst Oct 1, 2026
+## Price vs Fair Value
+Fair Value
+LOCK|abc
+Sep 9, 2026
+'''
+    monkeypatch.setattr(provider, '_reader_get', lambda _: quote)
+    decoder = Mock()
+    decoder.new_decoderv1.return_value = {'status': True, 'decoded_url': 'https://www.morningstar.com/stocks/new-apple-value'}
+    monkeypatch.setitem(sys.modules, 'googlenewsdecoder', decoder)
+    candidates = provider._discover(security)
+    assert any(c.url.endswith('/new-apple-value') for c in candidates)
+    assert not any(c.url.endswith('/analysis') for c in candidates)
+    assert provider.discovery_diagnostics['AAPL']['latest_analysis'][0]['published_at'].startswith('2026-10-01')
