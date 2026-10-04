@@ -20,6 +20,7 @@ def editorial_issue(text: str) -> str | None:
     if re.search(r"\b(?:should be excited|what.s in store|stay tuned|read on to find out)\b", text, re.I):
         return 'reader_navigation'
     if re.search(r"\b(?:above|below)\s+(?:its\s+)?fair value\b|(?:高于|低于|高出|低出)公允价值|"
+                 r"\b(?:overvalued|undervalued|overvaluation|undervaluation)\b|股价.{0,20}(?:高估|低估)|"
                  r"\b(?:trades?|trading)\s+at\s+[\d.]+\s+times\s+(?:earnings|sales)|"
                  r"\bis the (?:real|main|bigger) (?:story|takeaway)|才是(?:真正的)?看点", text, re.I):
         return 'valuation_or_editorial_opinion'
@@ -64,6 +65,8 @@ def editorial_issue(text: str) -> str | None:
                  r'positioned to benefit|evergreen investments|competitive assets?|'
                  r'highlights?.*effort|凸显.*努力', text, re.I):
         return 'investment_opinion'
+    if re.search(r'\bhints? at\b.{0,45}\b(?:competitive|competition|dynamic|moat)\b|暗示.{0,25}(?:竞争格局|竞争态势|护城河)', text, re.I):
+        return 'investment_opinion'
     return None
 
 
@@ -71,7 +74,8 @@ def analysis_source(title: str, summary: str = '') -> bool:
     return bool(re.search(
         r'\b(?:buy before|stock is a buy|investment case|analyst blog|here.s why.*moat|'
         r'political asset|wish you.*bought)\b|投资逻辑|值得买|分析师博客', title + ' ' + summary, re.I)
-        or re.search(r'^(?:.{1,80}\s+)?(?:Analysis|Opinion|Commentary)\s*[:：]|^(?:.{1,40})?(?:分析|评论|观点)[:：]', title, re.I))
+        or re.search(r'^(?:.{1,80}\s+)?(?:Analysis|Opinion|Commentary)\s*[:：]|^(?:.{1,40})?(?:分析|评论|观点)[:：]', title, re.I)
+        or re.search(r'\bwhat\b.{0,100}\btell(?:s)? (?:investors|shareholders)\b|\bhere.s why\b.{0,100}\b(?:matters?|means?) (?:for|to) (?:investors|shareholders)\b', title, re.I))
 
 
 # Event objects, not the issuer name, determine whether model-scope evidence is

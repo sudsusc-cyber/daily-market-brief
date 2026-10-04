@@ -203,8 +203,9 @@ _PARTNER_PROMOTION = re.compile(
 # operating announcement. Require an event/metric relation, not a company name.
 _OPERATING_EVENT = re.compile(
     r'\b(?:reports?|reported|raises?|raised|cuts?|cut|announces?|announced)\b.{0,60}'
-    r'\b(?:earnings|revenue|profit|guidance|dividend|buyback|acquisition)\b|'
+    r'\b(?:earnings|revenue|profit|cash flow|guidance|dividend|buyback|acquisition)\b|'
     r'\b(?:signs?|signed|renews?|renewed|wins?|won)\b.{0,45}\b(?:contract|agreement)\b|'
+    r'\b(?:bought|purchased|acquired)\b.{0,45}\d.{0,30}\bshares?\b|'
     r'(?:公布|发布|上调|下调).{0,20}(?:业绩|营收|利润|指引|分红)|'
     r'(?:签署|续签|获得).{0,20}(?:合同|协议)', re.I)
 
@@ -556,6 +557,16 @@ def company_candidate(item, ticker: str) -> bool:
     if _ROUNDUP.search(title):
         return bool(roundup_excerpt(item, ticker))
     excerpt = factual_excerpt(item)
+    from src.processors.editorial_evidence import analysis_source
+    financial_report = bool(re.search(r'\b(?:reports?|reported)\b.{0,60}\b(?:earnings|revenue|profit|cash flow)\b|(?:报告|公布).{0,20}(?:营收|利润|现金流)', excerpt, re.I))
+    scoped_report = bool(re.search(r'\d|\btoday\b|\byesterday\b|今日|昨日', excerpt, re.I))
+    if analysis_source(title) and (excerpt == title or not _OPERATING_EVENT.search(excerpt)
+                                   or financial_report and not scoped_report):
+        # Historical milestones and comparisons packaged for investors are
+        # not a new operating report. A separate announcement in the immutable
+        # summary or separate reporting sentence can still qualify. A bare
+        # historical financial milestone lacks a period or measurement.
+        return False
     if analyst_opinion(title) and (analyst_opinion(excerpt) or not (
             _OPERATING_EVENT.search(excerpt) or has_event(excerpt, 'acquisition', 'launch', 'approval', 'completion'))):
         return False

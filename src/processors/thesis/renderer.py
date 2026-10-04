@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 9
+_VERSION = 10
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -83,7 +83,7 @@ _RULES = (
     WatchRule(
         "infrastructure-investment",
         r"\b(?:cloud|data cent(?:er|re)s?|infrastructure|fabs?)\b|云|数据中心|基础设施|晶圆厂|产能",
-        event_pattern("investment") + r"|\b(?:build(?:s|ing)?|expand(?:s|ed|ing)?|spend(?:s|ing)?|under construction|being built)\b|投入|建设|扩建|扩产|在建",
+        event_pattern("investment") + r"|\b(?:build(?:s|ing)?|expand(?:s|ed|ing)?|spend(?:s|ing)?|under construction|being built)\b|投入|支出|开支|建设|扩建|扩产|在建",
         "基础设施投入的长期价值取决于资本回报",
         "实际投入、投产进度、利用率与现金流能否匹配。",
     ),
