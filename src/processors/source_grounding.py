@@ -26,6 +26,7 @@ from src.processors.news_selection import (
     chinese_prose,
     complete_excerpt,
     factual_excerpt,
+    macro_geography_context,
     old_event_recap,
     plain_source,
     promotional_prose,
@@ -70,6 +71,15 @@ def source_sentences(item) -> list[str]:
         return []
     context = contextual_excerpt(item)
     result = [context] if context and publishable_excerpt(item, context) else []
+    geographic_context = macro_geography_context(item)
+    if geographic_context:
+        from src.collectors.macro_news import MacroNewsItem
+
+        if isinstance(item, MacroNewsItem) or getattr(item, 'macro_topic', None):
+            # A cached narrow excerpt or a model quoting only the standfirst
+            # cannot discard the context required by this macro publication.
+            return [geographic_context]
+        result.append(geographic_context)
     for key in ("title", "summary", "snippet", "source_body"):
         raw = plain_source(str(getattr(item, key, "") or "")).strip()
         if not raw:
