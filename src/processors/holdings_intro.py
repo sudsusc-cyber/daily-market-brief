@@ -213,24 +213,31 @@ def _with_daily_signal(prose: str, signals: list[Any], variant: int) -> str:
     return prose[:position] + observation + prose[position:]
 
 
+def _intro_boundaries(text: str) -> str:
+    """One punctuation width for generated Chinese prose, before validation."""
+    return re.sub(r'[ \t]*([。！？；])[ \t]*', r'\1', text.replace(';', '；'))
+
+
 def _signal_slot_errors(text: str) -> list[str]:
+    text = _intro_boundaries(text)
     if text.count(_SIGNAL_SLOT) != 1:
         return ['signal_slot_boundary']
     before, after = text.split(_SIGNAL_SLOT)
     if ((before and before[-1] not in '。！？；')
-            or (after and after[0] in '，：、')):
+            or (after and after[0] in '，：、,:!?！？')):
         return ['signal_slot_boundary']
     # A semicolon joins independent statements, never a conditional premise
     # with a portfolio fact. Keep negation/uncertainty outside that join.
     if before.endswith('；'):
         lead = re.split('[。！？]', before)[-1]
-        if (re.search(r'如果|假如|假设|倘若|若是|要是|一旦|除非|也许|或许|未必', lead)
+        if (re.search(r'如果|假如|假设|倘若|若是|要是|一旦|除非|也许|或许|未必|\b(?:if|unless|perhaps|maybe)\b', lead, re.I)
                 or re.search(r'(?:并非|不是|不能说|不意味着)[，；\s]*$', lead)):
             return ['signal_slot_scope']
     return []
 
 
 def _compose_intro(text: str, observation: str) -> str:
+    text = _intro_boundaries(text)
     before, after = text.split(_SIGNAL_SLOT)
     # The model supplies the join punctuation in text. The validated factual
     # sentence stays intact; only its final full stop yields to that separator.
@@ -324,7 +331,7 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
         try:
             data = json.loads(re.sub(r"^```(?:json)?\s*|\s*```$", '', raw))
             modern = isinstance(data, dict) and set(data) == {'text', 'signal_text'}
-            text = data['text'].strip() if modern and isinstance(data.get('text'), str) else ''
+            text = _intro_boundaries(data['text'].strip()) if modern and isinstance(data.get('text'), str) else ''
             signal_text = data.get('signal_text', '').strip() if isinstance(data, dict) and isinstance(data.get('signal_text', ''), str) else ''
             errors = [] if text else ['invalid_prose_fields']
         except (ValueError, TypeError, KeyError):
