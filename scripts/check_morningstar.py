@@ -5,7 +5,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.valuation.morningstar import MorningstarPublicProvider, refresh_fair_values
+from src.valuation.morningstar import SECURITIES, MorningstarPublicProvider, refresh_fair_values
 
 
 def main() -> None:
@@ -16,13 +16,18 @@ def main() -> None:
         required=True,
         help="Isolated output directory for verified snapshots and diagnostics",
     )
+    parser.add_argument("--tickers", help="Comma-separated subset of configured securities")
     args = parser.parse_args()
+    selected = set(args.tickers.split(",")) if args.tickers else set(SECURITIES)
+    if not selected <= SECURITIES.keys():
+        parser.error("Unknown ticker in --tickers")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     values, failures = refresh_fair_values(
         provider=MorningstarPublicProvider(timeout=12),
         state_dir=args.state_dir,
         prices={},
         checked_at=datetime.now(UTC),
+        excluded_tickers=frozenset(SECURITIES.keys() - selected),
     )
     verified = carried = excluded = 0
     for ticker, value in values.items():

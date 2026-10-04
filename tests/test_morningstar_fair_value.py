@@ -356,6 +356,7 @@ def test_same_report_date_source_conflict_prefers_official_primary() -> None:
 
 def test_yahoo_curated_report_survives_search_rate_limit(monkeypatch) -> None:
     provider = YahooMorningstarProvider(tesseract_path="tesseract")
+    monkeypatch.setattr(provider, "_index_reports", lambda _: [])
     monkeypatch.setattr(
         provider,
         "_search",
