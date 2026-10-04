@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from types import SimpleNamespace
 
 from src.collectors.macro_news import MacroFeedBundle, MacroNewsItem
@@ -39,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 _MAX_SUMMARY_ATTEMPTS = 2
 MAX_MACRO_PARAGRAPHS = 3
+MAX_MACRO_FACTS_PER_THEME = 3
+MACRO_THEME_TEXT_TARGET = 220
 
 
 @dataclass
@@ -82,11 +85,11 @@ _TASK_INSTRUCTION = """\
 
 每段格式严格为:
   <p><strong>主题词。</strong>完整事实叙述,段末用 <sup>[N]</sup> 标注脚注。</p>
-  按事实多少自然成段，不以字数强行拆段、截句或合并不同事实。
+  每段选最重要的1-3项事实，正文尽量控制在220字以内；只取有意义的完整事实，不截句或合并不同事实。
 
 - 使用具体主题词，如中美关系 / 美债市场 / 中东局势 / 国防开支；避免重复“宏观动态”
 - 主题词后用句号分隔正文(不是冒号)
-- 同主题的所有来源放在同一段，段末汇集脚注，不限制每段只能有 1-2 个来源
+- 同主题的所有入选来源放在同一段，段末汇集脚注；等价事实可保留多个来源
 - 同主题不代表同一事实：数字、日期、对象或状态不同的更新必须保留，不能合成新事实
 - <sup>[N]</sup> 中的 N 是阿拉伯数字(如 [1]、[2]),**不要**写成 [#1] 或 [#N];
   N 必须等于下面"输入数据"里这条新闻的"#" 编号(我已预编号)
@@ -246,6 +249,37 @@ def _rebuild_safe_html(
         themes.setdefault((topic, position if topic == "其他宏观" else None), []).append(group)
 
     selected = list(themes.items())
+    if editorial_order:
+        compact = []
+        def report_time(group):
+            stamps = []
+            for item in group['items']:
+                value = getattr(item, 'published_at', None)
+                try:
+                    value = datetime.fromisoformat(value.replace('Z', '+00:00')) if isinstance(value, str) else value
+                    if isinstance(value, datetime) and value.tzinfo is not None:
+                        stamps.append(value.timestamp())
+                except ValueError:
+                    pass
+            return max(stamps, default=0)
+        for key, related in selected:
+            chosen, omitted, size = [], [], 0
+            # Select whole verified facts before rendering. The first ranked
+            # fact always survives, even if unusually long; no sentence is cut.
+            for group in sorted(related, key=lambda g: (g['rank'], -report_time(g), len(g['text']))):
+                if chosen and (len(chosen) >= MAX_MACRO_FACTS_PER_THEME
+                               or size + len(group['text']) > MACRO_THEME_TEXT_TARGET):
+                    omitted.append(group)
+                    continue
+                chosen.append(group)
+                size += len(group['text'])
+            compact.append((key, chosen))
+            if omitted and selection_audit is not None:
+                selection_audit.append({'phase': 'theme_fact_selection', 'topic': key[0],
+                                        'retained_urls': [i.url for g in chosen for i in g['items']],
+                                        'omitted_urls': [i.url for g in omitted for i in g['items']],
+                                        'reason': 'editorial_theme_budget_whole_facts'})
+        selected = compact
     if len(selected) > MAX_MACRO_PARAGRAPHS:
         selected.sort(key=lambda entry: (
             min(g["rank"] for g in entry[1]) if editorial_order else 0,
@@ -266,9 +300,11 @@ def _rebuild_safe_html(
         selected = selected[:MAX_MACRO_PARAGRAPHS]
     if selection_audit is not None:
         kept = {key for key, _ in selected}
+        published_groups = dict(selected)
         selection_audit.append({"phase": "theme_selection", "themes": [
             {"topic": key[0], "paragraph_rank": min(g["rank"] for g in related),
-             "published": key in kept, "urls": [i.url for g in related for i in g["items"]]}
+             "published": key in kept, "urls": [i.url for g in related for i in g["items"]],
+             "published_urls": [i.url for g in published_groups.get(key, []) for i in g['items']]}
             for key, related in themes.items()
         ][:60]})
     parts, footnotes = [], []
