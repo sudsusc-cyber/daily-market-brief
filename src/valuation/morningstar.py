@@ -467,6 +467,12 @@ def _extract_value(text: str, security: MorningstarSecurity) -> tuple[float, str
     dedicated = security.company_name.lower().split()[0] in title
     scoped = None if dedicated else _company_scope(text, security)
     search_text = scoped or text
+    # HTML text extraction can put the metric label and its own currency/amount
+    # on adjacent lines. Join only that direct pair, never another metric or row.
+    search_text = re.sub(
+        r"(fair value estimate[ \t:]*)(?:\r?\n[ \t:]*)+((?:HKD|USD|HK\$|US\$|\$)[ \t]*[\d,]+(?:\.\d+)?)",
+        r"\1 \2", search_text, flags=re.I,
+    )
     if security.ticker.endswith(".HK"):
         search_text = re.split(
             r"^## (?:Company Report Archive|Share This Report)\b", search_text, flags=re.M

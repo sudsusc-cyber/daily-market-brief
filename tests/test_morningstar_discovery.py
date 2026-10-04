@@ -208,3 +208,16 @@ Sep 9, 2026
     assert any(c.url.endswith('/new-apple-value') for c in candidates)
     assert not any(c.url.endswith('/analysis') for c in candidates)
     assert provider.discovery_diagnostics['AAPL']['latest_analysis'][0]['published_at'].startswith('2026-10-01')
+
+
+def test_public_html_metric_label_and_amount_can_occupy_adjacent_lines():
+    from src.valuation.morningstar import _extract_value, _research_text
+    html = '<title>Moody earnings | Morningstar</title><h2>Key Morningstar Metrics for Moody</h2><p>Fair Value Estimate</p><p>: $540.00</p>'
+    assert _extract_value(_research_text(html), SECURITIES['MCO']) == (540, 'USD')
+
+
+def test_adjacent_line_support_never_borrows_another_metrics_number():
+    from src.valuation.morningstar import _extract_value
+    text = 'Title: Moody earnings\nMorningstar\nFair Value Estimate\nRevenue\n$540.00'
+    with pytest.raises(ValueError):
+        _extract_value(text, SECURITIES['MCO'])
