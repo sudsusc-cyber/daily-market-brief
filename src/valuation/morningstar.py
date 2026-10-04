@@ -467,6 +467,12 @@ def _extract_value(text: str, security: MorningstarSecurity) -> tuple[float, str
     dedicated = security.company_name.lower().split()[0] in title
     scoped = None if dedicated else _company_scope(text, security)
     search_text = scoped or text
+    # HTML text extraction can put the metric label and its own currency/amount
+    # on adjacent lines. Join only that direct pair, never another metric or row.
+    search_text = re.sub(
+        r"(fair value estimate[ \t:]*)(?:\r?\n[ \t:]*)+((?:HKD|USD|HK\$|US\$|\$)[ \t]*[\d,]+(?:\.\d+)?)",
+        r"\1 \2", search_text, flags=re.I,
+    )
     if security.ticker.endswith(".HK"):
         search_text = re.split(
             r"^## (?:Company Report Archive|Share This Report)\b", search_text, flags=re.M
@@ -626,6 +632,10 @@ class MorningstarPublicProvider:
             )
             for index, url in enumerate(security.curated_urls)
         ]
+        latest_curated = max(
+            (candidate.published_at for candidate in candidates if candidate.published_at),
+            default=None,
+        )
         # Discover via the exact exchange/listing, without requiring the headline
         # to contain "fair value". Quote dates are diagnostic, not value evidence.
         exchange, symbol = security.provider_code.lower().split(":")
@@ -633,11 +643,16 @@ class MorningstarPublicProvider:
         try:
             quote = self._reader_get(f"{_JINA_READER}{quote_url}")
             quote.raise_for_status()
-            candidates.extend(_parse_quote_candidates(quote.text))
+            quote_candidates = _parse_quote_candidates(quote.text)
+            candidates.extend(c for c in quote_candidates if not c.url.endswith("/analysis"))
             latest_date = _quote_fair_value_date(quote.text)
             self.discovery_diagnostics[security.ticker] = {
                 "official_fair_value_date": latest_date.date().isoformat() if latest_date else None,
                 "source_url": f"https://{quote_url}",
+                "latest_analysis": [
+                    {"source_url": c.url, "published_at": c.published_at.isoformat()}
+                    for c in quote_candidates if c.url.endswith("/analysis") and c.published_at
+                ],
             }
             # US report directories are discoverable from issuer pages too.
             # Some directory layouts omit dates; read the linked report's own
@@ -667,15 +682,11 @@ class MorningstarPublicProvider:
                     str(exc)[:160],
                 )
 
-        latest_curated = max(
-            (candidate.published_at for candidate in candidates if candidate.published_at),
-            default=None,
-        )
         try:
             response = self.session.get(
                 _GOOGLE_NEWS,
                 params={
-                    "q": security.news_query,
+                    "q": f'"{security.company_name}" source:Morningstar',
                     "hl": "en-US",
                     "gl": "US",
                     "ceid": "US:en",
@@ -726,8 +737,7 @@ class MorningstarPublicProvider:
                 unique[candidate.url] = candidate
         return sorted(
             unique.values(),
-            key=lambda item: (item.published_at is None and "/company-reports/" in item.url,
-                item.published_at or datetime.min.replace(tzinfo=UTC)),
+            key=lambda item: item.published_at or datetime.min.replace(tzinfo=UTC),
             reverse=True,
         )
 
@@ -901,6 +911,7 @@ class MorningstarPublicProvider:
                 ]
                 errors.append(f"发现失败: {type(exc).__name__}")
             failed_candidates = 0
+            attempted_candidates = 0
             for candidate in candidates:
                 if unread_report_time is not None and (
                     candidate.published_at is not None and candidate.published_at < unread_report_time
@@ -909,8 +920,9 @@ class MorningstarPublicProvider:
                     # report disguised as the latest. Keep this bounded so one
                     # illiquid security cannot exhaust the whole email budget.
                     continue
-                if failed_candidates >= 3:
+                if failed_candidates >= 3 or attempted_candidates >= 6:
                     break
+                attempted_candidates += 1
                 try:
                     first = self._read(candidate, security)
                     second = self._read(candidate, security)
@@ -936,7 +948,6 @@ class MorningstarPublicProvider:
                     )
                     break
                 except Exception as exc:  # noqa: BLE001
-                    failed_candidates += 1
                     values.pop(ticker, None)
                     host = urlparse(candidate.url).hostname or "unknown"
                     error_text = str(exc)
@@ -954,9 +965,11 @@ class MorningstarPublicProvider:
                         for marker in (
                             "来源页面与标的公司不匹配",
                             "多标的页面无法安全归属公允价值",
+                            "页面未找到可归属于该标的的 Morningstar 公允价值",
                         )
                     )
                     if not irrelevant:
+                        failed_candidates += 1
                         if candidate.published_at is None:
                             continue
                         unread_report_time = max(
