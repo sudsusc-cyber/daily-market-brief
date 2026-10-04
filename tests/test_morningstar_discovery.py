@@ -221,3 +221,61 @@ def test_adjacent_line_support_never_borrows_another_metrics_number():
     text = 'Title: Moody earnings\nMorningstar\nFair Value Estimate\nRevenue\n$540.00'
     with pytest.raises(ValueError):
         _extract_value(text, SECURITIES['MCO'])
+
+
+@pytest.mark.parametrize('new_value', [310, 270])
+def test_full_refresh_selects_new_dataset_and_corrects_legacy_roundup_cache(tmp_path, monkeypatch, new_value):
+    from src.valuation.morningstar import _Candidate, _save_cache, load_cache, refresh_fair_values
+    security = SECURITIES['AAPL']
+    old = MorningstarFairValue('AAPL', security.provider_code, 290, 'USD', 'published-research',
+        '2026-09-21', '2026-10-02T00:00:00Z', 'Morningstar',
+        'https://www.morningstar.com/stocks/roundup')
+    _save_cache(tmp_path / 'morningstar_fair_values.json', {'AAPL': old})
+    provider = MorningstarPublicProvider(session=Mock(), secondary_provider=None)
+    candidates = [
+        _Candidate(old.source_url, datetime(2026, 9, 21, tzinfo=UTC)),
+        _Candidate('https://www.morningstar.com/stocks/new-apple-report', datetime(2026, 9, 15, tzinfo=UTC)),
+        _Candidate('https://www.morningstar.com/stocks/failed-report', datetime(2026, 9, 10, tzinfo=UTC)),
+    ]
+    monkeypatch.setattr(provider, '_discover', lambda s: candidates if s.ticker == 'AAPL' else [])
+    def read(candidate, _):
+        if candidate == candidates[0]:
+            return replace(old, valuation_as_of='2026-09-04')
+        if candidate == candidates[1]:
+            return replace(old, fair_value=new_value, fair_value_updated_at='2026-09-15',
+                valuation_as_of='2026-09-15', source_url=candidate.url)
+        raise ValueError('来源网络不可用')
+    monkeypatch.setattr(provider, '_read', read)
+    values, _ = refresh_fair_values(provider=provider, state_dir=tmp_path, prices={},
+        checked_at=datetime(2026, 10, 4, tzinfo=UTC), baseline_path=tmp_path/'none.json')
+    assert values['AAPL'].fair_value == new_value
+    assert load_cache(tmp_path/'morningstar_fair_values.json')['AAPL'].fair_value == new_value
+    assert values['AAPL'].valuation_as_of == '2026-09-15'
+
+
+@pytest.mark.parametrize('report_date,needs_news', [('2026-07-27', True), ('2026-09-15', False)])
+def test_valid_distributed_date_avoids_redundant_decoding_but_older_report_still_discovers_news(monkeypatch, report_date, needs_news):
+    session = Mock()
+    session.headers = {}
+    session.get.return_value.content = b'<rss><channel/></rss>'
+    provider = MorningstarPublicProvider(session=session, secondary_provider=None)
+    security = SECURITIES['AAPL']
+    provider._validated_secondary['AAPL'] = MorningstarFairValue('AAPL', security.provider_code, 290,
+        'USD', 'published-research', report_date, '2026-10-04T00:00:00Z', 'Morningstar Yahoo',
+        'https://finance.yahoo.com/research/reports/verified')
+    quote = Mock()
+    quote.text = '## Price vs Fair Value\nFair Value\nLOCK|abc\nSep 9, 2026\n'
+    monkeypatch.setattr(provider, '_reader_get', lambda _: quote)
+    provider._discover(security)
+    assert bool(session.get.call_count) == needs_news
+
+
+def test_timeout_preserves_completed_source_failure_diagnostic():
+    provider = MorningstarPublicProvider(session=Mock(), secondary_provider=None)
+    def interrupted(_label, _operation, **kwargs):
+        provider._inflight_failures['MCO'] = 'new report returned HTTP 429'
+        return kwargs['fallback']()
+    provider._budget = Mock()
+    provider._budget.run.side_effect = interrupted
+    _, failures = provider.fetch_all({'MCO': SECURITIES['MCO']}, checked_at=datetime(2026, 10, 4, tzinfo=UTC))
+    assert failures['MCO'] == 'new report returned HTTP 429'
