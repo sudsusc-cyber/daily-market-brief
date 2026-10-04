@@ -490,7 +490,10 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
         return history.filter_figure(summary) if history is not None else summary
 
     for attempt in range(1, _MAX_FILTER_ATTEMPTS + 1):
-        instruction = _TASK_INSTRUCTION.format(PERSON=bundle.person)
+        # The display nickname is not a separate person from the configured
+        # canonical identity. Supply both to selection, then verify in code.
+        identity = f"{bundle.person}（{bundle.person_en}）" if bundle.person_en else bundle.person
+        instruction = _TASK_INSTRUCTION.format(PERSON=identity)
         if history is not None:
             instruction += history.context("figures", bundle.person)
         if attempt > 1:

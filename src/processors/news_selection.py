@@ -100,6 +100,9 @@ _BUSINESS_FACT = re.compile(
     r'|partner(?:s|ed|ing)? with|(?:plans?|will|agrees? to) invest|announced|introduc\w*|appoint\w*|acqui\w*|merger|launch\w*'
     r'|(?:updates?|updated|changes?|changed|revises?|revised|restricts?|restricted)\b.{0,65}(?:operating system|software|privacy|permissions?|pricing|fees|terms|data access|access to data)'
     r'|updates?\b.{0,50}\b(?:notify|alert|inform)\b.{0,30}\b(?:users|customers)'
+    r'|(?:prepares?|preparing|plans?)\b.{0,65}\b(?:product|smart.home|software|device|platform)\b.{0,30}\b(?:launch|expansion|release)'
+    r'|(?:suppl(?:y|ies|ying)|lease|buy and lease)\b.{0,65}\b(?:chips?|hardware|equipment|compute|capacity)\b'
+    r'|(?:set up|establish\w*)\b.{0,60}\b(?:financing|special purpose vehicle)\b'
     r'|(?:paus\w*|cancel\w*).*(?:training|evaluation|launch)|settlement|lawsuit|litigation|patent verdict|court ruling|appeal|data cent(?:er|re)|cloud.*(?:infrastructure|capacity)|dividend|buyback)\b'
     r'|业绩|营收|利润|投资|发布|任命|续签|收购|并购|结算|分红|回购'
     r'|(?:更新|修改|调整|限制).{0,30}(?:操作系统|软件|隐私|权限|收费|定价|服务条款|数据访问)', re.I)
@@ -113,7 +116,7 @@ def business_fact(text: str) -> bool:
 def analyst_opinion(text: str) -> bool:
     """Broker ratings/targets are opinions, regardless of broker or issuer."""
     return bool(re.search(
-        r"\b(?:tactical ideas list|upside potential|price targets?|target prices?|overweight|underweight|outperform|underperform|buy rating|sell rating|hold rating)\b"
+        r"\b(?:tactical ideas list|top picks?|upside potential|price targets?|target prices?|overweight|underweight|outperform|underperform|buy rating|sell rating|hold rating)\b"
         r"|(?:analysts?|brokerage|broker)\b.{0,80}\b(?:ratings?|upgrades?|downgrades?)\b"
         r"|目标价|(?:分析师|券商).{0,50}评级|(?:增持|减持|买入|卖出|中性|跑赢大盘|跑输大盘)评级", text, re.I))
 
@@ -489,9 +492,15 @@ def factual_excerpt(item) -> str:
             if (complete_excerpt(part) and not _PRICE_EDITORIAL.search(part)
                     and re.search(r'\b(?:bought|purchased|acquired|announced|reported)\b|买入|增持|收购|宣布|营收', part, re.I)):
                 return part
+    # Macro policy/market reports are not company operating announcements.
+    # Keep their exact factual summary (including quantity and time horizon),
+    # rather than silently reducing every unfamiliar event to its headline.
+    from src.collectors.macro_news import MacroNewsItem
+    macro_report = isinstance(item, MacroNewsItem)
     for sentence in publication_candidates(item, plain_source(summary)):
         if (publishable_excerpt(item, sentence)
-                and len(sentence) >= 30 and business_fact(sentence) and not _PRICE_EDITORIAL.search(sentence)
+                and len(sentence) >= 30 and (macro_report or business_fact(sentence)) and not _PRICE_EDITORIAL.search(sentence)
+                and not (getattr(item, 'holding_ticker', None) and analyst_opinion(sentence))
                 and sentence not in title and title not in sentence):
             eligible.append(sentence)
     # When a recap contains an explicit fresh update, lead with that update.
@@ -531,7 +540,12 @@ def company_candidate(item, ticker: str) -> bool:
         return False
     if long_term_noise_reason(title, plain_source(getattr(item, 'summary', '') or ''),
                               holding_is_subject=company_fact_matches(title, ticker)):
-        return False
+        # A reader-facing teaser can accompany a concrete operating report.
+        # Rescue only the independently publishable source passage; the noisy
+        # headline itself never becomes the report.
+        excerpt = factual_excerpt(item)
+        if excerpt == title or not business_fact(excerpt) or long_term_noise_reason(excerpt):
+            return False
     if re.search(r"\b(?:net worth|wealth.*shares|richest|biography)\b", title, re.I) and re.search(r"\?|profile|who is|what is", title, re.I):
         return False
     # Appointment beneficiary is the grammatical subject, not the appointee's

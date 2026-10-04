@@ -70,7 +70,8 @@ def editorial_issue(text: str) -> str | None:
 def analysis_source(title: str, summary: str = '') -> bool:
     return bool(re.search(
         r'\b(?:buy before|stock is a buy|investment case|analyst blog|here.s why.*moat|'
-        r'political asset|wish you.*bought)\b|投资逻辑|值得买|分析师博客', title + ' ' + summary, re.I))
+        r'political asset|wish you.*bought)\b|投资逻辑|值得买|分析师博客', title + ' ' + summary, re.I)
+        or re.search(r'^(?:.{1,80}\s+)?(?:Analysis|Opinion|Commentary)\s*[:：]|^(?:.{1,40})?(?:分析|评论|观点)[:：]', title, re.I))
 
 
 # Event objects, not the issuer name, determine whether model-scope evidence is

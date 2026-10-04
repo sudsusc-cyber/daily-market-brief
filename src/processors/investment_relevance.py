@@ -39,6 +39,8 @@ def long_term_noise_reason(title: str, summary: str = '', *, holding_is_subject=
         r'(?:进入|拓展|扩大).{0,20}(?:市场|销售渠道|分销)|'
         r'(?:sales|销量|销售额).{0,35}(?:\d|grow|rise|fall|增长|下降)', context, re.I))
     noise = {
+        'consumer_anecdote': r'\b(?:woman|man|shopper|customer|family)\b.{0,90}\b(?:boat ride|shopping trip|grocery trip|saves? (?:her|his|their)|saves?.{0,25}on groceries)\b|(?:女子|男子|顾客|家庭).{0,40}(?:购物经历|省下.{0,15}杂货|乘船.{0,20}购物)',
+        'shareholder_call_to_action': r'\bdear\b.{0,50}\b(?:stock|shareholder|investor)\b.{0,20}\bfans?\b|\bmark your calendars?\b|(?:股民|投资者).{0,15}(?:请记住|记下日期)',
         'incidental_brand_appearance': r'(?:实拍|街拍|现场见闻|赛场内外|红毯).{0,200}(?:挂件|背包|玩偶|文创|设备|车辆|服饰|品牌|标识|亮相)|'
                                      r'\b(?:spotted|pictured|seen)\s+(?:wearing|carrying|using)\b|'
                                      r'\b(?:red carpet|street style|sidelines)\b.{0,100}\b(?:brand|logo|bag|outfit|merchandise)\b',

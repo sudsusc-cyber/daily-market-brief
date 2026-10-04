@@ -49,6 +49,11 @@ EVENTS["fall"] += r"|\b(?:slips?|dips?|dipped)\b|跌幅"
 _HOLD_OBJECT = r"rates?|prices?|guidance|outlook|ratings?|dividends?|revenue|profit|production|利率|价格|指引|展望|评级|分红|营收|利润|产量"
 EVENTS["hold"] = (r"\bunchanged\b|不变|持平(?=$|[，。；、！？,.;!?\s]|于|在|至|的|状态|水平)|\b(?:holds?|maintains?)\s+(?:\w+\s+){0,3}(?:" + _HOLD_OBJECT
                    + r")|(?:" + _HOLD_OBJECT + r").{0,12}(?:保持|维持)|(?:保持|维持).{0,8}(?:" + _HOLD_OBJECT + r")")
+EVENTS['hold'] += r"|\bkeep\b.{0,45}\b(?:steady|unchanged)\b"
+EVENTS['raise'] += r"|\b(?:commitments?|costs?|debts?|risks?|pressure|losses?)\s+(?:continue to\s+)?mount(?:s|ed|ing)?\b|加大"
+EVENTS['pause'] += r"|停止"
+EVENTS['asset_release'] = r"\basset_release\b"
+EVENTS['noncancellable_commitment'] = r"\bnoncancellable_commitment\b"
 MODALITY += r"|机会渺茫|概率很低|概率很高|\b(?:little|small|low|high|strong) chance\b|\bawait(?:s|ed)?\b|将(?=对|向|提供|给予|补贴|调整|进行)"
 
 # Inflections belong to the event family; consumers must not maintain their own
@@ -75,6 +80,15 @@ def normalize_event_text(text: str) -> str:
     Only used for semantic features; immutable source and published text retain
     every word. An investor is a role, not proof of a fresh capital investment.
     """
+    # Releasing frozen property is neither a product launch nor a prisoner
+    # release. Bind the object symmetrically before the event comparisons.
+    text = re.sub(r"\b(?:the )?releas(?:e|es|ed|ing)\s+(?:of\s+)?(?:(?:the|its|their|frozen|blocked|seized|[A-Z][a-z]+)\s+){0,4}(?:assets?|funds?|collateral)\b",
+                  ' asset_release ', text, flags=re.I)
+    text = re.sub(r"释放(?:其|该国|被冻结的?|冻结的?|扣押的?|[一-鿿]{1,6})?(?:资产|资金|抵押品)", ' asset_release ', text)
+    # A contractual restriction is not a cancellation event. Preserve the
+    # restriction as its own feature, rather than attaching a plan elsewhere
+    # to a phantom cancellation in the translation.
+    text = re.sub(r"\bnon[ -]cancell?able\b|不可取消的?", ' noncancellable_commitment ', text, flags=re.I)
     # Directional predicates share semantics regardless of tense or word order.
     text = re.sub(r"\b(?:coming|comes?|came|going|goes|went) down\b", 'fall', text, flags=re.I)
     text = re.sub(r'\badded(?=\s+(?:just\s+)?[0-9,]+\s+jobs\b)', 'increased', text, flags=re.I)

@@ -24,10 +24,11 @@ logger = logging.getLogger(__name__)
 _HOSTS = {'www.digitaltoday.co.kr', 'digitaltoday.co.kr', 'www.cnbc.com', 'www.tomshardware.com', 'tomshardware.com',
           'www.reuters.com', 'www.ft.com', 'www.bloomberg.com', 'www.benzinga.com', 'www.asml.com',
           'www.microsoft.com', 'blogs.nvidia.com', 'www.nvidia.com', 'www.amd.com', 'scanx.trade',
-          'finance.yahoo.com', 'news.yahoo.com'}
+          'finance.yahoo.com', 'news.yahoo.com', 'www.storyboard18.com', 'www.livemint.com'}
 _SOURCE_LABELS = {'reuters', 'financial times', 'ft', 'bloomberg', 'benzinga', 'asml',
                   'microsoft blog', 'nvidia blog', 'nvidia', 'amd', 'amd ir', 'cnbc', 'scanx.trade',
-                  'digitaltoday', 'digital today', "tom's hardware", "yahoo", "yahoo finance"}
+                  'digitaltoday', 'digital today', "tom's hardware", "yahoo", "yahoo finance",
+                  'storyboard 18', 'storyboard18', 'livemint'}
 _MAX_BYTES = 1_000_000
 
 

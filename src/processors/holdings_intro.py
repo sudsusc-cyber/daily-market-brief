@@ -145,7 +145,7 @@ _STATE_WITHIN = (r"(?:" + _STATE_SPATIAL_NOUN + _STATE_IN_LOCATIVE + r"?"
                  r"|(?:尺度|门槛|条件|标准)" + _STATE_IN_LOCATIVE + r"|线内)")
 _STATE_FORMS = (
     _STATE_LOCATION + r"{q}{k}(?:的)?" + _STATE_WITHIN,
-    r"(?:合乎|符合|满足|契合){q}{k}(?:的)?(?:条件|尺度|标准|要求)",
+    r"(?:合乎|符合|满足|契合|具备){q}{k}(?:的)?(?:条件|尺度|标准|要求)",
     r"与{q}{k}(?:的)?(?:尺度|条件|区间|节奏|节拍)(?:相合|相应|相契|吻合)",
     r"为{k}(?:留有|留出)(?:余地|空间)",
     r"(?:有|留有|留出){k}(?:的)?(?:余地|空间)",
@@ -297,7 +297,7 @@ def _intro_retry(errors: list[str], *, accepted_text: str, accepted_signal: str)
     if accepted_signal:
         parts.append("signal_text已通过事实核验，请原样保留，不要补充事实：" + json.dumps(accepted_signal, ensure_ascii=False))
     else:
-        parts.append("只按输入的主体和LUMP_SUM/DCA状态修正signal_text，写现有位置，保留正文的疏朗语气。")
+        parts.append("只按输入的主体和LUMP_SUM/DCA状态修正signal_text，表达已经核实的当前条件、尺度或余地；不声称首次触发或当日变化，保留正文的疏朗语气。")
         if 'signal_state_not_bound' in errors:
             parts.append("每个分句以原样主体开头；主体后的表达可自然组合：中性位置动词（在、现处、落在、位于等）+策略词（大额买入或定投）+区间、范围、位置，末尾可用内、之内或以内。")
             parts.append("也可以表达与策略尺度相合、合乎策略条件、有策略余地，或主体的策略余地尚在；这些是现存状态的语义边界，不是要求照抄的固定句。选简短自然的说法，不要写区间之外、尚待达到或首次进入。")
