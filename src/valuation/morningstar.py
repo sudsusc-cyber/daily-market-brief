@@ -269,6 +269,22 @@ class _Candidate:
     headline: str | None = None
 
 
+def _rank_candidates(candidates: list[_Candidate]) -> list[_Candidate]:
+    unique: dict[str, _Candidate] = {}
+    for candidate in candidates:
+        if not candidate.url:
+            continue
+        previous = unique.get(candidate.url)
+        if previous is None or (
+            previous.known_value is None and candidate.known_value is not None
+        ) or (candidate.published_at is not None and (
+            previous.published_at is None or candidate.published_at > previous.published_at
+        )):
+            unique[candidate.url] = candidate
+    return sorted(unique.values(),
+        key=lambda item: item.published_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+
+
 _REPORT_LINK_RE = re.compile(
     r"^###\s+\[(?P<headline>[^\]]+)\]\((?P<url>https?://www\.morningstar\.com/company-reports/[^)]+)\)$",
     re.I,
@@ -596,6 +612,8 @@ class MorningstarPublicProvider:
             | None
         ) = None
         self.discovery_diagnostics: dict[str, dict[str, Any]] = {}
+        self._validated_secondary: dict[str, MorningstarFairValue] = {}
+        self._inflight_failures: dict[str, str] = {}
 
     def _reader_get(self, url: str) -> requests.Response:
         """节流并重试公共文本镜像，避免一封邮件的双读触发临时限流。"""
@@ -682,6 +700,14 @@ class MorningstarPublicProvider:
                     str(exc)[:160],
                 )
 
+        distributed = self._validated_secondary.get(security.ticker)
+        official_date = self.discovery_diagnostics.get(security.ticker, {}).get("official_fair_value_date")
+        if distributed and official_date and _valuation_time(distributed).date() >= _timestamp(official_date).date():
+            # We still read/reconcile all official candidates; redundant news
+            # decoding must not starve other issuers when a qualified report
+            # already covers the official valuation update date.
+            self.discovery_diagnostics[security.ticker]["news_discovery"] = "qualified distributed report covers official date"
+            return _rank_candidates(candidates)
         try:
             response = self.session.get(
                 _GOOGLE_NEWS,
@@ -696,7 +722,7 @@ class MorningstarPublicProvider:
             response.raise_for_status()
             soup = BeautifulSoup(response.content, "xml")
             decoder = importlib.import_module("googlenewsdecoder")
-            for item in soup.find_all("item")[:10]:
+            for item in soup.find_all("item")[:3]:
                 source_node = item.find("source")
                 source = source_node.get_text(" ", strip=True) if source_node else ""
                 if "morningstar" not in source.lower():
@@ -724,22 +750,7 @@ class MorningstarPublicProvider:
                 str(exc)[:160],
             )
 
-        unique: dict[str, _Candidate] = {}
-        for candidate in candidates:
-            if not candidate.url:
-                continue
-            previous = unique.get(candidate.url)
-            if previous is None or (
-                previous.known_value is None and candidate.known_value is not None
-            ) or (candidate.published_at is not None and (
-                previous.published_at is None or candidate.published_at > previous.published_at
-            )):
-                unique[candidate.url] = candidate
-        return sorted(
-            unique.values(),
-            key=lambda item: item.published_at or datetime.min.replace(tzinfo=UTC),
-            reverse=True,
-        )
+        return _rank_candidates(candidates)
 
     def _read_listing(self, candidate: _Candidate, security: MorningstarSecurity) -> str:
         """同一官方报告的目录备用路径；不宣称是独立分发源。"""
@@ -831,6 +842,8 @@ class MorningstarPublicProvider:
         checked_at: datetime,
     ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
         self._inflight_values = {}
+        self._inflight_failures = {}
+        self._validated_secondary = {}
         self.discovery_diagnostics = {}
         return self._budget.run(
             "morningstar",
@@ -839,7 +852,8 @@ class MorningstarPublicProvider:
             fallback=lambda: (
                 dict(self._inflight_values),
                 {
-                    ticker: "公开估值取数超时，已保留完成项并检查有效快照"
+                    ticker: self._inflight_failures.get(ticker,
+                        "公开估值取数超时，已保留完成项并检查有效快照")
                     for ticker in securities
                     if ticker not in self._inflight_values
                 },
@@ -884,7 +898,17 @@ class MorningstarPublicProvider:
                 secondary_failures = {
                     ticker: f"独立备源整体失败: {type(exc).__name__}" for ticker in pending
                 }
+        self._inflight_failures.update(secondary_failures)
         retrieved = checked_at.astimezone(UTC).isoformat()
+        for ticker, value in secondary_values.items():
+            if ticker not in pending:
+                continue
+            try:
+                _validate_live(value, previous=None, current_price=None,
+                    checked_at=checked_at, ticker=ticker)
+                self._validated_secondary[ticker] = value
+            except (ValueError, TypeError, KeyError):
+                continue
         for ticker, security in pending.items():
             errors: list[str] = []
             unread_report_time: datetime | None = None
@@ -915,6 +939,7 @@ class MorningstarPublicProvider:
             for candidate in candidates:
                 if unread_report_time is not None and (
                     candidate.published_at is not None and candidate.published_at < unread_report_time
+                    and ticker not in values
                 ):
                     # Try alternate paths to the current report, not an older
                     # report disguised as the latest. Keep this bounded so one
@@ -934,24 +959,37 @@ class MorningstarPublicProvider:
                         or first.valuation_as_of != second.valuation_as_of
                     ):
                         raise ValueError("同一来源双读不一致")
-                    values[ticker] = replace(
+                    observed = replace(
                         first,
                         retrieved_at=retrieved,
                         observation_count=2,
                     )
                     _validate_live(
-                        values[ticker],
+                        observed,
                         previous=None,
                         current_price=None,
                         checked_at=checked_at,
                         ticker=ticker,
                     )
-                    break
+                    best = values.get(ticker)
+                    if best is None or _compare_reports(observed, best) >= 0:
+                        chosen = _choose_verified(observed, best)
+                    else:
+                        chosen = best
+                    values[ticker] = replace(chosen, evidence=_observations(best, observed)) if best else chosen
+                    latest_known = self.discovery_diagnostics.get(ticker, {}).get("official_fair_value_date")
+                    if chosen.valuation_as_of is None and (
+                        not latest_known or _valuation_time(chosen).date() >= _timestamp(latest_known).date()
+                    ):
+                        break
                 except Exception as exc:  # noqa: BLE001
-                    values.pop(ticker, None)
                     host = urlparse(candidate.url).hostname or "unknown"
                     error_text = str(exc)
                     errors.append(f"{host}: {error_text[:120]}")
+                    self._inflight_failures[ticker] = (
+                        "; ".join(errors[-3:])
+                        + (f"；Yahoo 备源: {secondary_failures[ticker]}" if ticker in secondary_failures else "")
+                    )[:500]
                     logger.info(
                         "morningstar.candidate_failed ticker=%s url=%s reason=%s",
                         ticker,
@@ -1022,7 +1060,7 @@ class MorningstarPublicProvider:
             if (
                 ticker in values
                 and unread_report_time is not None
-                and (_report_time(values[ticker]) < unread_report_time)
+                and (_valuation_time(values[ticker]) < unread_report_time)
             ):
                 # A readable old distributed report is useful evidence, but not
                 # proof of what a newer inaccessible official report says.
@@ -1050,6 +1088,8 @@ class MorningstarPublicProvider:
             )
             if ticker in values:
                 self._inflight_values[ticker] = values[ticker]
+            if ticker in failures:
+                self._inflight_failures[ticker] = failures[ticker]
         # 只在同一观测请求内复用；发送前的晚时点复核会重读所有标的。
         self._memo = (memo_at, dict(values), dict(failures))
         return values, failures
@@ -1329,12 +1369,27 @@ def load_verified_values(
     return result
 
 
-def _choose_verified(
-    current: MorningstarFairValue,
+def _correct_cached_data_date(
     old: MorningstarFairValue | None,
-) -> MorningstarFairValue:
+    current: MorningstarFairValue,
+) -> MorningstarFairValue | None:
     if old is None:
-        return current
+        return None
+    if not old.valuation_as_of:
+        for row in current.evidence:
+            if (row.get("ticker"), row.get("provider_code"), row.get("currency"),
+                    row.get("source_url"), row.get("fair_value")) != (
+                    old.ticker, old.provider_code, old.currency, old.source_url, old.fair_value):
+                continue
+            try:
+                if (row.get("valuation_as_of") and _timestamp(str(row["report_published_at"])).date()
+                        == _report_time(old).date()):
+                    corrected = replace(old, valuation_as_of=str(row["valuation_as_of"]))
+                    _validate_live(corrected, previous=None, current_price=None, allow_historical=True)
+                    old = corrected
+                    break
+            except (KeyError, ValueError, TypeError):
+                continue
     if (current.valuation_as_of and not old.valuation_as_of
             and current.source_url == old.source_url
             and _report_time(current) == _report_time(old)
@@ -1343,6 +1398,16 @@ def _choose_verified(
         # data date. Keep that correction, instead of washing an older roundup
         # dataset through its later article publication date.
         old = replace(old, valuation_as_of=current.valuation_as_of)
+    return old
+
+
+def _choose_verified(
+    current: MorningstarFairValue,
+    old: MorningstarFairValue | None,
+) -> MorningstarFairValue:
+    old = _correct_cached_data_date(old, current)
+    if old is None:
+        return current
     chronology = _compare_reports(current, old)
     if old.historical_only and not current.historical_only:
         # An unverified constant is not newer evidence. Keep an actually read
@@ -1441,6 +1506,9 @@ def refresh_fair_values(
                     checked_at=checked_at,
                     ticker=ticker,
                 )
+                old = _correct_cached_data_date(old, candidate)
+                if old is not None:
+                    previous[ticker] = old
                 chosen = _choose_verified(candidate, old)
                 accepted[ticker] = chosen
                 if chosen.stale_cache:
