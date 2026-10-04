@@ -111,3 +111,14 @@ translation kept only the headline and correctly failed quantity/time checks.
 Multi-line source spans are now one JSON-encoded numbered payload with an explicit
 full-span translation instruction. Omitted standfirst details still fail the same
 checks; a supported repair is required before publication.
+
+## Translation response transport
+
+Preview 37204000819 restored three macro paragraphs and a verified generated intro,
+but its full banking translation echoed the input's JSON wrapper and literal \n
+into the final paragraph. The preview was not sent. Parse one complete JSON string
+response when it contains escaped line boundaries, join its full decoded clauses
+with sentence punctuation, then run unchanged quantity/entity/time/state checks.
+Partial or unquoted literal escape boundaries are rejected. Real quotations and
+existing sentence punctuation remain intact. Six regression cases include quantity
+and relative-period reversals after decoding.

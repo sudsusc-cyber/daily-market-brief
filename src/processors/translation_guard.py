@@ -368,6 +368,8 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = normalize_event_text(original)
     translated = normalize_event_text(translated)
     errors = []
+    if re.search(r"\\[nr]", translated) and not re.search(r"\\[nr]", original):
+        errors.append("serialized_translation_boundary")
     if _relative_calendar_periods(original) != _relative_calendar_periods(translated):
         errors.append("relative_calendar_period")
     if re.search(r"\bmake peace with\b", original, re.I) and '和解' in translated:
