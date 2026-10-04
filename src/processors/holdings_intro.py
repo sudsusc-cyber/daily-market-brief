@@ -215,7 +215,8 @@ def _with_daily_signal(prose: str, signals: list[Any], variant: int) -> str:
 
 def _intro_boundaries(text: str) -> str:
     """One punctuation width for generated Chinese prose, before validation."""
-    return re.sub(r'[ \t]*([。！？；])[ \t]*', r'\1', text.replace(';', '；'))
+    text = re.sub(r'(?<!\d),|,(?!\d)', '，', text.replace(';', '；'))
+    return re.sub(r'[ \t]*([。！？；，])[ \t]*', r'\1', text)
 
 
 def _signal_slot_errors(text: str) -> list[str]:
@@ -332,7 +333,7 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
             data = json.loads(re.sub(r"^```(?:json)?\s*|\s*```$", '', raw))
             modern = isinstance(data, dict) and set(data) == {'text', 'signal_text'}
             text = _intro_boundaries(data['text'].strip()) if modern and isinstance(data.get('text'), str) else ''
-            signal_text = data.get('signal_text', '').strip() if isinstance(data, dict) and isinstance(data.get('signal_text', ''), str) else ''
+            signal_text = _intro_boundaries(data.get('signal_text', '').strip()) if isinstance(data, dict) and isinstance(data.get('signal_text', ''), str) else ''
             errors = [] if text else ['invalid_prose_fields']
         except (ValueError, TypeError, KeyError):
             text, signal_text, modern, errors = '', '', False, ['invalid_prose_json']

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Iterable
@@ -26,6 +27,7 @@ _TASK_INSTRUCTION = """\
 任务:把下面以 "▦ N:" 编号的英文财经新闻完整证据片段逐条翻译为简体中文。
 约束:
 - 严格保留 "▦ N: <译文>" 格式,每条独占一行
+- 每个编号是一条完整证据；多行原文以 JSON 字符串编码，解码后必须翻译全部字段和分句，不能只翻第一行标题；输出仍为一行完整译文
 - 公司、人名、产品型号保留原写；地名和机构名按下方统一术语表使用通行中文，未列出的专名保留原写，不猜译
 - 原文所有 ticker 和缩写（AI、TPU、NASDAQ 等）保留，英文可紧邻中文
 - 数字、日期、百分号保持原样；金额单位可转为中文但金额、币种不得变化
@@ -116,7 +118,9 @@ def translate_titles(
 
         for attempt in range(1, max_attempts + 1):
             numbered = "\n".join(
-                f"▦ {position}: {indexed_chunk[position][1]}" + (_repair_context((diagnostics or {}).get(indexed_chunk[position][0], {"errors": rejected[position]})) if position in rejected else "")
+                f"▦ {position}: " + (json.dumps(indexed_chunk[position][1], ensure_ascii=False)
+                                      if "\n" in indexed_chunk[position][1] or "\r" in indexed_chunk[position][1]
+                                      else indexed_chunk[position][1]) + (_repair_context((diagnostics or {}).get(indexed_chunk[position][0], {"errors": rejected[position]})) if position in rejected else "")
                 for position in sorted(pending)
             )
             resp = client.chat(

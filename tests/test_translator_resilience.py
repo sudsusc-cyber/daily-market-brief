@@ -59,3 +59,30 @@ def test_translate_does_not_retry_complete_batch() -> None:
 
     assert result == ["美联储维持利率不变"]
     assert len(client.calls) == 1
+
+
+def test_multiline_source_is_one_numbered_payload_and_not_a_bare_headline():
+    import json
+
+    raw = 'China closes banks\nMore than 670 lenders closed last year.'
+    full = '中国关闭银行。去年有超过 670 家贷款机构关闭。'
+    client = _SequenceClient([_ok('▦ 1: ' + full)])
+    assert translate_titles([raw], client=client) == [full]
+    prompt, kwargs = client.calls[0]
+    lines = prompt.splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0].removeprefix('▦ 1: ')) == raw
+    assert '不能只翻第一行' in kwargs['task_extra']
+
+
+def test_multiline_headline_only_translation_is_repaired_without_waiving_guards():
+    import json
+
+    raw = 'China closes banks\nMore than 670 lenders closed last year.'
+    full = '中国关闭银行。去年有超过 670 家贷款机构关闭。'
+    client = _SequenceClient([_ok('▦ 1: 中国关闭银行。'), _ok('▦ 1: ' + full)])
+    diagnostics = {}
+    assert translate_titles([raw], client=client, diagnostics=diagnostics) == [full]
+    assert len(client.calls) == 2 and not diagnostics
+    assert json.loads(client.calls[1][0].splitlines()[0].removeprefix('▦ 1: ')) == raw
+    assert 'relative_calendar_period' in client.calls[1][0]
