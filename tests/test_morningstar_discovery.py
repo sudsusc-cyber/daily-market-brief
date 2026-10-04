@@ -1,0 +1,165 @@
+from dataclasses import replace
+from datetime import UTC, datetime
+from unittest.mock import Mock
+
+import pytest
+
+from src.valuation.morningstar import (
+    SECURITIES,
+    MorningstarFairValue,
+    MorningstarPublicProvider,
+    _parse_quote_candidates,
+    _quote_fair_value_date,
+    _reconcile_independent_sources,
+)
+from src.valuation.yahoo_morningstar import _CURATED_REPORTS, YahooMorningstarProvider
+
+
+def test_official_quote_discovery_does_not_require_fair_value_in_title():
+    text = """## Company Report
+[View Archive](http://www.morningstar.com/company-reports?listing=0P000003P7)
+### [A wide moat business](http://www.morningstar.com/stocks/xnys/mco/analysis)
+[Analyst](http://www.morningstar.com/people/analyst)Sep 4, 2026
+## Price vs Fair Value
+Price
+$441.36
+Oct 2, 2026
+Fair Value
+LOCK|abc
+Sep 4, 2026
+### Articles & Videos
+* #### [Valuation review ![Image](https://example.org/img) Analyst Sep 14, 2026](http://www.morningstar.com/stocks/valuation-review)
+## Other
+* #### [Footer Oct 3, 2026](http://www.morningstar.com/stocks/unrelated)
+"""
+    candidates = _parse_quote_candidates(text)
+    assert [c.url for c in candidates] == [
+        "https://www.morningstar.com/stocks/xnys/mco/analysis",
+        "https://www.morningstar.com/stocks/valuation-review",
+    ]
+    assert _quote_fair_value_date(text) == datetime(2026, 9, 4, tzinfo=UTC)
+
+
+def test_quote_date_never_uses_request_date_or_price_date():
+    assert _quote_fair_value_date("## Price vs Fair Value\nPrice\n$441.36\nOct 2, 2026\nFair Value\nLOCK|abc") is None
+
+
+@pytest.mark.parametrize("ticker", list(_CURATED_REPORTS))
+def test_yahoo_index_discovers_new_report_for_exact_listing(ticker):
+    report_id = _CURATED_REPORTS[ticker][0].rsplit("_", 1)[0] + "_1791000000000"
+    session = Mock()
+    session.get.return_value.text = report_id + " MS_OTHER_AnalystReport_1791000001000 ARGUS_123_AnalystReport_1791000000000"
+    provider = YahooMorningstarProvider(session=session)
+    rows = provider._index_reports(SECURITIES[ticker])
+    assert [r["id"] for r in rows] == [report_id]
+
+
+def test_empty_search_does_not_disable_other_issuers(monkeypatch):
+    monkeypatch.setattr("src.valuation.yahoo_morningstar.time.sleep", lambda _: None)
+    session = Mock()
+    session.get.return_value.status_code = 200
+    session.get.return_value.json.return_value = {"researchReports": []}
+    provider = YahooMorningstarProvider(session=session)
+    with pytest.raises(ValueError):
+        provider._search({"q": "MSFT"})
+    assert provider._search_disabled_reason is None
+    session.get.return_value.json.return_value = {"researchReports": [{"id": "new"}]}
+    assert provider._search({"q": "MCO"})["researchReports"]
+
+
+@pytest.mark.parametrize("ticker", ["MCO", "COST", "AAPL"])
+@pytest.mark.parametrize("amount", [540, 450])
+def test_newer_verified_raise_or_cut_wins_over_old_report(ticker, amount):
+    s = SECURITIES[ticker]
+    old = MorningstarFairValue(ticker, s.provider_code, 520, s.currency,
+        "published-research", "2026-07-27", "2026-10-04T00:00:00Z",
+        "Morningstar", "https://www.morningstar.com/stocks/old")
+    new = replace(old, fair_value=amount, fair_value_updated_at="2026-09-04",
+        report_published_at="2026-09-04T20:30:48Z",
+        source_url="https://finance.yahoo.com/research/reports/new")
+    assert _reconcile_independent_sources(old, new).fair_value == amount
+
+
+def test_known_new_official_date_marks_old_distributed_value_as_history(monkeypatch):
+    s = SECURITIES["MCO"]
+    old = MorningstarFairValue("MCO", s.provider_code, 520, "USD", "published-research",
+        "2026-07-27", "2026-10-04T00:00:00Z", "Morningstar Yahoo",
+        "https://finance.yahoo.com/research/reports/old")
+    secondary = Mock()
+    secondary.discovery_diagnostics = {}
+    secondary.fetch_all.return_value = ({"MCO": old}, {})
+    provider = MorningstarPublicProvider(session=Mock(), secondary_provider=secondary)
+    def discover(_):
+        provider.discovery_diagnostics["MCO"] = {"official_fair_value_date": "2026-09-04"}
+        return []
+    monkeypatch.setattr(provider, "_discover", discover)
+    values, failures = provider.fetch_all({"MCO": s}, checked_at=datetime(2026, 10, 4, tzinfo=UTC))
+    assert values["MCO"].fair_value == 520
+    assert values["MCO"].stale_cache
+    assert "2026-09-04" in failures["MCO"]
+    assert values["MCO"].fair_value_updated_at == "2026-07-27"
+
+
+def test_snapshot_for_another_listing_is_rejected():
+    session = Mock()
+    session.get.return_value.text = '\"snapshotUrl\":\"https://s.yimg.com/uc/fin/img/ms-reports-thumbnails/0P000001IK_20260928123456.jpg\"'
+    provider = YahooMorningstarProvider(session=session)
+    with pytest.raises(ValueError, match="上市标识"):
+        provider._snapshot_url("https://finance.yahoo.com/research/reports/MS_0P000003P7_AnalystReport_1788555048000/")
+
+
+def test_undated_directory_entries_require_report_metadata_not_invented_dates():
+    from src.valuation.morningstar import _parse_company_report_candidates
+    text = '### [New research](http://www.morningstar.com/company-reports/123?listing=0P000003P7)\nSummary without date.'
+    assert _parse_company_report_candidates(text) == []
+    rows = _parse_company_report_candidates(text, allow_undated=True)
+    assert len(rows) == 1 and rows[0].published_at is None
+
+
+def test_roundup_publication_cannot_make_older_valuation_newer():
+    from src.valuation.morningstar import _valuation_data_date
+    assert _valuation_data_date('All data is as of Sept. 4.', '2026-09-21') == '2026-09-04'
+    s = SECURITIES['AAPL']
+    newer = MorningstarFairValue('AAPL', s.provider_code, 300, 'USD', 'published-research',
+        '2026-09-15', '2026-10-04T00:00:00Z', 'Morningstar',
+        'https://www.morningstar.com/stocks/new')
+    roundup = replace(newer, fair_value=290, fair_value_updated_at='2026-09-21',
+        valuation_as_of='2026-09-04', source_url='https://www.morningstar.com/stocks/roundup')
+    assert _reconcile_independent_sources(roundup, newer).fair_value == 300
+
+
+def test_future_valuation_data_date_is_rejected():
+    from src.valuation.morningstar import _valuation_data_date
+    with pytest.raises(ValueError, match='晚于报告'):
+        _valuation_data_date('All data is as of October 5, 2026', '2026-10-04')
+
+
+@pytest.mark.parametrize('escaped', [False, True])
+def test_snapshot_parser_skips_stale_and_other_issuer_images(escaped):
+    session = Mock()
+    current = 'https://s.yimg.com/uc/fin/img/ms-reports-thumbnails/0P000003P7_20260904153002.jpg'
+    urls = ['https://s.yimg.com/uc/fin/img/ms-reports-thumbnails/0P000003P7_20260727093002.jpg', current]
+    if escaped:
+        urls = [url.replace('/', r'\/') for url in urls]
+    session.get.return_value.text = ' '.join('"snapshotUrl":"' + url + '"' for url in urls)
+    provider = YahooMorningstarProvider(session=session)
+    assert provider._snapshot_url('https://finance.yahoo.com/research/reports/MS_0P000003P7_AnalystReport_1788555048000/') == current
+
+
+def test_yahoo_embedded_index_metadata_binds_image_to_same_report():
+    import json
+    report_id = 'MS_0P000003P7_AnalystReport_1788555048000'
+    url = 'https://s.yimg.com/uc/fin/img/ms-reports-thumbnails/0P000003P7_20260904153002.jpg'
+    session = Mock()
+    session.get.return_value.text = '<script type="application/json">' + json.dumps({'body': json.dumps({'reports': [
+        {'id': report_id, 'snapshotUrl': url},
+        {'id': 'MS_OTHER_AnalystReport_1788555048000', 'snapshotUrl': url},
+    ]})}) + '</script>'
+    provider = YahooMorningstarProvider(session=session)
+    rows = provider._index_reports(SECURITIES['MCO'])
+    assert len(rows) == 1 and rows[0]['snapshotUrl'] == url
+
+
+def test_curated_report_images_all_match_their_actual_report_dates():
+    for report_id, _, image in _CURATED_REPORTS.values():
+        assert YahooMorningstarProvider._snapshot_matches('https://s.yimg.com/uc/fin/img/ms-reports-thumbnails/' + image, report_id)

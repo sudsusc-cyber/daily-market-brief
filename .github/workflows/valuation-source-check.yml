@@ -1,0 +1,44 @@
+name: Verify valuation sources without email
+
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Comma-separated Morningstar tickers (blank checks all)'
+        required: false
+        default: 'MCO,COST'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: .
+      AUDIT_TICKERS: ${{ inputs.tickers }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: '0.11.28'
+          python-version: '3.12'
+      - run: uv sync --frozen
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr
+      - name: Read and verify sources only
+        shell: bash
+        run: |
+          args=(--state-dir .valuation-source-audit)
+          if [[ -n "$AUDIT_TICKERS" ]]; then args+=(--tickers "$AUDIT_TICKERS"); fi
+          uv run python -m scripts.check_morningstar "${args[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: valuation-source-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .valuation-source-audit/morningstar_diagnostic.json
+          retention-days: 30
+          if-no-files-found: error

@@ -249,6 +249,7 @@ class MorningstarFairValue:
     # substituted a constant. Retain for audit only; never display or compute IRR.
     historical_only: bool = False
     extraction_verified: bool = False
+    valuation_as_of: str | None = None
 
 
 class MorningstarProvider(Protocol):
@@ -275,7 +276,41 @@ _REPORT_LINK_RE = re.compile(
 _REPORT_DATE_RE = re.compile(r"\b([A-Z][a-z]{2} \d{1,2}, \d{4})$")
 
 
-def _parse_company_report_candidates(text: str) -> list[_Candidate]:
+def _quote_fair_value_date(text: str) -> datetime | None:
+    """Read the date attached to Fair Value, never the quote or fetch date."""
+    section = text.split("## Price vs Fair Value", 1)
+    if len(section) != 2:
+        return None
+    section = section[1].split("## ", 1)[0]
+    match = re.search(
+        r"(?m)^\s*Fair Value\s*\n\s*[^\n]+\n\s*([A-Z][a-z]{2} \d{1,2}, \d{4})\s*$",
+        section,
+    )
+    return datetime.strptime(match[1], "%b %d, %Y").replace(tzinfo=UTC) if match else None
+
+
+def _parse_quote_candidates(text: str) -> list[_Candidate]:
+    """Official issuer pages expose reports that are absent from news search."""
+    candidates = []
+    report = text.split("## Company Report", 1)
+    if len(report) == 2:
+        section = re.split(r"^## ", report[1], maxsplit=1, flags=re.M)[0]
+        link = re.search(r"^### \[([^\n]+)\]\((https?://www\.morningstar\.com/stocks/[^)]+/analysis)\)", section, re.M)
+        dates = re.findall(r"\b([A-Z][a-z]{2} \d{1,2}, \d{4})\b", section)
+        if link and dates:
+            candidates.append(_Candidate(link[2].replace("http://", "https://", 1),
+                datetime.strptime(dates[0], "%b %d, %Y").replace(tzinfo=UTC), headline=link[1]))
+    articles = text.split("### Articles & Videos", 1)
+    if len(articles) == 2:
+        for line in re.split(r"^## ", articles[1], maxsplit=1, flags=re.M)[0].splitlines():
+            match = re.search(r"([A-Z][a-z]{2} \d{1,2}, \d{4})\]\((https?://www\.morningstar\.com/stocks/[^)]+)\)\s*$", line)
+            if match:
+                candidates.append(_Candidate(match[2].replace("http://", "https://", 1),
+                    datetime.strptime(match[1], "%b %d, %Y").replace(tzinfo=UTC)))
+    return candidates
+
+
+def _parse_company_report_candidates(text: str, *, allow_undated: bool = False) -> list[_Candidate]:
     """解析 Morningstar 官方 company-reports 列表中的报告 URL 与发布日期。"""
     lines = text.splitlines()
     candidates: list[_Candidate] = []
@@ -293,7 +328,7 @@ def _parse_company_report_candidates(text: str) -> list[_Candidate]:
                     tzinfo=UTC
                 )
                 break
-        if published_at is None:
+        if published_at is None and not allow_undated:
             continue
         url = re.sub(r"^http://", "https://", link_match.group("url"), flags=re.I)
         candidates.append(_Candidate(url, published_at, headline=link_match.group("headline")))
@@ -316,6 +351,29 @@ def _timestamp(value: str) -> datetime:
 
 def _report_time(value: MorningstarFairValue) -> datetime:
     return _timestamp(value.report_published_at or value.fair_value_updated_at)
+
+
+def _valuation_time(value: MorningstarFairValue) -> datetime:
+    return _timestamp(value.valuation_as_of) if value.valuation_as_of else _report_time(value)
+
+
+def _valuation_data_date(text: str, published: str) -> str | None:
+    match = re.search(r"\b(?:all data|valuation data)\s+(?:is\s+)?as of\s+([A-Z][a-z]+\.?\s+\d{1,2})(?:,?\s+(\d{4}))?", text, re.I)
+    if not match:
+        return None
+    month_day = match[1].replace(".", "").replace("Sept ", "Sep ")
+    year = match[2] or str(_timestamp(published).year)
+    for fmt in ("%b %d %Y", "%B %d %Y"):
+        try:
+            date = datetime.strptime(f"{month_day} {year}", fmt).date()
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError("来源估值数据日期无法解析")
+    if date > _timestamp(published).date():
+        raise ValueError("估值数据日期晚于报告日期")
+    return date.isoformat()
 
 
 def _currency(context: str, expected: str) -> str:
@@ -531,6 +589,7 @@ class MorningstarPublicProvider:
             ]
             | None
         ) = None
+        self.discovery_diagnostics: dict[str, dict[str, Any]] = {}
 
     def _reader_get(self, url: str) -> requests.Response:
         """节流并重试公共文本镜像，避免一封邮件的双读触发临时限流。"""
@@ -567,6 +626,31 @@ class MorningstarPublicProvider:
             )
             for index, url in enumerate(security.curated_urls)
         ]
+        # Discover via the exact exchange/listing, without requiring the headline
+        # to contain "fair value". Quote dates are diagnostic, not value evidence.
+        exchange, symbol = security.provider_code.lower().split(":")
+        quote_url = f"www.morningstar.com/stocks/{exchange}/{symbol}/quote"
+        try:
+            quote = self._reader_get(f"{_JINA_READER}{quote_url}")
+            quote.raise_for_status()
+            candidates.extend(_parse_quote_candidates(quote.text))
+            latest_date = _quote_fair_value_date(quote.text)
+            self.discovery_diagnostics[security.ticker] = {
+                "official_fair_value_date": latest_date.date().isoformat() if latest_date else None,
+                "source_url": f"https://{quote_url}",
+            }
+            # US report directories are discoverable from issuer pages too.
+            # Some directory layouts omit dates; read the linked report's own
+            # publication metadata rather than inventing a date for the entry.
+            archive = re.search(r"https?://www\.morningstar\.com/company-reports\?listing=(0P[A-Z0-9]+)", quote.text)
+            if archive and not security.listing_id:
+                listing = self._reader_get(f"{_JINA_READER}www.morningstar.com/company-reports?listing={archive[1]}")
+                listing.raise_for_status()
+                candidates.extend([c for c in _parse_company_report_candidates(listing.text, allow_undated=True)
+                    if parse_qs(urlparse(c.url).query).get("listing") == [archive[1]]][:3])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("morningstar.quote_discovery_failed ticker=%s reason=%s",
+                security.ticker, str(exc)[:160])
         if security.listing_id:
             listing_url = (
                 f"{_JINA_READER}www.morningstar.com/company-reports"
@@ -636,11 +720,14 @@ class MorningstarPublicProvider:
             previous = unique.get(candidate.url)
             if previous is None or (
                 previous.known_value is None and candidate.known_value is not None
-            ):
+            ) or (candidate.published_at is not None and (
+                previous.published_at is None or candidate.published_at > previous.published_at
+            )):
                 unique[candidate.url] = candidate
         return sorted(
             unique.values(),
-            key=lambda item: item.published_at or datetime.min.replace(tzinfo=UTC),
+            key=lambda item: (item.published_at is None and "/company-reports/" in item.url,
+                item.published_at or datetime.min.replace(tzinfo=UTC)),
             reverse=True,
         )
 
@@ -674,6 +761,7 @@ class MorningstarPublicProvider:
                 value, currency = explicit
             else:
                 value, currency = _extract_value(text, security)
+            published = _published_time(text, candidate.published_at)
             return MorningstarFairValue(
                 ticker=security.ticker,
                 provider_code=security.provider_code,
@@ -681,7 +769,8 @@ class MorningstarPublicProvider:
                 currency=currency,
                 rating_type="published-research",
                 fair_value_updated_at=_published_date(text, candidate.published_at),
-                report_published_at=_published_time(text, candidate.published_at),
+                report_published_at=published,
+                valuation_as_of=_valuation_data_date(text, published),
                 retrieved_at="",
                 source_provider=provider,
                 source_url=candidate.url,
@@ -732,6 +821,7 @@ class MorningstarPublicProvider:
         checked_at: datetime,
     ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
         self._inflight_values = {}
+        self.discovery_diagnostics = {}
         return self._budget.run(
             "morningstar",
             lambda: self._fetch_all(securities, checked_at=checked_at),
@@ -813,8 +903,7 @@ class MorningstarPublicProvider:
             failed_candidates = 0
             for candidate in candidates:
                 if unread_report_time is not None and (
-                    candidate.published_at is None
-                    or candidate.published_at < unread_report_time
+                    candidate.published_at is not None and candidate.published_at < unread_report_time
                 ):
                     # Try alternate paths to the current report, not an older
                     # report disguised as the latest. Keep this bounded so one
@@ -830,6 +919,7 @@ class MorningstarPublicProvider:
                         or first.currency != second.currency
                         or first.fair_value_updated_at != second.fair_value_updated_at
                         or first.report_published_at != second.report_published_at
+                        or first.valuation_as_of != second.valuation_as_of
                     ):
                         raise ValueError("同一来源双读不一致")
                     values[ticker] = replace(
@@ -868,7 +958,7 @@ class MorningstarPublicProvider:
                     )
                     if not irrelevant:
                         if candidate.published_at is None:
-                            break
+                            continue
                         unread_report_time = max(
                             unread_report_time or candidate.published_at,
                             candidate.published_at,
@@ -930,6 +1020,21 @@ class MorningstarPublicProvider:
                     warning=f"较新报告 {unread_report_time.date()} 尚未核实，保留已读取历史报告值",
                 )
                 failures[ticker] = values[ticker].warning or "较新报告未核实"
+            latest = self.discovery_diagnostics.get(ticker, {}).get("official_fair_value_date")
+            if latest and _timestamp(latest).date() > checked_at.astimezone(UTC).date():
+                self.discovery_diagnostics[ticker]["invalid_official_date"] = latest
+                latest = None
+            if ticker in values and latest and _valuation_time(values[ticker]).date() < _timestamp(latest).date():
+                values[ticker] = replace(values[ticker], stale_cache=True, fallback_used=True,
+                    warning=f"官方公允价值日期已更新至 {latest}，新金额尚未核实，保留历史报告值")
+                failures[ticker] = values[ticker].warning or "新金额未核实"
+            elif ticker not in values and latest:
+                failures[ticker] = (
+                    f"官方公允价值日期 {latest} 的新金额尚未核实；{failures.get(ticker, '')}"
+                )[:500]
+            self.discovery_diagnostics.setdefault(ticker, {})["distributed_report"] = (
+                getattr(self.secondary_provider, "discovery_diagnostics", {}).get(ticker)
+            )
             if ticker in values:
                 self._inflight_values[ticker] = values[ticker]
         # 只在同一观测请求内复用；发送前的晚时点复核会重读所有标的。
@@ -989,9 +1094,10 @@ def _retrieved_at(snapshot: MorningstarFairValue) -> datetime:
 
 def _compare_reports(a: MorningstarFairValue, b: MorningstarFairValue) -> int:
     """Order known dates; don't invent midnight precision for a date-only report."""
-    left, right = _report_time(a), _report_time(b)
+    left, right = _valuation_time(a), _valuation_time(b)
     if left.date() == right.date() and not (
-        a.report_published_at and "T" in a.report_published_at
+        not a.valuation_as_of and not b.valuation_as_of
+        and a.report_published_at and "T" in a.report_published_at
         and b.report_published_at and "T" in b.report_published_at
     ):
         return 0
@@ -1010,6 +1116,7 @@ def _observations(*values: MorningstarFairValue) -> tuple[dict[str, Any], ...]:
                     "currency": value.currency,
                     "fair_value": value.fair_value,
                     "report_published_at": value.report_published_at or value.fair_value_updated_at,
+                    "valuation_as_of": value.valuation_as_of,
                     "retrieved_at": value.retrieved_at,
                     "source_url": value.source_url,
                     "source_provider": value.source_provider,
@@ -1050,6 +1157,7 @@ def _snapshot_from_dict(raw: Mapping[str, Any]) -> MorningstarFairValue:
         evidence=tuple(row for row in (raw.get("evidence") or []) if isinstance(row, dict)),
         historical_only=bool(raw.get("historical_only", False)),
         extraction_verified=bool(raw.get("extraction_verified", False)),
+        valuation_as_of=str(raw["valuation_as_of"]) if raw.get("valuation_as_of") else None,
     )
     # Migrate the known hardcoded Pop Mart path. Reading its paywalled shell
     # twice did not verify 224; old production caches must not wash that fact.
@@ -1148,6 +1256,8 @@ def _validate_live(
     ):
         raise ValueError("估值来源域名不在核准名单")
     report, retrieved = _report_time(current), _retrieved_at(current)
+    if current.valuation_as_of and _valuation_time(current).date() > report.date():
+        raise ValueError("估值数据日期晚于报告日期")
     if report.date().isoformat() != _normalise_date(current.fair_value_updated_at):
         raise ValueError("报告日期字段不一致")
     if report > retrieved + timedelta(minutes=5):
@@ -1212,6 +1322,14 @@ def _choose_verified(
 ) -> MorningstarFairValue:
     if old is None:
         return current
+    if (current.valuation_as_of and not old.valuation_as_of
+            and current.source_url == old.source_url
+            and _report_time(current) == _report_time(old)
+            and current.fair_value == old.fair_value):
+        # Re-reading the same unchanged source can supply a previously omitted
+        # data date. Keep that correction, instead of washing an older roundup
+        # dataset through its later article publication date.
+        old = replace(old, valuation_as_of=current.valuation_as_of)
     chronology = _compare_reports(current, old)
     if old.historical_only and not current.historical_only:
         # An unverified constant is not newer evidence. Keep an actually read
@@ -1259,6 +1377,13 @@ def _audit_value(value: Any) -> dict[str, Any] | None:
         return {"invalid_type": type(value).__name__}
     # Keep invalid observed numbers in the audit as strings, never non-JSON NaN.
     return json.loads(json.dumps(asdict(value), default=str), parse_constant=str)
+
+
+def _discovery_record(provider: MorningstarProvider, ticker: str) -> dict[str, Any] | None:
+    diagnostics = getattr(provider, "discovery_diagnostics", None)
+    if isinstance(diagnostics, dict) and isinstance(diagnostics.get(ticker), dict):
+        return diagnostics[ticker]
+    return None
 
 
 def refresh_fair_values(
@@ -1355,6 +1480,7 @@ def refresh_fair_values(
                 "previous": _audit_value(previous.get(ticker)),
                 "selected": _audit_value(accepted.get(ticker)),
                 "reason": final_failures.get(ticker),
+                "discovery": _discovery_record(provider, ticker),
             }
             for ticker in securities
         },

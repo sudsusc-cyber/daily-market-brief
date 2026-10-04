@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import re
@@ -10,12 +11,14 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import requests
+from bs4 import BeautifulSoup
 from PIL import Image, ImageEnhance, ImageOps
 
 if TYPE_CHECKING:
@@ -28,11 +31,17 @@ _SEARCH_URLS = (
     "https://query1.finance.yahoo.com/v1/finance/search",
 )
 _REPORT_URL = "https://finance.yahoo.com/research/reports/{report_id}/"
-_SNAPSHOT_RE = re.compile(r'snapshotUrl\\?"\s*:\s*\\?"([^"\\]+)', re.I)
+_SNAPSHOT_RE = re.compile(r'snapshotUrl\\?"\s*:\s*\\?"([^"\s]+)', re.I)
 _VALUE_RE = re.compile(r"\b(\d{1,4}(?:[.,]\d{2})?)\s*(USD|HKD)(?![A-Z])", re.I)
 _USER_AGENT = "daily-market-brief/1.0 (+Morningstar-report-validation)"
 _MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
 _MAX_SNAPSHOT_PIXELS = 20_000_000
+
+# Discovery hints only; amounts must still be read from the actual report.
+_REPORT_HINTS = {
+    "MCO": "MS_0P000003P7_AnalystReport_1788555048000",
+    "COST": "MS_0P000001IK_AnalystReport_1790633686000",
+}
 
 # 2026-08-29 逐只核验的 Yahoo/Morningstar 报告基线。搜索接口只负责发现比
 # 基线更晚的报告；搜索临时限流时仍可读取这份已核验报告，而不是让备源失效。
@@ -116,6 +125,7 @@ class YahooMorningstarProvider:
         self.tesseract_path = tesseract_path or shutil.which("tesseract")
         self._last_search_at: float | None = None
         self._search_disabled_reason: str | None = None
+        self.discovery_diagnostics: dict[str, dict[str, object]] = {}
 
     def _search(self, params: Mapping[str, object]) -> Mapping[str, object]:
         if self._search_disabled_reason:
@@ -143,8 +153,78 @@ class YahooMorningstarProvider:
                 errors.append(f"{url}: 未返回研究报告")
             if attempt < 1:
                 time.sleep(2**attempt)
-        self._search_disabled_reason = "Yahoo 搜索本轮熔断: " + "; ".join(errors[-4:])
-        raise ValueError(self._search_disabled_reason)
+        reason = "Yahoo 搜索失败: " + "; ".join(errors[-4:])
+        # One empty issuer result does not prove that the entire batch is down.
+        if any("HTTP 429" in error for error in errors):
+            self._search_disabled_reason = reason
+        raise ValueError(reason)
+
+    def _index_reports(self, security: MorningstarSecurity) -> list[Mapping[str, object]]:
+        """Discover exact-listing public report links independently of the API."""
+        curated = _CURATED_REPORTS.get(security.ticker)
+        if not curated:
+            return []
+        listing_id = curated[0].split("_")[1]
+        response = self.session.get(
+            f"https://finance.yahoo.com/quote/{self._symbol(security.ticker)}/",
+            timeout=min(self.timeout, 6),
+        )
+        response.raise_for_status()
+        if len(response.text) > 8 * 1024 * 1024:
+            raise ValueError("Yahoo 研究索引超过大小限制")
+        ids = set(re.findall(rf"MS_{re.escape(listing_id)}_AnalystReport_\d{{13}}", response.text))
+        rows = {report_id: dict(self._report_row(report_id, security)) for report_id in ids}
+        # Public issuer pages may already contain report metadata. Preserve the
+        # thumbnail only from the same JSON object as its exact report ID; never
+        # borrow the first image on a page full of related reports.
+        nodes: list[tuple[object, int]] = []
+        for script in BeautifulSoup(response.text, "lxml").find_all("script"):
+            try:
+                nodes.append((json.loads(script.get_text()), 0))
+            except ValueError:
+                continue
+        visited = 0
+        while nodes and visited < 10000:
+            node, depth = nodes.pop()
+            visited += 1
+            if depth > 12:
+                continue
+            if isinstance(node, dict):
+                report_id = node.get("id") or node.get("reportId")
+                if isinstance(report_id, str) and report_id in rows and node.get("snapshotUrl"):
+                    url = str(node["snapshotUrl"])
+                    if self._snapshot_matches(url, report_id):
+                        rows[report_id]["snapshotUrl"] = url
+                nodes.extend((item, depth + 1) for item in node.values())
+            elif isinstance(node, list):
+                nodes.extend((item, depth + 1) for item in node)
+            elif isinstance(node, str) and node.lstrip().startswith(("{", "[")):
+                try:
+                    nodes.append((json.loads(node), depth + 1))
+                except ValueError:
+                    continue
+        return list(rows.values())
+
+    @staticmethod
+    def _snapshot_matches(url: str, report_id: str) -> bool:
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.hostname != "s.yimg.com":
+            return False
+        listing_id = report_id.split("_")[1]
+        image_id = re.fullmatch(rf"{re.escape(listing_id)}_(\d{{14}})\.jpg", parsed.path.rsplit("/", 1)[1])
+        if not image_id:
+            return False
+        try:
+            published = datetime.fromtimestamp(int(report_id.rsplit("_", 1)[1]) / 1000, tz=UTC).date()
+            image_date = datetime.strptime(image_id[1], "%Y%m%d%H%M%S").date()
+        except ValueError:
+            return False
+        return published - timedelta(days=1) <= image_date <= published
+
+    @staticmethod
+    def _report_row(report_id: str, security: MorningstarSecurity) -> Mapping[str, object]:
+        return {"id": report_id, "reportDate": int(report_id.rsplit("_", 1)[1]),
+            "provider": "Morningstar", "reportHeadline": f"Analyst Report: {security.company_name}"}
 
     @staticmethod
     def _symbol(ticker: str) -> str | None:
@@ -175,6 +255,9 @@ class YahooMorningstarProvider:
                     ),
                 }
             )
+        if hint := _REPORT_HINTS.get(security.ticker):
+            reports.append(self._report_row(hint, security))
+        discovery_error = None
         try:
             payload = self._search(
                 {
@@ -199,6 +282,7 @@ class YahooMorningstarProvider:
                 and company_key in str(row.get("reportHeadline") or "").lower()
             )
         except (requests.RequestException, ValueError) as exc:
+            discovery_error = str(exc)[:180]
             if not reports:
                 raise
             logger.info(
@@ -206,17 +290,35 @@ class YahooMorningstarProvider:
                 security.ticker,
                 str(exc)[:180],
             )
+        try:
+            reports.extend(self._index_reports(security))
+        except (requests.RequestException, ValueError) as exc:
+            logger.info("morningstar.yahoo_index_failed ticker=%s reason=%s",
+                security.ticker, str(exc)[:180])
         if not reports:
             raise ValueError("Yahoo 未返回 Morningstar 个股报告")
-        report = max(reports, key=lambda row: int(row.get("reportDate") or 0))
+        listing_id = curated[0].split("_")[1] if curated else security.listing_id
+        reports = [row for row in reports if re.fullmatch(
+            rf"MS_{re.escape(listing_id or '')}_AnalystReport_\d{{13}}", str(row.get("id") or "")
+        ) and str(row.get("reportDate")) == str(row["id"]).rsplit("_", 1)[1]]
+        if not reports:
+            raise ValueError("Yahoo 未返回同一上市标识及一致报告日期的个股报告")
+        report = max(reports, key=lambda row: (int(row.get("reportDate") or 0), bool(row.get("snapshotUrl"))))
         headline = str(report.get("reportHeadline") or "")
         if company_key not in headline.lower():
             raise ValueError("Yahoo Morningstar 报告与标的公司不匹配")
         report_id = str(report["id"])
+        if curated and report_id.split("_")[1] != curated[0].split("_")[1]:
+            raise ValueError("Yahoo Morningstar 报告上市标识不匹配")
         report_ms = int(report.get("reportDate") or 0)
         if report_ms <= 0:
             raise ValueError("Yahoo Morningstar 报告缺发布日期")
         published = datetime.fromtimestamp(report_ms / 1000, tz=UTC)
+        self.discovery_diagnostics[security.ticker] = {
+            "newest_discovered_report": report_id,
+            "report_published_at": published.isoformat(),
+            "search_error": discovery_error,
+        }
         return (
             report_id,
             published,
@@ -227,13 +329,15 @@ class YahooMorningstarProvider:
     def _snapshot_url(self, report_url: str) -> str:
         response = self.session.get(report_url, timeout=self.timeout)
         response.raise_for_status()
-        match = _SNAPSHOT_RE.search(response.text)
-        if match is None:
+        matches = _SNAPSHOT_RE.findall(response.text)
+        if not matches:
             raise ValueError("Yahoo Morningstar 报告缺首页快照")
-        snapshot_url = match.group(1).replace(r"\/", "/")
-        if not snapshot_url.startswith("https://s.yimg.com/"):
-            raise ValueError("Yahoo Morningstar 报告快照域名不合规")
-        return snapshot_url
+        report_id = report_url.rstrip("/").rsplit("/", 1)[1]
+        for raw in matches:
+            snapshot_url = raw.rstrip("\\").replace(r"\/", "/")
+            if self._snapshot_matches(snapshot_url, report_id):
+                return snapshot_url
+        raise ValueError("Yahoo Morningstar 报告快照上市标识或日期不匹配")
 
     def _ocr_once(self, image: Image.Image, *, psm: int) -> tuple[float, str]:
         if not self.tesseract_path:
@@ -321,6 +425,8 @@ class YahooMorningstarProvider:
 
         report_id, published, report_url, curated_snapshot_url = self._latest_report(security)
         snapshot_url = curated_snapshot_url or self._snapshot_url(report_url)
+        if not self._snapshot_matches(snapshot_url, report_id):
+            raise ValueError("Yahoo Morningstar 快照与报告上市标识或日期不匹配")
         with self._snapshot_image(snapshot_url) as image:
             first = self._ocr_once(image, psm=6)
             second = self._ocr_once(image, psm=11)
