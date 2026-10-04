@@ -206,7 +206,7 @@ def _scoped_states(text: str) -> set[tuple]:
     # Bind polarity/modality to the event clause so a 'not' elsewhere cannot
     # bless a reversed approval/completion assertion.
     for clause in re.split(r"[，,；;。!?]|\bbut\b|但是|但", text, flags=re.I):
-        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release", "reserve_drawdown", "pause", "cancel", "delay"):
+        for event in ("approval", "completion", "acquisition", "launch", "payment", "person_release", "asset_release", "reserve_drawdown", "pause", "cancel", "delay"):
             if re.search(_EVENTS[event], clause, re.I):
                 states.add((event, bool(re.search(_NEGATION, clause, re.I)),
                             bool(re.search(_MODALITY, clause, re.I))))

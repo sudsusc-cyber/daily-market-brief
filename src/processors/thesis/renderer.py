@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 8
+_VERSION = 9
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -66,6 +66,20 @@ class WatchRule:
 # Matching only chooses a question to monitor. It cannot promote a plan to an
 # order, a launch to commercial success, or an application to regulatory approval.
 _RULES = (
+    WatchRule(
+        "product-data-governance",
+        r"\b(?:privacy|permissions?|data access|access (?:to )?(?:(?:their|system|personal|user)\s+){0,3}data)\b|隐私|权限|数据访问|访问.{0,8}数据",
+        r"\b(?:updates?|updated|changes?|changed|restricts?|restricted|requires?|notify|notifies|alerts?)\b|更新|修改|调整|限制|要求|通知|提醒",
+        "产品的数据治理变化需观察实际采用与执行效果",
+        "适用范围、用户与开发者采用、执行效果及披露的合规成本。",
+    ),
+    WatchRule(
+        "product-reliability",
+        r"\b(?:iphone|devices?|software|services?|products?)\b|手机|设备|软件|服务|产品",
+        r"\b(?:replac(?:e|es|ed|ing|ements?)|recalls?|outages?|defects?|lost service|lose service|service.loss)\b|更换|替换|召回|故障|中断|失去服务",
+        "产品可靠性事件的长期影响需由范围与处置结果验证",
+        "受影响范围、修复进度、处置成本与后续客户反馈。",
+    ),
     WatchRule(
         "infrastructure-investment",
         r"\b(?:cloud|data cent(?:er|re)s?|infrastructure|fabs?)\b|云|数据中心|基础设施|晶圆厂|产能",
