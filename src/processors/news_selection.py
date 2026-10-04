@@ -444,6 +444,27 @@ def publishable_excerpt(item, text: str) -> bool:
             and status_has_scope(item, text))
 
 
+def macro_geography_context(item) -> str:
+    """Keep adjacent immutable fields when a standfirst loses title geography.
+
+    This is the exact title/newline/summary source span, never an inferred country
+    prefix. Both fields must independently qualify as publishable source prose.
+    """
+    from src.processors.macro_events import extract_event
+
+    title = plain_source(str(getattr(item, 'title', '') or ''))
+    summary = plain_source(str(getattr(item, 'summary', '') or ''))
+    if not title or not summary or title in summary:
+        return ''
+    missing = set(extract_event(title).geography) - set(extract_event(summary).geography)
+    combined = title + '\n' + summary
+    if (missing and len(combined) <= 900
+            and publishable_excerpt(item, title) and publishable_excerpt(item, summary)
+            and publishable_excerpt(item, combined)):
+        return combined
+    return ''
+
+
 def factual_excerpt(item) -> str:
     """Prefer a complete operational sentence to an opinion/question headline.
 
@@ -498,6 +519,9 @@ def factual_excerpt(item) -> str:
     # rather than silently reducing every unfamiliar event to its headline.
     from src.collectors.macro_news import MacroNewsItem
     macro_report = isinstance(item, MacroNewsItem)
+    context = macro_geography_context(item) if macro_report else ''
+    if context:
+        return context
     for sentence in publication_candidates(item, plain_source(summary)):
         if (publishable_excerpt(item, sentence)
                 and len(sentence) >= 30 and (macro_report or business_fact(sentence)) and not _PRICE_EDITORIAL.search(sentence)

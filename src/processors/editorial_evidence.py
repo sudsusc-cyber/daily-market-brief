@@ -45,7 +45,7 @@ def editorial_issue(text: str) -> str | None:
         return 'question_not_event'
     if re.match(r'(?:this|that|these|those|it|its)\b|此次|这次|上述|该(?:举措|诉讼)|该(?=.{0,12}(?:产品|组合))|这一(?:发布|举措|增长)|此举', text, re.I):
         return 'unresolved_context'
-    if re.search(r"^(?:what we know|see how|here[’']s (?:what|the)|a look at)\b|"
+    if re.search(r"^(?:what we know|see how|(?:here[’']s|here is) (?:what|the|why|how)|a look at)\b|"
                  r"[—–]\s*here[’']s\b|^(?:看看|以下是|关于.{1,80}的已知信息)", text, re.I):
         return 'reader_navigation'
     if re.search(r"\b(?:bold|stunning|shocking) predictions?\b|大胆预测|"

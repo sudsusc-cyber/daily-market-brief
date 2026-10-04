@@ -78,3 +78,21 @@ and exclamations cannot attach to the factual slot. Regression tests cover both
 widths, actual mixed-width composition, English and Chinese conditional scope,
 and unchanged signal strategy validation. No factual sentence is rewritten to
 pass the guard.
+
+## Geographic and relative-period context
+
+The same preview's banking standfirst retained last year's 670 closures but
+omitted the country present only in its headline. Macro excerpt selection now
+retains the exact adjacent immutable title/newline/summary span when the standfirst
+loses a configured jurisdiction from the headline. Both original fields must
+independently pass publication checks and the span stays bounded. Already complete
+standfirsts and company-slot selection are unchanged. Grounding and archive replay
+validate that same full source span.
+
+New regressions also exposed that last-year/current-year substitutions could pass
+translation validation. Relative year, quarter, month and week periods now require
+equivalent source and translation scope; omission and reversal are rejected.
+English reader-navigation expressions are recognized in both “here's” and “here is”
+forms, preventing a promotional standfirst from qualifying as context.
+The relative-period tests also distinguish rolling record descriptions from future
+calendar periods and prevent “上一季度” from being parsed as calendar Q1.

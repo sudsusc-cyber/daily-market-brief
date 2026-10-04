@@ -63,6 +63,24 @@ def _calendar_months(text: str):
         yield match
 
 
+def _relative_calendar_periods(text: str) -> set[tuple[str, str]]:
+    """Relative calendar periods are material even when no date is numeric."""
+    result = set()
+    cn_units = {'year': '年', 'quarter': '季(?:度)?', 'month': '个?月', 'week': '周|星期'}
+    cn_prefixes = {'previous': '上|上一|前一', 'current': '本|这(?:一|个)?', 'next': '下|下一'}
+    en_prefixes = {'previous': 'last|previous', 'current': 'this|current', 'next': 'next|following'}
+    for unit, cn in cn_units.items():
+        for direction, en in en_prefixes.items():
+            if (re.search(r'\b(?:' + en + r')\s+' + unit + r'\b', text, re.I)
+                    or re.search(r'(?:' + cn_prefixes[direction] + r')(?:' + cn + r')'
+                                 + (r'(?!多|余|(?:以)?来|新[高低])' if direction == 'next' else ''), text)):
+                result.add((direction, unit))
+    for word, direction in {'去年': 'previous', '今年': 'current', '明年': 'next', '次年': 'next'}.items():
+        if word in text:
+            result.add((direction, 'year'))
+    return result
+
+
 def _quantities(text: str) -> Counter:
     result = Counter()
     months = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -89,7 +107,7 @@ def _quantities(text: str) -> Counter:
         raw = match[1] or match[2]
         result[("quarter", int(raw) if raw.isdigit() else '一二三四'.index(raw) + 1)] += 1
         return ' '
-    text = re.sub(r"\bQ([1-4])\b|第?([一二三四1-4])季度", quarter, text, flags=re.I)
+    text = re.sub(r"\bQ([1-4])\b|(?<![上下前后])第?([一二三四1-4])季度", quarter, text, flags=re.I)
     # Standalone calendar years match English "by 2030"; full dates were handled above.
     text = re.sub(r"(?<!\d)([12]\d{3})\s*年", r"\1", text)
     # Normalize written durations only, never arbitrary words or company names.
@@ -350,6 +368,8 @@ def translation_errors(original: str, translated: str) -> list[str]:
     original = normalize_event_text(original)
     translated = normalize_event_text(translated)
     errors = []
+    if _relative_calendar_periods(original) != _relative_calendar_periods(translated):
+        errors.append("relative_calendar_period")
     if re.search(r"\bmake peace with\b", original, re.I) and '和解' in translated:
         errors.append('literal_financial_idiom')
     source_roles = _economic_amount_roles(original)

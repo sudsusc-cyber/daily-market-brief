@@ -113,7 +113,7 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
     source = SimpleNamespace(title=row.get("original_title", ""), summary=row.get("original_summary", ""),
                              published_at=row.get("published_at"), url=row.get("url", ""), source=row.get("source_name", ""),
                              source_body=row.get("source_body", ""), source_published_at=row.get('source_published_at', ''),
-                             speaker_date_required=row.get('speaker_date_required', False))
+                             speaker_date_required=row.get('speaker_date_required', False), macro_topic=row.get('macro_topic'))
     if row.get('speaker_attribution') or row.get('presentation_speaker'):
         from src.processors.speaker_attribution import attribution
 
