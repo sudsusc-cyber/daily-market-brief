@@ -63,3 +63,18 @@ audit and never retain footnotes or judgment mappings. Grouping already-publishe
 facts does not apply this clipping, and equivalent facts retain their source links.
 The three-theme limit and source verification remain unchanged. This is selection
 of whole candidate reports, not rendering-time truncation or a response to HTML size.
+
+## Final composition review
+
+Run 37202354151 at main 9eb044b4 passed source mapping replay and had three
+macro themes, a verified statement and a body-linked long-term watchpoint.
+The 89,756-byte preview was withheld because the generated intro used an ASCII
+semicolon after the signal slot, yielding a full stop followed by that separator.
+
+Intro composition now normalizes ASCII/full-width semicolons and horizontal
+boundary spacing before the same slot validation and composition. Conditional
+and uncertain premises remain disallowed; dangling commas, colons, questions
+and exclamations cannot attach to the factual slot. Regression tests cover both
+widths, actual mixed-width composition, English and Chinese conditional scope,
+and unchanged signal strategy validation. No factual sentence is rewritten to
+pass the guard.
