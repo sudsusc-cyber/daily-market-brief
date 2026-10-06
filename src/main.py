@@ -27,8 +27,9 @@ import json
 import logging
 import os
 import sys
-from dataclasses import replace
-from datetime import UTC, datetime
+from collections.abc import Callable
+from dataclasses import asdict, replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from src.collectors import (
@@ -101,6 +102,23 @@ _ACTIVE_THESIS_STATUS_RANK = {
     "dormant": 4,
 }
 _ACTIVE_THESIS_THEME_LIMIT = 120
+
+
+def _collect_fuel_alert(
+    *, budget: RuntimeBudget, today: date, fred_api_key: str,
+    on_timeout: Callable[[jiangsu_fuel.JiangsuFuelAlert | None], jiangsu_fuel.JiangsuFuelAlert | None],
+) -> jiangsu_fuel.JiangsuFuelAlert | None:
+    # This initial fallback is pure: exhausted budgets cannot start new I/O.
+    schedule = jiangsu_fuel.schedule_only_alert(today=today)
+
+    def retain_schedule(resolved: jiangsu_fuel.JiangsuFuelAlert) -> None:
+        nonlocal schedule
+        schedule = resolved
+
+    return budget.call(
+        jiangsu_fuel.fetch, seconds=45, fallback=lambda: on_timeout(schedule),
+        today=today, fred_api_key=fred_api_key, on_schedule=retain_schedule,
+    )
 
 
 def _verified_timestamp(raw: str | None) -> datetime | None:
@@ -430,8 +448,9 @@ def main() -> int:
         fallback=lambda: timed_out("13F", (buffett_13f.BuffettBundle(error="取数超时"), None)))
 
     logger.info("collect.jiangsu_fuel")
-    jiangsu_fuel_alert = budget.call(jiangsu_fuel.fetch,
-        seconds=45, fallback=lambda: timed_out("油价", None),
+    jiangsu_fuel_alert = _collect_fuel_alert(
+        budget=budget,
+        on_timeout=lambda schedule: timed_out("油价", schedule),
         today=now_bj.date(),
         fred_api_key=settings.fred_api_key,
     )
@@ -804,6 +823,7 @@ def main() -> int:
     )
     report["section_details"] = {
         "sentiment": sentiment_verdict,
+        "fuel": asdict(jiangsu_fuel_alert) if jiangsu_fuel_alert else None,
         "company_error": getattr(company_news_summary, "error", None),
         "macro_error": getattr(macro_news_summary, "error", None),
         "judgment_error": judgment_error,

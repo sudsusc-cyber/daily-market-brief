@@ -18,6 +18,7 @@ import logging
 import math
 import re
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -610,7 +611,28 @@ def _is_alert_delivery_day(today: date, target: date) -> bool:
     return days_until == 3 and target.weekday() == 1 and today.weekday() == 5
 
 
-def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
+def schedule_only_alert(*, today: date, target: date | None = None) -> JiangsuFuelAlert | None:
+    """Build a bounded reminder without fetching data or inventing observation dates.
+
+    On timeout, only an annual calendar or an already resolved window is usable.
+    Unknown future windows must not trigger new network work outside the budget.
+    """
+    target = target if target is not None else _next_known_window(today)
+    if target is None or not _is_alert_delivery_day(today, target):
+        return None
+    return JiangsuFuelAlert(
+        adjustment_date=target,
+        days_until=(target - today).days,
+        direction="待定",
+        detail="涨跌方向与幅度待更新",
+        forecast_method="schedule_only",
+    )
+
+
+def fetch(
+    *, today: date, fred_api_key: str = "",
+    on_schedule: Callable[[JiangsuFuelAlert], None] | None = None,
+) -> JiangsuFuelAlert | None:
     """按北京日期在调价日（24 时生效）及提前提醒窗口返回预告。"""
     target = (
         _next_known_window(today)
@@ -628,6 +650,11 @@ def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
             target.isoformat(), days_until,
         )
         return None
+
+    # Record the resolved window before any direction source can time out.
+    schedule = schedule_only_alert(today=today, target=target)
+    if on_schedule is not None and schedule is not None:
+        on_schedule(schedule)
 
     try:
         entries = _fetch_forecast_entries(target)
@@ -668,13 +695,7 @@ def fetch(*, today: date, fred_api_key: str = "") -> JiangsuFuelAlert | None:
             )
 
         logger.warning("jiangsu_fuel.schedule_only target=%s", target.isoformat())
-        return JiangsuFuelAlert(
-            adjustment_date=target,
-            days_until=days_until,
-            direction="待定",
-            detail="涨跌方向与幅度待更新",
-            forecast_method="schedule_only",
-        )
+        return schedule
 
     logger.info(
         "jiangsu_fuel.forecast target=%s direction=%s source=%s",
