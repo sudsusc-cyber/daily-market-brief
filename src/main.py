@@ -58,7 +58,6 @@ from src.processors.news_selection import (
     company_candidate,
     frontier_candidate,
     macro_candidate,
-    meaningful_quote,
 )
 from src.processors.thesis import renderer as thesis_renderer
 from src.renderer.render import render_email
@@ -179,7 +178,10 @@ def _translate_all_bundles(
     from src.collectors.news_context import enrich_speaker_context, enrich_technical_context
     enrich_technical_context([item for bundle in [*cn_bundles, *fig_bundles, *macro_bundles, *(frontier_bundles or [])]
                               for item in bundle.items])
-    enrich_speaker_context(fig_bundles)
+    from src.collectors.figures import FigureBundle
+    from src.processors.figure_filter import candidate_window
+    enrich_speaker_context([FigureBundle(b.person, b.query, b.person_en,
+                            candidate_window(b, limit=10), b.error) for b in fig_bundles], max_requests=6)
     titles_to_translate: list[object] = []
     for b in cn_bundles:
         # Bind the holding before excerpt selection/translation, not only when
@@ -188,7 +190,7 @@ def _translate_all_bundles(
             item.holding_ticker = b.holding.ticker
         titles_to_translate.extend([item for item in b.items if company_candidate(item, b.holding.ticker)][:5])
     for f in fig_bundles:
-        titles_to_translate.extend([item for item in f.items if meaningful_quote(item)][:5])
+        titles_to_translate.extend(candidate_window(f))
     for m in macro_bundles:
         titles_to_translate.extend([item for item in m.items if macro_candidate(item)][:8])
     for bundle in frontier_bundles or []:
@@ -235,6 +237,8 @@ def main() -> int:
     _clear_quality_alert()
     settings = load_settings()
     now_bj = now_beijing()
+    from src.utils.runtime_budget import reset_timeout_events, timeout_events
+    reset_timeout_events()
     budget = RuntimeBudget()
     stage_timeouts = []
 
@@ -789,7 +793,7 @@ def main() -> int:
             "judgment": {"processing_failures": int(judgment_error is not None)},
             "holdings_intro": {"fallback": bool(signals) and holdings_intro_text is None},
             "fuel": {"fallback": jiangsu_fuel_alert is not None and jiangsu_fuel_alert.forecast_method == "schedule_only"},
-            "collection": {"timeout_count": len(stage_timeouts)},
+            "collection": {"timeout_count": len(timeout_events())},
         },
         news={
             "company": (sum(len(b.items) for b in cn_bundles), [company_news_summary]),
@@ -804,6 +808,7 @@ def main() -> int:
         "macro_error": getattr(macro_news_summary, "error", None),
         "judgment_error": judgment_error,
         "stage_timeouts": stage_timeouts,
+        "runtime_timeouts": timeout_events(),
     }
     from src.utils.quality_details import quality_details
     report["html_bytes"] = len(html.encode())

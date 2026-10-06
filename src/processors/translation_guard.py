@@ -169,7 +169,7 @@ def _quantities(text: str) -> Counter:
             greater = r"(?:\bmore than|\bover|超过|逾)\s*$"
         if re.search(greater, before, re.I):
             result[("bound", value, unit, "gt")] += 1
-        elif re.search(r"(?:\bup to|(?:最多|最高|至多)(?:可|将)?(?:增派|派遣|提供|借出|发行|投入|投资|支付|筹集|融资)?)\s*$", before, re.I):
+        elif re.search(r"(?:\bup to|(?:最多|最高|至多)(?:可|将)?(?:增派|派遣|提供|借出|发行|投入|投资|支付|筹集|融资)?(?:达|达到)?)\s*$", before, re.I):
             result[("bound", value, unit, "le")] += 1
         elif re.search(r"(?:\bless than|\bunder|不足|少于|不到)\s*$", before, re.I):
             result[("bound", value, unit, "lt")] += 1

@@ -202,7 +202,8 @@ def _named_product(title):
     from src.processors.translation_guard import _MONTH
     pattern = r"\b[A-Z][A-Za-z]+[- ]\d+(?:\.\d+)?(?: [A-Z][a-z]+)?\b"
     return next((m for m in re.finditer(pattern, title)
-                 if not re.match(r"(?:" + _MONTH + r"|Q[1-4]|FY|Fiscal|Year|Quarter)\b", m[0], re.I)), None)
+                 if not re.match(r"(?:" + _MONTH + r"|Q[1-4]|FY|Fiscal|Year|Quarter|Up|Down|Higher|Lower|Revenue|Sales|Profit|Margin|Headcount)\b", m[0], re.I)
+                 and not re.match(r'\s*(?:%|percent\b|basis points?\b|bps\b|million\b|billion\b|dollars?\b)', title[m.end():], re.I)), None)
 
 
 def _event_subject(row):

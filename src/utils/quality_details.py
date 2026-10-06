@@ -15,6 +15,11 @@ def quality_details(report: dict) -> list[str]:
     }
     details = []
     observations = report.get("observations", [])
+    def observation_label(row):
+        if row.get('source_type') == 'user_provided':
+            day = row.get('provided_on') or '日期未记录'
+            return f"{row['key']}（用户指定参考，提供于 {day}；官方数据日期未核实）"
+        return f"{row['key']}（{row.get('observed_at') or '日期未知'}）"
     for state, label in [
         ("carried", "有效沿用"),
         ("missing", "数据缺失"),
@@ -26,7 +31,7 @@ def quality_details(report: dict) -> list[str]:
                 label
                 + "："
                 + "、".join(
-                    f"{r['key']}（{r.get('observed_at') or '日期未知'}）" for r in rows[:35]
+                    observation_label(r) for r in rows[:35]
                 )
             )
     for section, health in report.get("section_health", {}).items():
