@@ -26,12 +26,15 @@ from src.valuation.models import ValuationDisplay
     (False, "frontier_partial"), (False, "frontier_processing"), (False, "frontier_duplicate"),
     (False, "figure_silent"), (False, "figure_source"), (False, "figure_rejected"),
     (False, "figure_partial"), (False, "figure_processing"), (False, "intro_success"),
+    (False, "fuel_timeout"), (True, "fuel_budget_exhausted"),
 ])
 def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(monkeypatch, tmp_path, exhausted, scenario):
     main = importlib.import_module("src.main")
     monkeypatch.setenv("BRIEF_PREVIEW_ONLY", "true" if scenario == "preview" else "false")
     subject = importlib.import_module("src.processors.subject.generator")
     now = datetime(2026, 9, 4, 0, tzinfo=UTC)
+    if scenario.startswith("fuel_"):
+        now = datetime(2026, 10, 15, 0, tzinfo=UTC)
     monkeypatch.setattr(main, "_STATE_DIR", tmp_path)
     monkeypatch.setenv("BRIEF_AUDIT_DIR", str(tmp_path / "audit"))
     state_files = {
@@ -145,6 +148,11 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         llm.chat.return_value = SimpleNamespace(text=output, error="timeout")
     monkeypatch.setattr(main.buffett_13f, "fetch", lambda **_: (None, None))
     monkeypatch.setattr(main.jiangsu_fuel, "fetch", lambda **_: None)
+    if scenario == "fuel_timeout":
+        def fuel_timeout(**kwargs):
+            kwargs["on_schedule"](main.jiangsu_fuel.schedule_only_alert(today=kwargs["today"]))
+            raise StageTimeout()
+        monkeypatch.setattr(main.jiangsu_fuel, "fetch", fuel_timeout)
     monkeypatch.setattr(main.sentiment, "fetch_all", lambda *a, **k: main.sentiment.SentimentBundle([], now))
     monkeypatch.setattr(main, "_translate_all_bundles", lambda **_: None)
     monkeypatch.setattr(main.news_summarizer, "summarize", lambda *a, **k: None)
@@ -218,6 +226,18 @@ def test_main_sends_controlled_edition_and_does_not_consume_unpublished_news(mon
         assert (manifests[0].parent / "preview.html").exists()
         return
     assert len(sent) == 1
+    if scenario.startswith("fuel_"):
+        body = sent[0]["html_body"]
+        assert "油价预告" in body and "10 月 15 日 24 时" in body
+        assert "涨跌方向与幅度待更新" in body
+        assert "模型代理" not in body and "媒体预测" not in body
+        assert health["fuel"]["fallback"]
+        fuel_audit = manifest["content"]["section_details"]["fuel"]
+        assert fuel_audit["adjustment_date"] == "2026-10-15"
+        assert fuel_audit["forecast_method"] == "schedule_only"
+        assert fuel_audit["observed_at"] is fuel_audit["fetched_at"] is None
+        assert "油价" in manifest["content"]["section_details"]["stage_timeouts"]
+        assert "油价预告方向降级" in (tmp_path / "quality.txt").read_text()
     if scenario.startswith("frontier_"):
         expected = {"frontier_silent": "silent", "frontier_source": "source_unavailable",
                     "frontier_rejected": "content_rejected", "frontier_partial": "partial",
