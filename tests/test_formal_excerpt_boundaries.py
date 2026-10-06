@@ -37,6 +37,9 @@ def test_internal_possessives_and_real_closing_quotes_remain_usable(text):
     ('他说“尚未批准”', '他说“尚未批准。”'),
     ('“公司仍在增长”', '“公司仍在增长。”'),
     ('他问“是否已批准？”', '他问“是否已批准？”'),
+    ('“公司关闭了 670 家银行。”。', '“公司关闭了 670 家银行。”'),
+    ('他问“是否已批准？”。', '他问“是否已批准？”'),
+    ('该平台被称为“下一代平台”。', '该平台被称为“下一代平台”。'),
 ])
 def test_sentence_stop_respects_reported_sentence_or_quoted_object(text, expected):
     assert sentence_end(text) == expected

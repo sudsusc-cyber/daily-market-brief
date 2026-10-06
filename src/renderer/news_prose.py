@@ -10,6 +10,10 @@ def sentence_end(value: str) -> str:
     text = str(value or "").rstrip()
     if not text:
         return text
+    # A processor may append a stop after an already punctuated quotation.
+    # Collapse only that redundant suffix; an unpunctuated quoted object keeps
+    # its surrounding sentence stop outside the quote.
+    text = re.sub(r'''([。！？.!?][”’」』"']+)[。.]+$''', r'\1', text)
     closing = re.search(r'[”’」』"\']+$', text)
     suffix = closing.group() if closing else ""
     stem = text[: -len(suffix)].rstrip() if suffix else text
