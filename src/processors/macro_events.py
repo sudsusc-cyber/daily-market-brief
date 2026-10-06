@@ -55,8 +55,9 @@ OBJECTS = {
     "bonds": r"\bbonds?\b|债券|国债",
     "fx": r"\b(?:dollar|yuan|yen|euro|sterling)\b(?=\s+(?:\w+\s+){0,4}(?:best|worst|strongest|weakest)\s+(?:day|week|month|quarter|year)\b)|"
           r"\bforex\b|exchange rate|currency market|外汇|汇率|"
-          r"\b(?:dollar|yuan|yen|euro|sterling)\b(?=\s+(?:index|powers?|gains?|rises?|falls?|drops?|surges?|weakens?|strengthens?))|"
-          r"(?:美元|欧元|人民币|日元|英镑)(?=指数|汇率|走强|走弱|上涨|下跌|飙升|劲升)",
+          r"\b(?:dollar|yuan|yen|euro|sterling)\b(?=\s+(?:index|powers?|gains?|rises?|falls?|drops?|surges?|weakens?|strengthens?|slides?|slips?|plunges?|slumps?))|"
+          r"(?:美元|欧元|人民币|日元|英镑)(?=指数|汇率|走强|走弱|上涨|下跌|飙升|劲升)|"
+          r"\bpressure on (?:the )?(?:dollar|yuan|yen|euro|sterling|single currency)\b|对(?:美元|欧元|人民币|日元|英镑)(?:的)?压力",
     "flows": r"capital flows|fund flows|foreign capital|资金流|外资",
     "equity": r"\bIPO\b|listing|上市|招股|首次公开募股",
     "election": r"election|electoral|选举|选务",
@@ -231,6 +232,10 @@ def extract_event(text: str) -> MacroEvent:
             score += 20 if any(s.value == "release" for s in local_actions) else 0
         if family == "us_bonds":
             score += 35
+        if family == 'fx' and re.match(r'pressure on|对', obj.text, re.I):
+            # The currency is the affected object; energy prices or public
+            # finances in the same clause are causes, not the editorial topic.
+            score += 25
         if family == "credit":
             score += 10
         if family == "safety" and "ai" in local_objects:

@@ -225,3 +225,16 @@ def test_macro_quantity_and_direction_equivalence_keeps_real_updates(source, tra
         assert 'quantities_or_units' in translation_errors(source, translated.replace('最高达到', '').replace('最高达', ''))
     else:
         assert translation_errors(source, translated.replace('加大', '减少').replace('上升', '下降'))
+
+
+@pytest.mark.parametrize('text', [
+    'High energy prices and concerns over public finances add to pressure on the single currency.',
+    'Oil prices add to pressure on the yen.',
+    '能源价格高企加大了对欧元的压力。',
+    '原油上涨加剧了对日元的压力。',
+    'Euro slides to 17-month low against dollar.',
+    'Sterling plunges after energy prices surge.',
+])
+def test_macro_classifies_affected_currency_not_background_energy(text):
+    from src.processors.macro_topics import macro_topic
+    assert macro_topic(text) == '外汇市场'

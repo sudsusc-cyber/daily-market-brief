@@ -40,6 +40,8 @@ correctly rejected and must not be attributed to the configured person.
 - Recognize equivalent purpose modality, numeric upper-bound syntax, and market
   direction grammar. Changed upper bounds, quantities, dates, states or direction
   still fail. Repair prompts explicitly preserve source identifiers.
+- Classify currency pressure by the affected instrument, not the energy-price
+  cause; support directional currency headlines across currencies/languages.
 - Presentation version 17 removes structured navigation tails after publisher
   cleanup and repeated numeric standfirsts only when the reporting body repeats
   every heading quantity. Unique heading facts and product identifiers survive.
