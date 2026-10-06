@@ -32,6 +32,7 @@ from src.processors.news_selection import (
     promotional_prose,
     publication_candidates,
     publishable_excerpt,
+    self_contained_headline,
 )
 from src.processors.technical_context import contextual_excerpt
 from src.processors.translation_guard import translation_errors
@@ -84,6 +85,8 @@ def source_sentences(item) -> list[str]:
         raw = plain_source(str(getattr(item, key, "") or "")).strip()
         if not raw:
             continue
+        if key == 'title' and self_contained_headline(raw):
+            raw = self_contained_headline(raw)
         # No splitting on semicolon/colon: their clauses often qualify a claim.
         result.extend(s for s in [raw, *publication_candidates(item, raw)]
                       if publishable_excerpt(item, s))

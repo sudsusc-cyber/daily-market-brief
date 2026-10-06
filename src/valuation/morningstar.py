@@ -581,9 +581,13 @@ class MorningstarPublicProvider:
         timeout: float = 35.0,
         session: requests.Session | None = None,
         reader_min_interval: float = 2.5,
+        stage_seconds: float = 330.0,
         secondary_provider: MorningstarProvider | None | object = _DEFAULT_SECONDARY,
     ) -> None:
         self.timeout = timeout
+        if not math.isfinite(stage_seconds) or not 0 < stage_seconds <= 330:
+            raise ValueError("取数时间预算必须在0至330秒之间")
+        self.stage_seconds = stage_seconds
         self.session = session or requests.Session()
         self.session.headers.setdefault("User-Agent", _USER_AGENT)
         self.reader_min_interval = max(0.0, reader_min_interval)
@@ -848,7 +852,7 @@ class MorningstarPublicProvider:
         return self._budget.run(
             "morningstar",
             lambda: self._fetch_all(securities, checked_at=checked_at),
-            seconds=330,
+            seconds=self.stage_seconds,
             fallback=lambda: (
                 dict(self._inflight_values),
                 {
@@ -887,21 +891,43 @@ class MorningstarPublicProvider:
         # A signal can interrupt between the primary read and secondary validation.
         self._inflight_values = dict(values)
         failures: dict[str, str] = {}
+        stage_deadline = min(self._budget.deadline, time.monotonic() + self.stage_seconds)
+        for index, (ticker, security) in enumerate(pending.items()):
+            seconds = max(0.0, (stage_deadline - time.monotonic()) / (len(pending) - index))
+            def unavailable(ticker=ticker):
+                # Never publish a candidate interrupted before reconciliation.
+                values.pop(ticker, None)
+                failures[ticker] = "标的取数预算耗尽，已保留诊断并检查有效历史值"
+                self._inflight_failures[ticker] = failures[ticker]
+            self._budget.run(
+                f"morningstar.issuer.{ticker}",
+                lambda ticker=ticker, security=security, seconds=seconds: self._fetch_one(
+                    ticker, security, checked_at, values, failures, seconds),
+                seconds=seconds,
+                fallback=unavailable,
+            )
+        # 只在同一观测请求内复用；发送前的晚时点复核会重读所有标的。
+        self._memo = (memo_at, dict(values), dict(failures))
+        return values, failures
+
+    def _fetch_one(self, ticker, security, checked_at, values, failures, seconds):
+        """Interleave discovery and independent evidence, with fair issuer budgets."""
         secondary_values: dict[str, MorningstarFairValue] = {}
         secondary_failures: dict[str, str] = {}
         if self.secondary_provider is not None:
             try:
-                secondary_values, secondary_failures = self.secondary_provider.fetch_all(
-                    pending, checked_at=checked_at
+                secondary_values, secondary_failures = self._budget.run(
+                    f"morningstar.distributed.{ticker}",
+                    lambda: self.secondary_provider.fetch_all({ticker: security}, checked_at=checked_at),
+                    seconds=seconds * 0.45,
+                    fallback=lambda: ({}, {ticker: "独立备源预算耗尽，未更新观测日期"}),
                 )
             except Exception as exc:  # noqa: BLE001
-                secondary_failures = {
-                    ticker: f"独立备源整体失败: {type(exc).__name__}" for ticker in pending
-                }
+                secondary_failures = {ticker: f"独立备源整体失败: {type(exc).__name__}"}
         self._inflight_failures.update(secondary_failures)
         retrieved = checked_at.astimezone(UTC).isoformat()
-        for ticker, value in secondary_values.items():
-            if ticker not in pending:
+        for candidate_ticker, value in secondary_values.items():
+            if candidate_ticker != ticker:
                 continue
             try:
                 _validate_live(value, previous=None, current_price=None,
@@ -909,190 +935,186 @@ class MorningstarPublicProvider:
                 self._validated_secondary[ticker] = value
             except (ValueError, TypeError, KeyError):
                 continue
-        for ticker, security in pending.items():
-            errors: list[str] = []
-            unread_report_time: datetime | None = None
-            try:
-                candidates = self._discover(security)
-            except Exception as exc:  # noqa: BLE001
-                candidates = [
-                    _Candidate(
-                        url,
-                        (
-                            datetime.fromisoformat(security.curated_dates[index]).replace(
-                                tzinfo=UTC
-                            )
-                            if index < len(security.curated_dates)
-                            else None
-                        ),
-                        (
-                            security.curated_values[index]
-                            if index < len(security.curated_values)
-                            else None
-                        ),
-                    )
-                    for index, url in enumerate(security.curated_urls)
-                ]
-                errors.append(f"发现失败: {type(exc).__name__}")
-            failed_candidates = 0
-            attempted_candidates = 0
-            for candidate in candidates:
-                if unread_report_time is not None and (
-                    candidate.published_at is not None and candidate.published_at < unread_report_time
-                    and ticker not in values
-                ):
-                    # Try alternate paths to the current report, not an older
-                    # report disguised as the latest. Keep this bounded so one
-                    # illiquid security cannot exhaust the whole email budget.
-                    continue
-                if failed_candidates >= 3 or attempted_candidates >= 6:
-                    break
-                attempted_candidates += 1
-                try:
-                    first = self._read(candidate, security)
-                    second = self._read(candidate, security)
-                    if (
-                        first.fair_value != second.fair_value
-                        or first.currency != second.currency
-                        or first.fair_value_updated_at != second.fair_value_updated_at
-                        or first.report_published_at != second.report_published_at
-                        or first.valuation_as_of != second.valuation_as_of
-                    ):
-                        raise ValueError("同一来源双读不一致")
-                    observed = replace(
-                        first,
-                        retrieved_at=retrieved,
-                        observation_count=2,
-                    )
-                    _validate_live(
-                        observed,
-                        previous=None,
-                        current_price=None,
-                        checked_at=checked_at,
-                        ticker=ticker,
-                    )
-                    best = values.get(ticker)
-                    if best is None or _compare_reports(observed, best) >= 0:
-                        chosen = _choose_verified(observed, best)
-                    else:
-                        chosen = best
-                    values[ticker] = replace(chosen, evidence=_observations(best, observed)) if best else chosen
-                    latest_known = self.discovery_diagnostics.get(ticker, {}).get("official_fair_value_date")
-                    if chosen.valuation_as_of is None and (
-                        not latest_known or _valuation_time(chosen).date() >= _timestamp(latest_known).date()
-                    ):
-                        break
-                except Exception as exc:  # noqa: BLE001
-                    host = urlparse(candidate.url).hostname or "unknown"
-                    error_text = str(exc)
-                    errors.append(f"{host}: {error_text[:120]}")
-                    self._inflight_failures[ticker] = (
-                        "; ".join(errors[-3:])
-                        + (f"；Yahoo 备源: {secondary_failures[ticker]}" if ticker in secondary_failures else "")
-                    )[:500]
-                    logger.info(
-                        "morningstar.candidate_failed ticker=%s url=%s reason=%s",
-                        ticker,
-                        candidate.url,
-                        error_text[:240],
-                    )
-                    # 所有标的都不得把“最新报告不可读”掩盖成旧报告是最新值。
-                    # 已有估值由持久最后核验值承接，不因公开页短时故障清空。
-                    irrelevant = any(
-                        marker in error_text
-                        for marker in (
-                            "来源页面与标的公司不匹配",
-                            "多标的页面无法安全归属公允价值",
-                            "页面未找到可归属于该标的的 Morningstar 公允价值",
+        errors: list[str] = []
+        unread_report_time: datetime | None = None
+        try:
+            candidates = self._discover(security)
+        except Exception as exc:  # noqa: BLE001
+            candidates = [
+                _Candidate(
+                    url,
+                    (
+                        datetime.fromisoformat(security.curated_dates[index]).replace(
+                            tzinfo=UTC
                         )
-                    )
-                    if not irrelevant:
-                        failed_candidates += 1
-                        if candidate.published_at is None:
-                            continue
-                        unread_report_time = max(
-                            unread_report_time or candidate.published_at,
-                            candidate.published_at,
-                        )
-            if ticker not in values:
-                failures[ticker] = "; ".join(errors[-3:]) or "没有可验证的公开 Morningstar 值"
-                logger.warning(
-                    "morningstar.unavailable ticker=%s reason=%s",
-                    ticker,
-                    failures[ticker],
+                        if index < len(security.curated_dates)
+                        else None
+                    ),
+                    (
+                        security.curated_values[index]
+                        if index < len(security.curated_values)
+                        else None
+                    ),
                 )
-            secondary = secondary_values.get(ticker)
-            primary = values.get(ticker)
-            if secondary is not None:
-                try:
-                    _validate_live(
-                        secondary,
-                        previous=None,
-                        current_price=None,
-                        checked_at=checked_at,
-                        ticker=ticker,
-                    )
-                except (ValueError, TypeError, KeyError) as exc:
-                    secondary = None
-                    secondary_failures[ticker] = str(exc)
-                    logger.warning(
-                        "morningstar.secondary_rejected ticker=%s reason=%s", ticker, exc
-                    )
-            if primary is None and secondary is not None:
-                values[ticker] = replace(
-                    secondary,
-                    fallback_used=True,
-                    warning="Morningstar 官方公开页不可读，采用 Yahoo 分发的已核验 Morningstar 报告",
-                )
-                failures.pop(ticker, None)
-            elif primary is not None and secondary is not None:
-                try:
-                    values[ticker] = _reconcile_independent_sources(primary, secondary)
-                    failures.pop(ticker, None)
-                except ValueError as exc:
-                    values.pop(ticker, None)
-                    failures[ticker] = str(exc)
-            elif primary is None and ticker in secondary_failures:
-                failures[ticker] = (
-                    f"{failures.get(ticker, 'Morningstar 官方公开页不可用')}；"
-                    f"Yahoo 备源: {secondary_failures[ticker]}"
-                )[:500]
-            if (
-                ticker in values
-                and unread_report_time is not None
-                and (_valuation_time(values[ticker]) < unread_report_time)
+                for index, url in enumerate(security.curated_urls)
+            ]
+            errors.append(f"发现失败: {type(exc).__name__}")
+        failed_candidates = 0
+        attempted_candidates = 0
+        for candidate in candidates:
+            if unread_report_time is not None and (
+                candidate.published_at is not None and candidate.published_at < unread_report_time
+                and ticker not in values
             ):
-                # A readable old distributed report is useful evidence, but not
-                # proof of what a newer inaccessible official report says.
-                values[ticker] = replace(
-                    values[ticker],
-                    stale_cache=True,
-                    fallback_used=True,
-                    warning=f"较新报告 {unread_report_time.date()} 尚未核实，保留已读取历史报告值",
+                # Try alternate paths to the current report, not an older
+                # report disguised as the latest. Keep this bounded so one
+                # illiquid security cannot exhaust the whole email budget.
+                continue
+            if failed_candidates >= 3 or attempted_candidates >= 6:
+                break
+            attempted_candidates += 1
+            try:
+                first = self._read(candidate, security)
+                second = self._read(candidate, security)
+                if (
+                    first.fair_value != second.fair_value
+                    or first.currency != second.currency
+                    or first.fair_value_updated_at != second.fair_value_updated_at
+                    or first.report_published_at != second.report_published_at
+                    or first.valuation_as_of != second.valuation_as_of
+                ):
+                    raise ValueError("同一来源双读不一致")
+                observed = replace(
+                    first,
+                    retrieved_at=retrieved,
+                    observation_count=2,
                 )
-                failures[ticker] = values[ticker].warning or "较新报告未核实"
-            latest = self.discovery_diagnostics.get(ticker, {}).get("official_fair_value_date")
-            if latest and _timestamp(latest).date() > checked_at.astimezone(UTC).date():
-                self.discovery_diagnostics[ticker]["invalid_official_date"] = latest
-                latest = None
-            if ticker in values and latest and _valuation_time(values[ticker]).date() < _timestamp(latest).date():
-                values[ticker] = replace(values[ticker], stale_cache=True, fallback_used=True,
-                    warning=f"官方公允价值日期已更新至 {latest}，新金额尚未核实，保留历史报告值")
-                failures[ticker] = values[ticker].warning or "新金额未核实"
-            elif ticker not in values and latest:
-                failures[ticker] = (
-                    f"官方公允价值日期 {latest} 的新金额尚未核实；{failures.get(ticker, '')}"
+                _validate_live(
+                    observed,
+                    previous=None,
+                    current_price=None,
+                    checked_at=checked_at,
+                    ticker=ticker,
+                )
+                best = values.get(ticker)
+                if best is None or _compare_reports(observed, best) >= 0:
+                    chosen = _choose_verified(observed, best)
+                else:
+                    chosen = best
+                values[ticker] = replace(chosen, evidence=_observations(best, observed)) if best else chosen
+                latest_known = self.discovery_diagnostics.get(ticker, {}).get("official_fair_value_date")
+                if chosen.valuation_as_of is None and (
+                    not latest_known or _valuation_time(chosen).date() >= _timestamp(latest_known).date()
+                ):
+                    break
+            except Exception as exc:  # noqa: BLE001
+                host = urlparse(candidate.url).hostname or "unknown"
+                error_text = str(exc)
+                errors.append(f"{host}: {error_text[:120]}")
+                self._inflight_failures[ticker] = (
+                    "; ".join(errors[-3:])
+                    + (f"；Yahoo 备源: {secondary_failures[ticker]}" if ticker in secondary_failures else "")
                 )[:500]
-            self.discovery_diagnostics.setdefault(ticker, {})["distributed_report"] = (
-                getattr(self.secondary_provider, "discovery_diagnostics", {}).get(ticker)
+                logger.info(
+                    "morningstar.candidate_failed ticker=%s url=%s reason=%s",
+                    ticker,
+                    candidate.url,
+                    error_text[:240],
+                )
+                # 所有标的都不得把“最新报告不可读”掩盖成旧报告是最新值。
+                # 已有估值由持久最后核验值承接，不因公开页短时故障清空。
+                irrelevant = any(
+                    marker in error_text
+                    for marker in (
+                        "来源页面与标的公司不匹配",
+                        "多标的页面无法安全归属公允价值",
+                        "页面未找到可归属于该标的的 Morningstar 公允价值",
+                    )
+                )
+                if not irrelevant:
+                    failed_candidates += 1
+                    if candidate.published_at is None:
+                        continue
+                    unread_report_time = max(
+                        unread_report_time or candidate.published_at,
+                        candidate.published_at,
+                    )
+        if ticker not in values:
+            failures[ticker] = "; ".join(errors[-3:]) or "没有可验证的公开 Morningstar 值"
+            logger.warning(
+                "morningstar.unavailable ticker=%s reason=%s",
+                ticker,
+                failures[ticker],
             )
-            if ticker in values:
-                self._inflight_values[ticker] = values[ticker]
-            if ticker in failures:
-                self._inflight_failures[ticker] = failures[ticker]
-        # 只在同一观测请求内复用；发送前的晚时点复核会重读所有标的。
-        self._memo = (memo_at, dict(values), dict(failures))
-        return values, failures
+        secondary = secondary_values.get(ticker)
+        primary = values.get(ticker)
+        if secondary is not None:
+            try:
+                _validate_live(
+                    secondary,
+                    previous=None,
+                    current_price=None,
+                    checked_at=checked_at,
+                    ticker=ticker,
+                )
+            except (ValueError, TypeError, KeyError) as exc:
+                secondary = None
+                secondary_failures[ticker] = str(exc)
+                logger.warning(
+                    "morningstar.secondary_rejected ticker=%s reason=%s", ticker, exc
+                )
+        if primary is None and secondary is not None:
+            values[ticker] = replace(
+                secondary,
+                fallback_used=True,
+                warning="Morningstar 官方公开页不可读，采用 Yahoo 分发的已核验 Morningstar 报告",
+            )
+            failures.pop(ticker, None)
+        elif primary is not None and secondary is not None:
+            try:
+                values[ticker] = _reconcile_independent_sources(primary, secondary)
+                failures.pop(ticker, None)
+            except ValueError as exc:
+                values.pop(ticker, None)
+                failures[ticker] = str(exc)
+        elif primary is None and ticker in secondary_failures:
+            failures[ticker] = (
+                f"{failures.get(ticker, 'Morningstar 官方公开页不可用')}；"
+                f"Yahoo 备源: {secondary_failures[ticker]}"
+            )[:500]
+        if (
+            ticker in values
+            and unread_report_time is not None
+            and (_valuation_time(values[ticker]) < unread_report_time)
+        ):
+            # A readable old distributed report is useful evidence, but not
+            # proof of what a newer inaccessible official report says.
+            values[ticker] = replace(
+                values[ticker],
+                stale_cache=True,
+                fallback_used=True,
+                warning=f"较新报告 {unread_report_time.date()} 尚未核实，保留已读取历史报告值",
+            )
+            failures[ticker] = values[ticker].warning or "较新报告未核实"
+        latest = self.discovery_diagnostics.get(ticker, {}).get("official_fair_value_date")
+        if latest and _timestamp(latest).date() > checked_at.astimezone(UTC).date():
+            self.discovery_diagnostics[ticker]["invalid_official_date"] = latest
+            latest = None
+        if ticker in values and latest and _valuation_time(values[ticker]).date() < _timestamp(latest).date():
+            values[ticker] = replace(values[ticker], stale_cache=True, fallback_used=True,
+                warning=f"官方公允价值日期已更新至 {latest}，新金额尚未核实，保留历史报告值")
+            failures[ticker] = values[ticker].warning or "新金额未核实"
+        elif ticker not in values and latest:
+            failures[ticker] = (
+                f"官方公允价值日期 {latest} 的新金额尚未核实；{failures.get(ticker, '')}"
+            )[:500]
+        self.discovery_diagnostics.setdefault(ticker, {})["distributed_report"] = (
+            getattr(self.secondary_provider, "discovery_diagnostics", {}).get(ticker)
+        )
+        if ticker in values:
+            self._inflight_values[ticker] = values[ticker]
+        if ticker in failures:
+            self._inflight_failures[ticker] = failures[ticker]
 
 
 def _reconcile_independent_sources(

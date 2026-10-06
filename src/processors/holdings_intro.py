@@ -139,7 +139,7 @@ _STATE_QUALIFIER = r"(?:既定的?|预设的?)?"
 # Keeping these dimensions independent avoids accepting "区间内" while rejecting
 # the equivalent "区间之内", or requiring a special phrase for each strategy.
 _STATE_LOCATION = r"(?:在|于|处|处在|处于|位处|位于|居于|身在|置身于|落在|落于|留在)"
-_STATE_SPATIAL_NOUN = r"(?:区间|范围|位置|区域)"
+_STATE_SPATIAL_NOUN = r"(?:区间|范围|位置|区域|余地|空间)"
 _STATE_IN_LOCATIVE = r"(?:内|之内|以内)"
 _STATE_WITHIN = (r"(?:" + _STATE_SPATIAL_NOUN + _STATE_IN_LOCATIVE + r"?"
                  r"|(?:尺度|门槛|条件|标准)" + _STATE_IN_LOCATIVE + r"|线内)")
@@ -213,6 +213,31 @@ def _with_daily_signal(prose: str, signals: list[Any], variant: int) -> str:
     return prose[:position] + observation + prose[position:]
 
 
+def _verified_fallback_signal(signals: list[Any], recent: list[str], variant: int) -> str:
+    """Compose independent state clauses and run the same factual/repeat gate."""
+    groups, pending, valid = _signal_groups(signals)
+    if not groups:
+        text = ('持仓数据尚待核实，暂不判断买入位置。' if not valid else
+                '持仓尚未出现既定买入信号' + ('，另有数据待核。' if pending else '。'))
+        return text
+    forms = ('合乎{k}的尺度', '落在{k}区间', '与{k}的尺度相合',
+             '为{k}留有余地', '符合{k}条件', '的{k}余地尚在')
+    for offset in range(len(forms) ** len(groups) * 2):
+        choice = variant + offset
+        clauses = []
+        for index, (subject, kind) in enumerate(groups):
+            form = forms[(choice // len(forms) ** index) % len(forms)]
+            clauses.append(subject + form.format(k='大额买入' if kind == 'LUMP_SUM' else '定投'))
+        if choice // len(forms) ** len(groups) % 2:
+            clauses.reverse()
+        text = '，'.join(clauses) + ('，另有数据待核。' if pending else '。')
+        if not _signal_errors(text, signals, recent):
+            return text
+    # Facts take priority if all bounded wordings have already appeared.
+    return '，'.join(subject + ('符合大额买入条件' if kind == 'LUMP_SUM' else '符合定投条件')
+                    for subject, kind in groups) + ('，另有数据待核。' if pending else '。')
+
+
 def _intro_boundaries(text: str) -> str:
     """One punctuation width for generated Chinese prose, before validation."""
     text = re.sub(r'(?<!\d),|,(?!\d)', '，', text.replace(';', '；'))
@@ -277,7 +302,8 @@ def _reflection(text: str) -> str:
 
 def _intro_errors(text: str, context: str, recent: list[str]) -> list[str]:
     errors = []
-    if (context and text.count(context) != 1) or not 60 <= len(text) <= _PROSE_HARD_MAX:
+    if ((context and text.count(context) != 1) or not 60 <= len(text) <= _PROSE_HARD_MAX
+            or re.search(r'[。！？；]；$', text)):
         errors.append("format_or_length")
     tail = text.replace(context, "", 1)
     # No current portfolio or market facts belong in this literary paragraph.
@@ -357,6 +383,10 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
         from src.processors.source_grounding import diagnostic_text
         logger.warning("holdings_intro.rejected attempt=%d reasons=%s response=%r", attempt + 1, errors, diagnostic_text(raw, 500))
         payload += _intro_retry(errors, accepted_text=accepted_text, accepted_signal=accepted_signal)
+    if accepted_text:
+        observation = _verified_fallback_signal(signals, recent, len(recent))
+        logger.info('holdings_intro.recovered_verified_prose signal_mode=bounded_fallback')
+        return _compose_intro(accepted_text, observation)
     return None
 
 

@@ -205,7 +205,7 @@ def _entity_order(text: str) -> list[str]:
 
 def _claim_entity_order(text: str) -> list[str]:
     # Attribution order is independent of the actor/object order in the claim.
-    name = r"[A-Z][a-z]+(?: [A-Z][a-z]+){0,3}"
+    name = r"(?:[A-Z][a-z]+(?: [A-Z][a-z]+){0,3}|[一-鿿·]{2,12})"
     patterns = [r"[，,]\s*(?P<speaker>" + name + r")\s*(?:称|表示|说)(?=\s*(?:[-–—|]|[。.]?$))",
                 r",\s*(?P<speaker>" + name + r")\s+(?i:says|said)\b(?=\s*(?:[-–—|]|[。.]?$))",
                 r"^(?P<speaker>" + name + r")\s+(?i:says|said)\s+",
@@ -213,7 +213,16 @@ def _claim_entity_order(text: str) -> list[str]:
     for pattern in patterns:
         match = re.search(pattern, text)
         if match:
-            speaker = [match['speaker'].casefold()]
+            # The same speaker may use an English or Chinese spelling. Keep
+            # actor/object order in the claim; normalize only the attribution.
+            from src.collectors.figures import _FINNHUB_FALLBACK_ALIASES
+
+            raw_name = match['speaker'].strip()
+            # Full names must match a registered full alias, not just a surname.
+            # This prevents Alex Altman from becoming Sam Altman.
+            identity = next((person for person, aliases in _FINNHUB_FALLBACK_ALIASES.items()
+                             if raw_name.casefold() in {alias.casefold() for alias in (person, *aliases)}), raw_name.casefold())
+            speaker = [identity]
             claim = text[:match.start()] + text[match.end():]
             return ['speaker:' + '/'.join(speaker), *_entity_order(claim)]
     return _entity_order(text)
