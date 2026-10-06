@@ -19,6 +19,17 @@ def sentence_end(value: str) -> str:
     endings = {"?": "？", "？": "？", "!": "！", "！": "！"}
     if stem and stem[-1] in endings:
         return stem.rstrip("?？!！") + endings[stem[-1]] + suffix
+    if suffix and not stem.endswith(("。", ".")):
+        opening = re.search(r'[“‘「『"\'][^“‘「『"\']*$', stem)
+        if opening:
+            prefix = stem[:opening.start()].rstrip()
+            # A quoted object/phrase belongs inside the surrounding sentence;
+            # only a standalone reported sentence gets its stop inside quotes.
+            reported = not prefix or re.search(
+                r'(?:说|称|表示|指出|警告|强调|认为|问|回答|写道)[：:,，]?$', prefix
+            )
+            if not reported:
+                return stem.rstrip(".;；,，:： ") + suffix + "。"
     return stem.rstrip("。.;；,，:： ") + "。" + suffix
 
 
