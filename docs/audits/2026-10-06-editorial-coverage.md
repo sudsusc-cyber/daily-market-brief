@@ -67,7 +67,8 @@ Offline replay uses the actual archived publication mappings and rejected
 translations of sources already selected by the production macro pass. It
 recovers five previously rejected translations; final macro output remains three
 paragraphs with six source links. Company mappings all replay successfully, and
-the judgment subject becomes `英伟达`. Full HTML is 95,488 bytes. Network calls=0;
+the judgment subject becomes `英伟达`. With the original source-link template
+styles and all plaintext source URLs preserved, full HTML is 96,628 bytes. Network calls=0;
 SMTP calls=0. No dates or speeches were invented to fill Voices.
 
 Browser access to the local replay was denied by browser security policy;
