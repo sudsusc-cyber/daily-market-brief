@@ -221,7 +221,13 @@ def _claim_entity_order(text: str) -> list[str]:
             # Full names must match a registered full alias, not just a surname.
             # This prevents Alex Altman from becoming Sam Altman.
             identity = next((person for person, aliases in _FINNHUB_FALLBACK_ALIASES.items()
-                             if raw_name.casefold() in {alias.casefold() for alias in (person, *aliases)}), raw_name.casefold())
+                             if raw_name.casefold() in {alias.casefold() for alias in (person, *aliases)}), None)
+            if identity is None:
+                person_aliases = {alias.casefold() for person, aliases in _FINNHUB_FALLBACK_ALIASES.items()
+                                  for alias in (person, *aliases)}
+                organizations = [entity for entity in _entity_order(raw_name)
+                                 if not any(alias.casefold() in person_aliases for alias in _ENTITIES[entity])]
+                identity = organizations[0] if len(organizations) == 1 else raw_name.casefold()
             speaker = [identity]
             claim = text[:match.start()] + text[match.end():]
             return ['speaker:' + '/'.join(speaker), *_entity_order(claim)]

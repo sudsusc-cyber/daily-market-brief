@@ -201,3 +201,22 @@ def test_existing_altman_display_is_preserved():
     translated = 'OpenAI CEO Sam Altman 表示，人们需要为 AI 的好处“接受一些坏事” - NBC News'
     assert not translation_errors(source, translated)
     assert voice_text(present(translated, source_name='NBC News', original_text=source).text, '奥特曼') == '人们需要为 AI 的好处“接受一些坏事”'
+
+
+@pytest.mark.parametrize('source,translated', [
+    ("Berkshire Hathaway Says It's Now America's 4th-Largest Homebuilder. It Also Owns More Than 10% of Lennar.", '伯克希尔称它现在是美国第4大住宅建造商。它还持有 Lennar 超过10%的股份。'),
+    ('Microsoft says it will launch a model.', '微软称它将发布一个模型。'),
+])
+def test_corporate_attribution_keeps_issuer_identity_across_languages(source, translated):
+    assert not translation_errors(source, translated)
+    assert translation_errors(source, translated.replace('伯克希尔', '微软').replace('微软称', '谷歌称'))
+
+
+@pytest.mark.parametrize('source,translated,theme', [
+    ('Google buys nuclear energy.', 'Google 购买核能。', 'resource-procurement'),
+    ('Microsoft purchased power under long-term contracts.', 'Microsoft 按长期合同购买电力。', 'resource-procurement'),
+    ('Mastercard signs agreements with resellers to expand distribution channels.', 'Mastercard 与经销商签署协议，扩展分销渠道。', 'commercial-distribution'),
+    ('TSMC confirms talks about new semiconductor factories.', 'TSMC 确认关于新半导体工厂的谈判。', 'strategic-negotiation'),
+])
+def test_watchpoint_families_cover_inflections_not_a_single_headline(source, translated, theme):
+    assert _rule_for({'excerpt': source, 'output_text': translated}).key == theme
