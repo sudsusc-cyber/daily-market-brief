@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 10
+_VERSION = 11
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -54,6 +54,7 @@ class WatchRule:
     action: str
     title: str
     watch: str
+    sector: bool = False
 
     def matches(self, text: str) -> bool:
         from src.processors.news_selection import reporting_text
@@ -136,6 +137,35 @@ _RULES = (
         "监管事项的长期影响取决于适用范围与执行条件",
         "决定的适用范围、生效条件、后续程序与披露的经营影响。",
     ),
+    WatchRule(
+        'resource-procurement',
+        r'\b(?:energy|electricity|power|nuclear|fuel|raw materials?)\b|能源|电力|核能|燃料|原材料',
+        r'\b(?:buys?|buying|purchas(?:e|es|ed|ing)|procur(?:e|es|ed|ing|ement)|suppl(?:y|ies|ied|ying)|sourcing|agreements?|deals?|contracts?)\b|购买|采购|供应|协议|合同',
+        '长期资源采购的价值取决于供应稳定性与成本兑现',
+        '协议是否落地、供应期限、实际价格与对经营成本的影响。',
+    ),
+    WatchRule(
+        'commercial-distribution',
+        r'\b(?:resellers?|distribution|channels?)\b|经销商|分销|销售渠道',
+        r'\b(?:sign(?:s|ed|ing)?|inks?|agreements?|deals?|expand(?:s|ed|ing)?|creat(?:e|es|ed|ing))\b|签署|协议|扩展|开辟',
+        '商业渠道合作的长期价值需要客户采用与收入验证',
+        '合作范围、客户采用、实际交易与收入分成。',
+    ),
+    WatchRule(
+        'strategic-negotiation',
+        r'\b(?:chips?|semiconductors?|manufacturing|factor(?:y|ies)|capacity|housing|homebuilders?)\b|芯片|半导体|制造|工厂|产能|住房|住宅',
+        r'\b(?:talks?|negotiat\w*|invest\w*|acquir\w*|owns?)\b|谈判|磋商|投资|收购|持有',
+        '战略合作与资本投入仍需后续执行验证',
+        '谈判是否形成协议、实际投入、合作边界与资本回报。',
+    ),
+    WatchRule(
+        'financial-consolidation',
+        r'\b(?:banks?|lenders?|financial system)\b|银行|贷款机构|金融体系',
+        r'\b(?:consolidat\w*|merg\w*|shutter\w*|shuts?|closed?)\b|整合|合并|关闭',
+        '金融机构整合的长期影响取决于资本与风险处置',
+        '整合范围、资本充足率、风险资产处置与信贷供给。',
+        sector=True,
+    ),
 )
 
 
@@ -185,12 +215,14 @@ def _rule_for(row: dict) -> WatchRule | None:
         text = COMPANY_DISPLAY_NAMES.get(row['presentation_company'], '') + text
     if editorial_issue(original) or editorial_issue(text):
         return None
-    if not _ENTITY.search(original) or not _ENTITY.search(text) or not re.search(r"[一-鿿]", text):
+    if not re.search(r"[一-鿿]", text):
         return None
     # Denials of a cancellation must not be labelled as a release setback.
     negated_change = r"(?:not|never|no longer)\s+(?:\w+\s+){0,2}(?:scrap|cancel|abandon|delay|shelv)|(?:并未|没有|不会|未)(?:放弃|取消|搁置|暂停|推迟)"
     no_construction = r"not (?:currently )?(?:under construction|being built)|并非在建|没有在建|尚未(?:开工|建设)"
     return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)
+                 and ((_ENTITY.search(original) and _ENTITY.search(text))
+                      or (rule.sector and (row.get('macro_event') or {}).get('geography')))
                  and not (rule.key == "infrastructure-investment" and (
                      re.search(no_construction, original, re.I) or re.search(no_construction, text)))
                  and not (rule.key == "product-release-risk" and (
@@ -256,7 +288,7 @@ def _publication_item(section: str, row: dict, today: date):
     item = {
         "theme": rule.key,
         "thesis": "收入预期仍需业务兑现与利润贡献验证" if forecast and rule.key == "operating-performance" else rule.title,
-        "subject": _event_subject(row),
+        "subject": _event_subject(row) or ('金融机构整合' if rule.sector else ''),
         "event_key": _event_key(row, rule.key),
         "evidence_type": "forecast" if forecast else "reported_event",
         "marker": "预期变化" if forecast else (

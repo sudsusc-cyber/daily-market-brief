@@ -86,6 +86,19 @@ def _parse_lines(text: str) -> dict[int, str]:
     return out
 
 
+def _source_bound_transport(text: str, original: str) -> str:
+    """Strip an added whole-string wrapper, preserving actual source quotes."""
+    pairs = {'“': '”', '"': '"'}
+    source = original.strip()
+    if source and source[0] in pairs and source.endswith(pairs[source[0]]):
+        return text
+    if len(text) > 2 and text[0] in pairs and text.endswith(pairs[text[0]]):
+        left, right = text[0], pairs[text[0]]
+        if text.count(left) == (2 if left == right else 1) and text.count(right) == (2 if left == right else 1):
+            return text[1:-1].strip()
+    return text
+
+
 def _repair_context(previous: dict) -> str:
     """Give a repair the failed wording and actionable constraints, not just codes.
 
@@ -163,6 +176,7 @@ def translate_titles(
                 parsed = _parse_lines(resp.text)
                 for position in pending:
                     text = parsed.get(position, "").strip()
+                    text = _source_bound_transport(text, indexed_chunk[position][1])
                     errors = translation_errors(indexed_chunk[position][1], text) if text else ["empty"]
                     if text and not errors:
                         translated[position] = text

@@ -461,12 +461,28 @@ def macro_geography_context(item) -> str:
     summary = plain_source(str(getattr(item, 'summary', '') or ''))
     if not title or not summary or title in summary:
         return ''
-    missing = set(extract_event(title).geography) - set(extract_event(summary).geography)
+    title_event = extract_event(title)
+    missing = set(title_event.geography) - set(extract_event(summary).geography)
+    # Standfirsts often refer back to the title's instrument, not its country.
+    # Preserve the exact adjacent fields rather than inventing an antecedent.
+    referential = re.search(r'\b(?:the single currency|this currency|the currency|the metal|the index|the benchmark)\b|这一单一货币|该货币|这一货币|该指数|该金属|这一基准', summary, re.I)
+    from src.collectors.macro_news import MacroNewsItem
+
+    title_quantities = isinstance(item, MacroNewsItem) and bool(re.search(r'\d', title)) and not re.search(r'\d', summary)
+    context_needed = bool(missing or (title_event.family != 'unknown' and (referential or title_quantities)))
     combined = title + '\n' + summary
-    if (missing and len(combined) <= 900
+    if (context_needed and len(combined) <= 900
             and publishable_excerpt(item, title) and publishable_excerpt(item, summary)
             and publishable_excerpt(item, combined)):
         return combined
+    return ''
+
+
+def self_contained_headline(title: str) -> str:
+    parts = sentences(title)
+    if (len(parts) == 2 and re.search(r'\bwith\b|与|和', parts[0], re.I)
+            and re.search(r'\b(?:is|was|has been|remains)\s+(?:its|their)\b|是其|是它们的', parts[1], re.I)):
+        return parts[0]
     return ''
 
 
@@ -509,6 +525,11 @@ def factual_excerpt(item) -> str:
     # Mixed headlines often put a buying pitch before a complete reported fact.
     # Extract only that complete fact, without joining clauses or rewriting it.
     title_parts = sentences(title)
+    unambiguous = self_contained_headline(title)
+    if unambiguous and publishable_excerpt(item, unambiguous):
+        # Do not guess which of two named parties owns an external partner.
+        # Keep the self-contained event while retaining both raw source fields.
+        return unambiguous
     if promotional_prose(title):
         return next((part for part in title_parts if not promotional_prose(part)
                      and publishable_excerpt(item, part)
@@ -527,6 +548,14 @@ def factual_excerpt(item) -> str:
     context = macro_geography_context(item) if macro_report else ''
     if context:
         return context
+    # A vague standfirst must not erase an intact quantitative headline.
+    # Price/analyst/editorial titles keep their existing exclusions.
+    if (not macro_report and re.search(r'\d', title) and not re.search(r'\d', plain_source(summary))
+            and re.search(r'\b(?:owns?|holding|revenue|earnings|dividends?|repurchas\w*|buybacks?)\b|持有|营收|利润|分红|回购', title, re.I)
+            and not _PRICE_EDITORIAL.search(title) and not analyst_opinion(title)
+            and not re.search(r'Latest .*News and Analysis|How we got here|The (?:real|main) (?:prize|story|takeaway)\b', title, re.I)
+            and publishable_excerpt(item, title)):
+        return title
     for sentence in publication_candidates(item, plain_source(summary)):
         if (publishable_excerpt(item, sentence)
                 and len(sentence) >= 30 and (macro_report or business_fact(sentence)) and not _PRICE_EDITORIAL.search(sentence)

@@ -63,4 +63,6 @@ def test_comma_normalization_preserves_numeric_grouping():
 def test_comma_normalization_does_not_accept_changed_signal_strategy(separator):
     statement = '甲企业合乎定投的尺度' + separator + '乙企业有大额买入的余地。'
     client = Client(*[{'text': PROSE, 'signal_text': statement}] * 2)
-    assert write_intro(rows(), client=client) is None
+    result = write_intro(rows(), client=client)
+    assert result and '甲企业合乎大额买入的尺度' in result and '乙企业合乎定投的尺度' in result
+    assert '甲企业合乎定投' not in result and '乙企业有大额买入' not in result
