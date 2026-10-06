@@ -18,7 +18,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 16
+PRESENTATION_VERSION = 17
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -92,6 +92,25 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
             operations.append(name)
             text = updated
 
+    if _version >= 17 and re.match(r'^(?:一个数字|关键数字|数字一览|One Number|By the Numbers|At a Glance)[:：]', text, re.I):
+        from src.processors.event_semantics import EVENTS, MODALITY, NEGATION, event_pattern
+        from src.processors.translation_guard import _quantities
+        # Remove a repeated standfirst only when the reporting body starts
+        # with a configured issuer and repeats all its financial quantities.
+        aliases = [h.name for h in HOLDINGS]
+        for alias in sorted(aliases, key=len, reverse=True):
+            match = re.search(r'(?<![A-Za-z])' + re.escape(alias) + r'(?![A-Za-z])', text, re.I)
+            if match and match.start() > 0:
+                prefix, body = text[:match.start()], text[match.start():]
+                quantities = _quantities(prefix)
+                material = NEGATION + '|未|没|不|' + MODALITY + '|' + event_pattern('raise', 'cut', 'fall', 'approval', 'completion', 'acquisition', 'investment')
+                metrics = [EVENTS['revenue'], EVENTS['profit'], r'每.{0,7}员工|per employee']
+                matching_metric = (any(re.search(pattern, prefix, re.I) for pattern in metrics)
+                    and all(not re.search(pattern, prefix, re.I) or re.search(pattern, body, re.I) for pattern in metrics))
+                if quantities and not (quantities - _quantities(body)) and matching_metric and not re.search(material, prefix, re.I):
+                    record('repeated_standfirst', body)
+                    break
+
     if (_version >= 15 and re.search(r'\bbreak[ -]?even\b', original_text, re.I)
             and re.search(r'\b(?:jobs|payrolls|employment|unemployment)\b', original_text, re.I)
             and not re.search(r'\b(?:profit|revenue|cost|margin)\b', original_text, re.I)):
@@ -157,6 +176,10 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
         # metadata. Ordinary attribution ("与 Publisher 合作") remains prose.
         record("publisher_tail", re.sub(
             r"(?<=[。.!?！？%％])\s+" + re.escape(source) + r"[。.]?\s*$", "", text, flags=re.I))
+    if _version >= 17:
+        # All underscore fields must be navigation metadata, never a model ID.
+        navigation = r'(?:股市直播|财经|新闻|市场|快讯|动态|资讯|首页|公司|股票|证券)'
+        record('navigation_tail', re.sub(r'(?:_' + navigation + r'){2,}([。.]?)$', r'\1', text))
     if _version >= 7:
         text = re.sub(r"(?<=[一-鿿]) +(?=[一-鿿])", separator, text)
     pieces = re.split(r"(?<=[。!?！？])", text)
@@ -376,7 +399,7 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         if version >= 13 and row.get('macro_context_antecedent'):
             output = macro_context_text(output, row['macro_context_antecedent'])

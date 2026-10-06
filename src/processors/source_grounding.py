@@ -243,8 +243,8 @@ def publication_diagnostic(item) -> dict:
     }
 
 
-def recover_selected_translations(items, *, client, audit: list, limit=8) -> bool:
-    """One bounded translation batch for selected originals, never new selection."""
+def recover_selected_translations(items, *, client, audit: list, limit=8, max_attempts=1) -> bool:
+    """One bounded batch with repair for selected originals, never new selection."""
     from src.processors.translator import translate_in_place_news
 
     pending = []
@@ -261,7 +261,7 @@ def recover_selected_translations(items, *, client, audit: list, limit=8) -> boo
     record = {"phase": "selected_translation", "before": [publication_diagnostic(i) for i in pending]}
     audit.append(record)
     try:
-        translate_in_place_news(pending, client=client, max_attempts=1, timeout=20)
+        translate_in_place_news(pending, client=client, max_attempts=max_attempts, timeout=20)
     except Exception as exc:
         record["error"] = diagnostic_text(type(exc).__name__, 100)
     record["after"] = [publication_diagnostic(i) for i in pending]

@@ -3,7 +3,7 @@
 
 输入:list[FigureBundle](已经过 M3 第一道规则筛选 + 7 天 dedupe)
 处理:
-  1. 规则层预筛(__pre_rule_filter):候选必须含直接引语标记,否则丢弃
+  1. 规则层预筛:候选包含明确引述或发言场合，无需逐字引号
   2. LLM 层判断:是否为本人近期发声 + 质量评分(1-5) + 跨媒体合并 + 提炼关键观点
   3. 事实等价兜底:只删除规范化后相同的事实,未知改写保留候选
   4. 版面限流(select_voice_summaries):最多 3 位人物,每人最多 1 条观点
@@ -50,7 +50,7 @@ _QUOTE_MARKERS_RE = re.compile(
     r"|[「」]\s*[^「」]{6,}\s*[「」]"  # 中式引号
     r"|他说|她说|他表示|她表示|他认为|她认为|他指出|她指出"
     r"|表示称|声称|明确表示|公开表示|强调说"
-    r"|\bsaid\b|\bsays\b|told|stated|told reporters|in an interview|argued|claimed"
+    r"|\bsaid\b|\bsays\b|\btells?\b|told|stated|told reporters|in an interview|argued|claimed"
     r"|\b(?:warns?|warned|cautioned|noted|admitted|added|announces?|announced|expects?|predicts?|believes?|argues?)\b|表示|认为|指出|称|宣布"
     r"|发声|发表演讲|演讲中|采访中|公开信|致股东信",
     re.IGNORECASE,
@@ -68,6 +68,7 @@ def _has_quote_marker(item: FigureMention) -> bool:
     from src.collectors.frontier_labs import FRONTIER_LABS
     from src.config import HOLDINGS
     from src.processors.presentation_vocabulary import COMPANY_DISPLAY_NAMES
+    from src.processors.speaker_attribution import _SPEECH
 
     companies = {h.name for h in HOLDINGS} | {lab.name for lab in FRONTIER_LABS} | set(COMPANY_DISPLAY_NAMES.values())
     companies.update(alias for aliases in _RELEVANCE_KEYWORDS.values() for alias in aliases)
@@ -85,7 +86,37 @@ def _has_quote_marker(item: FigureMention) -> bool:
             return False
     if re.match(r"(?:" + '|'.join(re.escape(name) for name in companies) + r")\s*(?:表示|宣布|称|警告|预计)", title, re.I):
         return False
-    return bool(_QUOTE_MARKERS_RE.search(text))
+    return bool(_QUOTE_MARKERS_RE.search(text) or re.search(_SPEECH, text, re.I))
+
+
+def candidate_window(bundle: FigureBundle, *, limit=5) -> list[FigureMention]:
+    """Rank candidates, retaining alternative sources and every changed fact.
+
+    Identity/source ranks only allocate work; they never prove attribution or
+    freshness. Literal duplicate headlines share the first-pass slot, with
+    alternatives retained for bounded recovery.
+    """
+    from urllib.parse import urlsplit
+
+    from src.collectors.news_context import _HOSTS, _SOURCE_LABELS
+    from src.processors.speaker_attribution import _named_speech, needs_speaker_context
+    from src.utils.news_facts import canonical_fact
+
+    eligible = [i for i in bundle.items if meaningful_quote(i) and _has_quote_marker(i)]
+    def rank(item):
+        raw = plain_source(item.title) + ' ' + plain_source(item.snippet)
+        identity = (0 if _named_speech(raw, bundle.person, bundle.person_en)
+                    else 1 if needs_speaker_context(item, bundle.person, bundle.person_en) else 2)
+        supported = (urlsplit(item.url).hostname in _HOSTS or item.source.casefold() in _SOURCE_LABELS)
+        return identity, not bool(getattr(item, 'source_published_at', '')), not supported
+    ordered = sorted(eligible, key=rank)
+    primary, alternatives, seen = [], [], set()
+    for item in ordered:
+        title = re.sub(r'\s*[-–—|]\s*' + re.escape(item.source) + r'\s*$', '', plain_source(item.title), flags=re.I) if item.source else item.title
+        key = canonical_fact(title)
+        (alternatives if key in seen else primary).append(item)
+        seen.add(key)
+    return (primary + alternatives)[:limit]
 
 
 @dataclass
@@ -150,7 +181,8 @@ _TASK_INSTRUCTION = """\
    (直接引语 / 演讲 / 采访 / 正式声明 / 公开信 / 媒体明确归属于本人的转述)。无需逐字引号；可靠报道中“某人表示/预计/宣布”也是发言。不得仅因没有逐字原话而淘汰，但人物身份、实际观点及近期性必须有来源支持。下列情况一律 no:
    - **历史发言追忆/旧闻回顾**(关键!):任何"X 年 X 月某场会议曾说""19 年股东大会
      表示""巴菲特 2019 年的判断""老黄当年讲过"——历史发言不是当前发声,一律 no。
-     即使现在某媒体重新引用 2018-2024 年的旧话,也是 no。**只接受过去 7 天内本人
+     即使现在某媒体重新引用过去年份的旧话,也是 no。年份只是经营数据的比较基线时，
+     不能据此判为旧发言。**只接受过去 7 天内本人
      新发声**。
    - **年终回顾/盘点文章**:"2024 年最经典的 5 句话""年度发言精选" — 一律 no
    - **公司官方说法/产品发布稿**冒充人物发言(如"NVIDIA 称 DLSS 5 是…",这是公司
@@ -399,6 +431,7 @@ class _RecoveryBudget:
     # additionally enforces the production global token/time and wall cutoff.
     items: int = 6
     calls: int = 2
+    selection_calls: int = 2
 
 
 def _recover_selected(items, parsed, *, client, budget, audit):
@@ -436,7 +469,7 @@ def _recover_selected(items, parsed, *, client, budget, audit):
     return True
 
 
-def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, history=None, recovery_budget: _RecoveryBudget | None = None) -> FigureSummary:
+def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, history=None, recovery_budget: _RecoveryBudget | None = None, _backfill=True) -> FigureSummary:
     """加工单个人物。
     流程:
       1. 规则层:候选必须含直接引语标记(双引号包句、说/表示、said/told 等)
@@ -447,7 +480,8 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
     if not bundle.items:
         return FigureSummary(person=bundle.person, person_en=bundle.person_en, error=bundle.error)
     feed_items = [item for item in bundle.items if meaningful_quote(item)]
-    qualified = [it for it in feed_items if _has_quote_marker(it)][:max_items]
+    ranked = candidate_window(bundle, limit=max_items * 2)
+    qualified = ranked[:max_items]
     logger.info(
         "figure_filter.rule_pass person=%s in=%d qualified=%d",
         bundle.person, len(feed_items), len(qualified),
@@ -536,6 +570,19 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
                 "figure_filter.ok person=%s qualified=%d kept=%d attempt=%d",
                 bundle.person, len(qualified), len(parsed.items), attempt,
             )
+            if not kept and _backfill and recovery_budget.selection_calls > 0 and len(ranked) > max_items:
+                from src.collectors.news_context import enrich_speaker_context
+                recovery_budget.selection_calls -= 1
+                following = FigureBundle(bundle.person, bundle.query, bundle.person_en,
+                                         ranked[max_items:], bundle.error)
+                enrich_speaker_context([following], max_requests=2)
+                next_result = filter_one(following, client=client, max_items=max_items,
+                                         history=history, recovery_budget=recovery_budget, _backfill=False)
+                previous = result()
+                next_result.verification_audit = [*previous.verification_audit,
+                    {'phase': 'candidate_backfill', 'candidates': len(following.items)}, *next_result.verification_audit]
+                next_result.content_rejections = [*previous.content_rejections, *next_result.content_rejections]
+                return next_result
             return result()
 
         last_error = (

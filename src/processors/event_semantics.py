@@ -30,6 +30,7 @@ EVENTS = {
 # Direction synonyms are one fact, not separate events that a translation must
 # repeat twice ("revenue rose" and "revenue increased" both mean 营收增长).
 EVENTS["raise"] += "|" + EVENTS.pop("rise") + r"|\bexpanding\b"
+EVENTS['raise'] += r'|\brising\b|加大|加剧|\badds? to (?=(?:the )?(?:pressure|costs?|risks?|burden)\b)'
 EVENTS["cut"] += r"|\blayoffs?\b|走低"
 EVENTS["launch"] += r"|\bintroduc(?:e|es|ed|ing)\b|\bgoes live\b|上线|出台"
 EVENTS["payment"] += r"|开(?:出|具)(?:了)?(?:一张|季度|新的|另一张|又一张|一笔|新的季度|季度的|另一张季度)?支票|\bpayments?\b|\bpayable\b"
@@ -156,7 +157,7 @@ def document_types(text: str) -> set[str]:
     return {name for name, pattern in DOCUMENT_TYPES.items() if re.search(pattern, text, re.I)}
 
 # Future continuations and lending headlines keep their prospective status.
-MODALITY += r"|将(?=继续|持续|借出|放贷|离开|离职)"
+MODALITY += r"|将(?=继续|持续|借出|放贷|离开|离职)|旨在|(?<!同)意在|力求"
 
 # Curly and straight apostrophes carry the same negative contraction.
 NEGATION += r"|\b[A-Za-z]+n['’]t\b"

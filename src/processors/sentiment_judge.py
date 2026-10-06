@@ -338,9 +338,14 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
         errors.append("unsupported_strategy_claim")
     if any(label in text for _, label in VERDICT_THRESHOLDS if label != verdict):
         errors.append("verdict_mismatch")
-    if (re.search(r"故|所以|因此|因而|因.{0,30}(?:中性|偏冷|偏热)|使.{0,30}(?:评分|档位)|决定|导致|落在|落入", text)
-            and re.search(r"幅度|同向|方向一致|变化|微降|微升|升至|降至|回落|上升|下降|上涨|下跌", text)):
-        errors.append("delta_cannot_explain_level_score")
+    movement = r"幅度|同向|方向一致|变化|微降|微升|回升|升至|降至|回落|上升|下降|上涨|下跌"
+    causal = r"故|所以|因此|因而|使(?=.{0,30}(?:加权分|评分|档位))|决定|导致"
+    for clause in re.split(r'[；;。]', text):
+        for match in re.finditer(causal, clause):
+            prefix = clause[:match.start()]
+            moves = list(re.finditer(movement, prefix))
+            if moves and not re.search(r'当前水平|现值|当前值', prefix[moves[-1].end():]):
+                errors.append('delta_cannot_explain_level_score')
     aliases = {"CNN Fear & Greed": r"CNN|恐惧.*?贪婪", "VIX": r"VIX",
                "DXY": r"DXY|美元指数", "高收益债利差": r"高收益债|信用利差", "Shiller PE": r"Shiller|席勒"}
     scored = score_sentiment(bundle)
@@ -352,7 +357,16 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
         if expected is None or abs(value - expected) > .011:
             errors.append('unsupported_computed_number')
         return role
-    text = re.sub(r'(总分|评分|得分|落在)(?:为|是|[:：])?\s*(\d+(?:\.\d+)?)', verified_role, text)
+    text = re.sub(r'(总分|加权分|评分|得分|落在)(?:为|是|[:：])?\s*(\d+(?:\.\d+)?)', verified_role, text)
+    def combined_weight(match):
+        previous = text[:match.start()]
+        references = sorted((m.start(), name) for name, alias in aliases.items()
+                            for m in re.finditer(alias, previous, re.I))
+        names = list(dict.fromkeys(name for _, name in reversed(references)))[:{'两': 2, '三': 3}[match[1]]]
+        if len(names) != {'两': 2, '三': 3}[match[1]] or abs(float(match[2]) - sum(weights.get(n, 0) for n in names)) > .001:
+            errors.append('unsupported_weight')
+        return match[1] + '者权重合计'
+    text = re.sub(r'(两|三)者权重合计\s*(\d+(?:\.\d+)?)', combined_weight, text)
     mentioned = False
     metric_start = "|".join(aliases.values())
     last_metric = None
@@ -390,7 +404,7 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
                     suffix = clause[match.end():].lstrip()
                     if suffix.startswith('%') and (m.unit != '%' or role == 'delta'):
                         errors.append('unsupported_change_unit')
-            level_change = re.search(r"(?:从|由)\s*([+-]?\d+(?:\.\d+)?)%?\s*(?:微?升|降|回落|走阔|收窄)至\s*([+-]?\d+(?:\.\d+)?)", clause)
+            level_change = re.search(r"(?:从|由)\s*([+-]?\d+(?:\.\d+)?)%?\s*(?:微?升|微?降|回落|回升|走阔|收窄)至\s*([+-]?\d+(?:\.\d+)?)", clause)
             if level_change:
                 if m.prior is None or abs(float(level_change[1]) - m.prior) > .011:
                     errors.append('wrong_prior_value')

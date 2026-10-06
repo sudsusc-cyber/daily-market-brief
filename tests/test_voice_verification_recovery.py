@@ -123,7 +123,9 @@ def test_real_headlines_reproduce_rejection_without_claiming_original_translatio
     # A valid translation is not speaker identity: the first recovered RSS
     # headline contains only a surname, with no full-name source context.
     assert len(result.items) == 1
-    assert result.content_rejections == ['index=1 reason=speaker_identity_unverified']
+    # Named statements now rank before surname-only search matches. The index
+    # belongs to the actual ranked selection payload, not the collector order.
+    assert result.content_rejections == ['index=2 reason=speaker_identity_unverified']
     assert len(client.calls) == 2  # initial translation and selection; no repair needed
     assert [i.title for i in items] == [i["title"] for i in before]
     for point in result.items:

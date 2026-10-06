@@ -62,12 +62,18 @@ def _parse_lines(text: str) -> dict[int, str]:
             body = m.group(2).strip()
             # Some providers echo the multi-line input's JSON transport format.
             # Decode one complete string only, never interpret partial escapes.
-            if body.startswith('"') and re.search(r'\\[nr]', body):
+            if body.startswith(('"', '“')) and re.search(r'\\[nr]', body):
                 try:
                     decoded = json.loads(body)
                 except ValueError:
                     decoded = None
+                if decoded is None and body.startswith('“') and body.endswith('”'):
+                    decoded = body[1:-1]
                 if isinstance(decoded, str):
+                    # Some providers double-escape the complete transport
+                    # string. Decode only newline separators inside a complete
+                    # wrapper; all resulting facts still pass translation_errors.
+                    decoded = re.sub(r'\\{1,2}[nr]', '\n', decoded)
                     parts = [part.strip() for part in decoded.splitlines() if part.strip()]
                     body = ''
                     for part in parts:
@@ -97,7 +103,9 @@ def _repair_context(previous: dict) -> str:
     errors = previous.get('errors', [])
     if not errors:
         return ''
-    guidance = [hints.get(error, '对齐原文对应的动作、对象、数字和限定：' + error) for error in errors]
+    guidance = [('（' + error + '）保留原文缩写 ' + error.split(':', 1)[1] + '，中文名称后可用括号附上；不得替换或新增缩写'
+                 if error.startswith('identifier:') else hints.get(error, '对齐原文对应的动作、对象、数字和限定：' + error))
+                for error in errors]
     candidate = str(previous.get('candidate', ''))[:600]
     return '\n上次未通过核验的译文（仅供修正，不是事实依据）：' + candidate + '\n修正要求：' + '；'.join(guidance)
 

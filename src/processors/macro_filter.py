@@ -399,7 +399,7 @@ def summarize(
         indexes = list(dict.fromkeys(footnote_idx(m) for m in FOOTNOTE_RE.finditer(resp.text)))
         selected = [flat_items[i - 1] for i in indexes if 1 <= i <= len(flat_items)]
         if not recovery_attempted:
-            recovery_attempted = recover_selected_translations(selected, client=client, audit=audit)
+            recovery_attempted = recover_selected_translations(selected, client=client, audit=audit, max_attempts=2)
         body_html, footnotes = _rebuild_safe_html(resp.text.strip(), flat_items, evidence,
                                                 editorial_order=True, rejections=rejections, selection_audit=audit)
         if body_html:

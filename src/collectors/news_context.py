@@ -25,10 +25,14 @@ _HOSTS = {'www.digitaltoday.co.kr', 'digitaltoday.co.kr', 'www.cnbc.com', 'www.t
           'www.reuters.com', 'www.ft.com', 'www.bloomberg.com', 'www.benzinga.com', 'www.asml.com',
           'www.microsoft.com', 'blogs.nvidia.com', 'www.nvidia.com', 'www.amd.com', 'scanx.trade',
           'finance.yahoo.com', 'news.yahoo.com', 'www.storyboard18.com', 'www.livemint.com'}
+_HOSTS.update({'www.nbcnews.com', 'www.theguardian.com', 'fortune.com', 'www.forbes.com',
+               'www.theverge.com', 'qz.com', 'www.qz.com'})
 _SOURCE_LABELS = {'reuters', 'financial times', 'ft', 'bloomberg', 'benzinga', 'asml',
                   'microsoft blog', 'nvidia blog', 'nvidia', 'amd', 'amd ir', 'cnbc', 'scanx.trade',
                   'digitaltoday', 'digital today', "tom's hardware", "yahoo", "yahoo finance",
                   'storyboard 18', 'storyboard18', 'livemint'}
+_SOURCE_LABELS.update({'nbc news', 'the guardian', 'guardian', 'fortune', 'forbes',
+                       'the verge', 'quartz', 'qz.com'})
 _MAX_BYTES = 1_000_000
 
 
@@ -73,6 +77,8 @@ def _body(html, title, source):
     soup = BeautifulSoup(html, 'html.parser')
     headline = re.sub(r'\s*[-–—|]\s*' + re.escape(source) + r'\s*$', '', title) if source else title
     headings = [canonical_fact(h.get_text(' ', strip=True)) for h in soup.select('h1')]
+    if not headings:
+        headings = [canonical_fact(h.get('content', '')) for h in soup.select('meta[property="og:title"]')]
     if canonical_fact(headline) not in headings:
         raise ValueError('article_title_mismatch')
     article = soup.select_one('#article-view-content-div, [itemprop="articleBody"], .ArticleBody-articleBody, article, #article-body')
@@ -118,6 +124,20 @@ def _published_at(html, title, source):
                     except (ValueError, TypeError):
                         pass
                 pending.extend(value for value in node.values() if isinstance(value, (dict, list)))
+    # Standard article metadata is usable only on the exact article. Modified
+    # dates, website-level timestamps and an unrelated page never refresh it.
+    headings = [canonical_fact(h.get_text(' ', strip=True)) for h in soup.select('h1')]
+    if not headings:
+        headings = [canonical_fact(h.get('content', '')) for h in soup.select('meta[property="og:title"]')]
+    if canonical_fact(headline) in headings:
+        for tag in soup.select('meta[property="article:published_time"], meta[itemprop="datePublished"], time[itemprop="datePublished"]'):
+            raw = tag.get('content') or tag.get('datetime')
+            try:
+                value = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
+                if value.tzinfo is not None:
+                    values.append(value)
+            except (ValueError, TypeError):
+                pass
     return min(values).isoformat() if values else ''
 
 
@@ -189,7 +209,7 @@ def requires_speaker_date(item):
     return bool(title and (not summaries or all(text == title for text in summaries)))
 
 
-def enrich_speaker_context(bundles):
+def enrich_speaker_context(bundles, *, max_requests=3):
     """Recover identities and original dates within one prioritized budget.
 
     A name already present in a mirrored title does not waive date verification.
@@ -214,9 +234,11 @@ def enrich_speaker_context(bundles):
             needs_identity = (needs_speaker_context(item, bundle.person, bundle.person_en)
                               and not _named_speech(plain_source(item.title), bundle.person, bundle.person_en))
             if needs_identity or required:
-                candidates.append((not needs_identity, bundle, item))
-    candidates.sort(key=lambda row: row[0])
-    for date_only, bundle, item in candidates:
+                named = _named_speech(plain_source(item.title), bundle.person, bundle.person_en)
+                supported = urlsplit(item.url).hostname in _HOSTS or item.source.casefold() in _SOURCE_LABELS
+                candidates.append((not needs_identity, not named, not supported, bundle, item))
+    candidates.sort(key=lambda row: row[:3])
+    for date_only, _, _, bundle, item in candidates:
         required = requires_speaker_date(item)
         excerpt = context_excerpt(item, bundle.person, bundle.person_en) if not date_only else ''
         has_date = bool(getattr(item, 'source_published_at', ''))
@@ -234,7 +256,7 @@ def enrich_speaker_context(bundles):
             continue
         key = (item.url, item.title, item.source)
         if key not in cache:
-            if len(cache) >= 3:
+            if len(cache) >= max_requests:
                 item.speaker_context_diagnostic = ('source_date_unverified:request_limit' if required
                                                    else 'context_request_limit')
                 continue

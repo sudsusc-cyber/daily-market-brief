@@ -11,6 +11,15 @@ from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+_TIMEOUT_EVENTS: list[dict] = []
+
+
+def reset_timeout_events() -> None:
+    _TIMEOUT_EVENTS.clear()
+
+
+def timeout_events() -> list[dict]:
+    return [dict(row) for row in _TIMEOUT_EVENTS]
 
 
 class StageTimeout(BaseException):
@@ -37,6 +46,7 @@ class RuntimeBudget:
         remaining = min(seconds, self.deadline - time.monotonic())
         if remaining <= 0:
             logger.warning("runtime.stage_skipped name=%s budget_exhausted=true", name)
+            _TIMEOUT_EVENTS.append({'stage': name, 'reason': 'budget_exhausted', 'limit_seconds': 0})
             return fallback()
         if threading.current_thread() is not threading.main_thread() or not hasattr(signal, "setitimer"):
             # Never silently execute an unbounded operation on unsupported hosts.
@@ -66,6 +76,7 @@ class RuntimeBudget:
                                  previous_timer[1])
         if timed_out:
             logger.warning("runtime.stage_timeout name=%s limit_seconds=%.2f", name, limit)
+            _TIMEOUT_EVENTS.append({'stage': name, 'reason': 'timeout', 'limit_seconds': round(limit, 3)})
         return fallback()
 
 
