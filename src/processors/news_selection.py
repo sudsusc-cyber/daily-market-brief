@@ -70,6 +70,11 @@ def complete_excerpt(text: str, source_name: str = '') -> bool:
         return False
     if source_name:
         text = re.sub(r'(?:\s+[-–—|]\s*|\s{2,})' + re.escape(source_name) + r'\s*$', '', text, flags=re.I)
+    # A possessive cut off at the feed boundary is not a closing quotation.
+    # Keep genuine quoted sentences and names with an internal apostrophe.
+    if (re.search(r"[A-RT-Za-rt-z0-9]['’]\s*[.!?。]?\s*$", text)
+            and not re.search(r"(?<![\w])['‘]", text)):
+        return False
     if re.search(r'(?:\.{3}|…|\[\s*…\s*\])\s*[。.!！?？”’"\']*$', text):
         return False
     text = text.rstrip('。.!！?？ ”’"\'')
