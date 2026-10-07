@@ -52,14 +52,16 @@ OBJECTS = {
     "defense": r"missile|defen[cs]e|military|导弹|国防|军工",
     "trade": r"\b(?:tariffs?|trad(?:e|es|ing))\b|关税|贸易",
     "credit": r"subprime|credit risk|auto loans?|borrowers|次级|信贷|信用风险|汽车贷款|借款人",
-    "bonds": r"\bbonds?\b|债券|国债",
+    "bonds": r"\bbonds?\b|债券|债市|国债",
     "fx": r"\b(?:dollar|yuan|yen|euro|sterling)\b(?=\s+(?:\w+\s+){0,4}(?:best|worst|strongest|weakest)\s+(?:day|week|month|quarter|year)\b)|"
           r"\bforex\b|exchange rate|currency market|外汇|汇率|"
           r"\b(?:dollar|yuan|yen|euro|sterling)\b(?=\s+(?:index|powers?|gains?|rises?|falls?|drops?|surges?|weakens?|strengthens?|slides?|slips?|plunges?|slumps?))|"
           r"(?:美元|欧元|人民币|日元|英镑)(?=指数|汇率|走强|走弱|上涨|下跌|飙升|劲升)|"
           r"\bpressure on (?:the )?(?:dollar|yuan|yen|euro|sterling|single currency)\b|对(?:美元|欧元|人民币|日元|英镑)(?:的)?压力",
     "flows": r"capital flows|fund flows|foreign capital|资金流|外资",
-    "equity": r"\bIPO\b|listing|上市|招股|首次公开募股",
+    "equity": r"\bIPO\b|listing|上市|招股|首次公开募股|"
+              r"\b(?:stock|equity) markets?\b|\bS&P\s*500\b|\bNasdaq(?:[- ]100)?\b|\bDow(?: Jones)?\b|"
+              r"\b(?:AI|tech|technology|banking|European|Asian|global) stocks?\b|股市|股指|标普|纳斯达克|道琼斯",
     "election": r"election|electoral|选举|选务",
     "security": r"ceasefire|terror|suspects|战争|停火|嫌疑人|恐怖",
     "ai": r"\bAI\b|OpenAI|Anthropic|人工智能|模型",
@@ -73,7 +75,9 @@ ACTIONS = {
     "restriction": r"\b(?:curbs?|restrict\w*|bans?|banned|banning)\b|限制|禁令",
     "spending": r"contract|spending|合同|开支",
     "negotiation": r"negotia\w*|discuss\w*|talks|summit|bargain|谈判|磋商|峰会|讨论|施压",
-    "market_move": r"\b(?:rises?|falls?|rebounds?|gains?|drops?|surges?|yields?|selloff|steady|stable|suffer(?:s|ed)?)\b|上涨|下跌|上行|下行|反弹|承压|回升|走低|持稳|遭遇",
+    "market_move": r"\b(?:rises?|falls?|rebounds?|gains?|drops?|surges?|yields?|selloff|steady|stable|suffer(?:s|ed)?)\b|"
+                   r"\b(?:hits?|closes? at) (?:a |an )?(?:record high|fresh peak|new high|all[- ]time high)\b|"
+                   r"上涨|下跌|上行|下行|反弹|承压|回升|走低|持稳|遭遇|创(?:下)?(?:历史)?新高|收于(?:历史)?新高",
     "decision": r"announc\w*|approv\w*|reject\w*|宣布|批准|拒绝|决定",
 }
 ACTORS = {
@@ -207,6 +211,13 @@ def extract_event(text: str) -> MacroEvent:
     actors = [s for s in spans if s.kind == "actor"]
     regions = {s.value for s in spans if s.kind == "region"}
     focus = _focus(text)
+    focused_objects = {s.value for s in objs if focus[0] <= s.start < focus[1]}
+    if ({"equity", "bonds"} <= focused_objects
+            and any(s.value == "us_bonds" for s in objs)
+            and re.search(r"\band\b|与|及|、", text[focus[0]:focus[1]], re.I)):
+        # Parallel stock/bond reactions share the explicitly named Treasury
+        # driver; a single stock-index event keeps its own primary focus.
+        focus = (0, len(text))
     candidates = []
     # Object-specificity and same-clause action bindings replace first-hit wins.
     for obj in objs:
@@ -232,6 +243,15 @@ def extract_event(text: str) -> MacroEvent:
             score += 20 if any(s.value == "release" for s in local_actions) else 0
         if family == "us_bonds":
             score += 35
+        if family == "bonds" and "equity" in local_objects:
+            clause = text[clause_start:clause_end]
+            yield_pressure = re.search(
+                r"(?<![未不])受(?:到)?[^。；;!?]{0,30}(?:债券|国债)[^。；;!?]{0,15}收益率[^。；;!?]{0,20}影响|"
+                r"\b(?:weighed down|hurt|pressured|affected) by [^.!?;]{0,35}\bbond yields?\b",
+                clause, re.I,
+            )
+            if yield_pressure and not re.search(r"没有受|\b(?:not|never) (?:affected|hurt|pressured)\b", clause, re.I):
+                score += 15
         if family == 'fx' and re.match(r'pressure on|对', obj.text, re.I):
             # The currency is the affected object; energy prices or public
             # finances in the same clause are causes, not the editorial topic.
