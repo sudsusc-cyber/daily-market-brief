@@ -279,7 +279,9 @@ def extract_event(text: str) -> MacroEvent:
     decision = "object_action_in_focus" if chosen else "unresolved"
     main = text[focus[0] : focus[1]]
     main_regions = {s.value for s in spans if s.kind == "region" and focus[0] <= s.start < focus[1]}
-    if family != "us_bonds" and (
+    if re.search(r'\b(?:plague|infectious disease|epidemic|pandemic|outbreak|COVID)\b|鼠疫|传染病|疫情', main, re.I):
+        topic, decision = '公共卫生', 'public_health_context'
+    elif family != "us_bonds" and (
         re.search(r"中美|美中|Sino[ -]American|U\.?S\.?[ -]China|China[ -]U\.?S\.?", main, re.I)
         or (
             {"china", "us"} <= main_regions

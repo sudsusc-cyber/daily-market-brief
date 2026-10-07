@@ -112,6 +112,7 @@ def _repair_context(previous: dict) -> str:
         'entity_order': '保持发言者、动作主体和对象的关系，署名位置可变，主客体不可颠倒',
         'quantities_or_units': '逐项核对数字、币种、单位、上限及其所属指标',
         'economic_amount_role': '金额的经济含义必须一致，资产规模、收入和支出不可互换',
+        'not_chinese': '普通英文动词和连接词也须译为自然中文；公司、人物、产品名与缩写可以保留',
     }
     errors = previous.get('errors', [])
     if not errors:

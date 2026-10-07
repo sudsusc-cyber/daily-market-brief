@@ -45,6 +45,23 @@ SMTP accepted all four recipients; delivery success did not imply content health
 
 ## Evidence and boundaries
 
+The full production-path preview 37560336629 completed without SMTP and restored
+three voices (Jensen Huang, Lisa Su, Sam Altman). It also exposed a truncated
+listing credit on Lisa Su's headline, a partly untranslated bond sentence,
+Russian public-health news labelled as Ukraine-war news, and older metadata
+dates being called newer estimates. These cases are retained in a second fixture.
+
+The final follow-up recovers complete statements before nominal exchange credits,
+requires ordinary predicates to be translated, leaves rolling-page date labels
+out of macro facts, and classifies explicit public-health reporting separately.
+Update warnings compare actual valuation dates rather than declaring every quote
+page date new. Already verified numerical estimates use a cheap exact-issuer
+update-date/report-directory check when both show no newer information. New,
+unknown or unresolved updates still require actual reading; the numerical
+verification clock never advances from a metadata-only request. Timeout reasons
+and outer-watchdog snapshots retain the cooldown even when a lower-level source
+failure has already been logged.
+
 `tests/fixtures/october7_publication_sources.json` retains the actual public
 source packets and selected/rejected speaker candidates, without recipients or
 credentials. Positive recovery and negative amount/identity/date cases replay

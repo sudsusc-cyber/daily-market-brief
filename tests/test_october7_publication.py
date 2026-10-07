@@ -118,6 +118,15 @@ def test_date_fallback_cannot_publish_known_old_statement_or_wrong_speaker():
     assert not attribution(item, '黄仁勋', 'Jensen Huang', excerpt=item.title, allow_recent_reporting=True)
 
 
+def test_voice_label_uses_original_publisher_date_instead_of_rss_reposting():
+    item = voice()
+    item.source_published_at = '2026-10-04T12:00:00+08:00'
+    client = SimpleNamespace(chat=lambda *a, **kw: SimpleNamespace(
+        text='▦ 1: yes | score=4 | ' + item.source_excerpt, error=None))
+    result = filter_one(FigureBundle('黄仁勋', 'query', 'Jensen Huang', [item]), client=client)
+    assert result.items[0].date_note == '报道日期 10-04'
+
+
 def test_voice_enrichment_rotates_people_within_the_request_budget(monkeypatch):
     from src.collectors import news_context
 

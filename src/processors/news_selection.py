@@ -60,6 +60,8 @@ def sentences(text: str) -> list[str]:
 def complete_excerpt(text: str, source_name: str = '') -> bool:
     """Reject observable RSS truncation; source-field boundaries are not sentences."""
     text = plain_source(text).strip()
+    if any(text.count(left) != text.count(right) for left, right in (('(', ')'), ('（', '）'), ('[', ']'))):
+        return False
     # A trailing bare reduplicated Chinese modifier is an observable cut-off,
     # even when the RSS producer omitted its ellipsis. Keep complete sentences.
     if re.search(r'(?:^|[。！？])\s*([\u4e00-\u9fff])\1\s*[。！？]?\s*$', text):
@@ -97,6 +99,10 @@ def chinese_prose(text: str) -> bool:
     # English sentence must not qualify it as a Chinese article.
     chinese = len(re.findall(r'[一-鿿]', text))
     latin_words = len(re.findall(r'\b[A-Za-z]{2,}\b', text))
+    # Proper names and acronyms may stay Latin; ordinary English predicates
+    # cannot turn into Chinese merely by translating the noun before them.
+    if any(not m[0].isupper() for m in re.finditer(r'\b(?:dropped|climbed|fell|rose|grew|declined|increased|falls|rises|raises|cuts|reports|buys|sells|said|says|warned|warns|expects|expected|announced|launches|launched|acquired|plans|will|would|could|should|was|were|is|are|has|have|not)\b', text, re.I)):
+        return False
     return chinese >= 2 and chinese >= latin_words
 
 
@@ -270,6 +276,13 @@ def editorial_headline_excerpt(text: str) -> str:
     """An exact headline span without delimited format labels or video credits."""
     start = re.match(r"(?:(?:FULL|EXCLUSIVE|LIVE)\s+(?:INTERVIEW|REPORT|COVERAGE)|BREAKING\s+NEWS)\s*[:：]\s*", text, re.I)
     cleaned = text[start.end():] if start else text
+    # Publisher stock-page credits can be truncated at an exchange symbol.
+    # Recover the intact statement before that delimited, nominal listing tail.
+    from src.processors.news_presentation import _EXCHANGES
+
+    listing = re.search(r'\s+[-–—|]\s+[A-Z][A-Za-z0-9 .&\'’,-]{1,100}\s*\((?:' + _EXCHANGES + r')\s*:\s*[A-Z0-9.-]+\)?(?:\s+[-–—|]\s+[^\n]+)?$', cleaned)
+    if listing and not re.search(r'\b(?:raises?|cuts?|expects?|says?|announces?|will|would|could|may|reports?|grows?)\b', cleaned[listing.start():], re.I):
+        cleaned = cleaned[:listing.start()]
     # Only a labelled media headline plus an explicit trailing opaque media ID
     # provides enough structure to distinguish credits from factual clauses.
     if start:
@@ -475,7 +488,9 @@ def macro_geography_context(item) -> str:
     referential = re.search(r'\b(?:the single currency|this currency|the currency|the metal|the index|the benchmark)\b|这一单一货币|该货币|这一货币|该指数|该金属|这一基准', summary, re.I)
     from src.collectors.macro_news import MacroNewsItem
 
-    title_quantities = isinstance(item, MacroNewsItem) and bool(re.search(r'\d', title)) and not re.search(r'\d', summary)
+    title_quantities = (isinstance(item, MacroNewsItem) and bool(re.search(r'\d', title))
+                        and not re.search(r'\d', summary)
+                        and not re.match(r'Latest .*News and Analysis|.*: Markets Wrap$', title, re.I))
     context_needed = bool(missing or title_quantities or referential or dependent_excerpt(summary))
     combined = title + '\n' + summary
     if (context_needed and len(combined) <= 900
