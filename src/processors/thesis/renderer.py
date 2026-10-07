@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 13
+_VERSION = 14
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -60,7 +60,8 @@ class WatchRule:
         from src.processors.news_selection import reporting_text
 
         # A masthead and separate background sentence cannot supply the action.
-        return any(re.search(self.subject, clause, re.I) and re.search(self.action, normalize_event_text(clause), re.I)
+        return any(re.search(self.subject, clause, re.I) and re.search(self.action,
+                   re.sub(r"\binvestment[- ]grade\b|投资级(?:别)?", "", normalize_event_text(clause), flags=re.I), re.I)
                    for clause in re.split(r"[。；;!?]|(?<!\bInc)\.(?=\s+[A-Z])|\b(?:while|whereas)\b", reporting_text(text), flags=re.I))
 
 
