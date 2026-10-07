@@ -1,0 +1,60 @@
+{
+  "schema_version": "2.0",
+  "source": "Morningstar public research",
+  "fair_values": [
+    {
+      "ticker": "MSFT",
+      "provider_code": "XNAS:MSFT",
+      "fair_value": 600.0,
+      "currency": "USD",
+      "rating_type": "published-research",
+      "fair_value_updated_at": "2026-09-25",
+      "retrieved_at": "2026-10-05T23:08:17.592861+00:00",
+      "source_provider": "Morningstar public research via Jina Reader",
+      "source_url": "https://www.morningstar.com/stocks/10-best-blue-chip-stocks-buy-long-term",
+      "observation_count": 4,
+      "fallback_used": false,
+      "warning": "独立分发报告已复核；新报告可能继续维持原公允价值",
+      "stale_cache": false,
+      "report_published_at": "2026-09-25T08:00:00+00:00",
+      "evidence": [
+        {
+          "ticker": "MSFT",
+          "provider_code": "XNAS:MSFT",
+          "currency": "USD",
+          "fair_value": 600.0,
+          "report_published_at": "2026-09-25T08:00:00+00:00",
+          "valuation_as_of": "2026-09-22",
+          "retrieved_at": "2026-10-05T23:08:17.592861+00:00",
+          "source_url": "https://www.morningstar.com/stocks/10-best-blue-chip-stocks-buy-long-term",
+          "source_provider": "Morningstar public research via Jina Reader"
+        },
+        {
+          "ticker": "MSFT",
+          "provider_code": "XNAS:MSFT",
+          "currency": "USD",
+          "fair_value": 600.0,
+          "report_published_at": "2026-08-11T06:00:00+00:00",
+          "valuation_as_of": null,
+          "retrieved_at": "2026-10-05T23:08:17.592861+00:00",
+          "source_url": "https://global.morningstar.com/en-nd/stocks/after-earnings-is-microsoft-stock-buy-sell-or-fairly-valued-6",
+          "source_provider": "Morningstar public research via Jina Reader"
+        },
+        {
+          "ticker": "MSFT",
+          "provider_code": "XNAS:MSFT",
+          "currency": "USD",
+          "fair_value": 600.0,
+          "report_published_at": "2026-07-31T00:27:44+00:00",
+          "valuation_as_of": null,
+          "retrieved_at": "2026-10-05T23:08:17.592861+00:00",
+          "source_url": "https://finance.yahoo.com/research/reports/MS_0P000003MH_AnalystReport_1785457664000/",
+          "source_provider": "Morningstar report distributed by Yahoo Finance"
+        }
+      ],
+      "historical_only": false,
+      "extraction_verified": true,
+      "valuation_as_of": "2026-09-22"
+    }
+  ]
+}

@@ -80,6 +80,9 @@ def _fetch(url):
 def _body(html, title, source):
     soup = BeautifulSoup(html, 'html.parser')
     headline = re.sub(r'\s*[-–—|]\s*' + re.escape(source) + r'\s*$', '', title) if source else title
+    from src.processors.news_selection import editorial_headline_excerpt
+
+    headline = editorial_headline_excerpt(headline) or headline
     headings = [canonical_fact(h.get_text(' ', strip=True)) for h in soup.select('h1')]
     if not headings:
         headings = [canonical_fact(h.get('content', '')) for h in soup.select('meta[property="og:title"]')]
@@ -108,6 +111,9 @@ def _published_at(html, title, source):
     """Only datePublished for this exact article, never dateModified/fetch time."""
     soup = BeautifulSoup(html, 'html.parser')
     headline = re.sub(r'\s*[-–—|]\s*' + re.escape(source) + r'\s*$', '', title) if source else title
+    from src.processors.news_selection import editorial_headline_excerpt
+
+    headline = editorial_headline_excerpt(headline) or headline
     values = []
     for script in soup.select('script[type="application/ld+json"]'):
         try:

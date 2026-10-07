@@ -362,10 +362,11 @@ def _economic_amount_roles(text: str) -> dict:
 
 
 def translation_errors(original: str, translated: str) -> list[str]:
-    from src.processors.news_selection import strip_source_prefix
+    from src.processors.news_selection import chinese_prose, strip_source_prefix
 
     original = strip_source_prefix(unicodedata.normalize('NFKC', original))
     translated = strip_source_prefix(unicodedata.normalize('NFKC', translated))
+    language_ok = chinese_prose(translated)
     # Release of people is not a product launch. Preserve the rest of the clause,
     # including negation, numbers and entities, for the checks below.
     original = re.sub(r"\breleas(?:e|es|ed|ing)(?=\s+(?:(?:the|a|two|three|\d+)\s+)?(?:suspects?|prisoners?|hostages?)\b)",
@@ -448,7 +449,7 @@ def translation_errors(original: str, translated: str) -> list[str]:
     if (re.search(r'\blegal (?:costs?|fees?|bills? (?:stack up|mount|pile up))\b', original, re.I)
             and re.search(r'法案|议案|法律草案', translated)):
         errors.append('legal_cost_sense')
-    if not re.search(r'[一-鿿]', translated):
+    if not language_ok:
         errors.append('not_chinese')
     if _capital_amount_bindings(original) != _capital_amount_bindings(translated):
         errors.append('capital_amount_scope')

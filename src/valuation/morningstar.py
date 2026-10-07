@@ -624,6 +624,45 @@ class MorningstarPublicProvider:
         self._validated_secondary: dict[str, MorningstarFairValue] = {}
         self._inflight_failures: dict[str, str] = {}
         self._failed_attempt_at: dict[str, datetime] = {}
+        self._verified_history: dict[str, MorningstarFairValue] = {}
+
+    def seed_verified_history(self, values: Mapping[str, MorningstarFairValue]) -> None:
+        self._verified_history = {t: v for t, v in values.items() if not v.historical_only}
+
+    def _unchanged_history(self, security, checked_at):
+        """Probe update metadata before downloading unchanged reports twice.
+
+        Numeric evidence and its retrieval clock are retained verbatim. A newer
+        value date or analyst report still enters the full reading path.
+        """
+        old = self._verified_history.get(security.ticker)
+        if old is None:
+            return None
+        if re.search(r'尚未核实|最新.{0,20}未确认|冲突|分歧|未通过', old.warning or ''):
+            return None
+        exchange, symbol = security.provider_code.lower().split(':')
+        url = f'https://www.morningstar.com/stocks/{exchange}/{symbol}/quote'
+        try:
+            response = self._reader_get(_JINA_READER + url.split('://', 1)[1])
+            response.raise_for_status()
+            _validate_identity(response.text, security, url)
+            latest = _quote_fair_value_date(response.text)
+            reports = [c for c in _parse_quote_candidates(response.text) if c.url.endswith('/analysis') and c.published_at]
+            self.discovery_diagnostics[security.ticker] = {
+                'discovered_at': checked_at.isoformat(), 'source_url': url,
+                'official_fair_value_date': latest.date().isoformat() if latest else None,
+                'latest_analysis': [{'source_url': c.url, 'published_at': c.published_at.isoformat()} for c in reports],
+            }
+            if (latest is None or latest.date() > checked_at.astimezone(UTC).date()
+                    or latest.date() > _valuation_time(old).date()
+                    or any(c.published_at > _report_time(old) for c in reports)):
+                return None
+        except (requests.RequestException, ValueError, TypeError):
+            return None
+        self.discovery_diagnostics[security.ticker]['value_read'] = 'unchanged_verified_history'
+        self.discovery_diagnostics[security.ticker]['numeric_verified_at'] = old.retrieved_at
+        return replace(old, stale_cache=False, fallback_used=False,
+                       warning='公开更新日期未晚于已核实报告；金额与原核验时间保持不变')
 
     def _reader_get(self, url: str) -> requests.Response:
         """节流并重试公共文本镜像，避免一封邮件的双读触发临时限流。"""
@@ -856,7 +895,7 @@ class MorningstarPublicProvider:
         self._inflight_failures = {}
         self._validated_secondary = {}
         # Keep discovery for failed issuers during this run's short cooldown.
-        return self._budget.run(
+        result = self._budget.run(
             "morningstar",
             lambda: self._fetch_all(securities, checked_at=checked_at),
             seconds=self.stage_seconds,
@@ -870,6 +909,13 @@ class MorningstarPublicProvider:
                 },
             ),
         )
+        # The outer watchdog can fire before _fetch_all reaches its memo write.
+        # Preserve that completed/failure snapshot too, so the final check cannot
+        # immediately repeat an entire timed-out round.
+        self._memo = (checked_at.astimezone(UTC), dict(result[0]), dict(result[1]))
+        for ticker in result[1]:
+            self._failed_attempt_at.setdefault(ticker, checked_at.astimezone(UTC))
+        return result
 
     def _fetch_all(
         self,
@@ -914,10 +960,11 @@ class MorningstarPublicProvider:
             def unavailable(ticker=ticker):
                 # Never publish a candidate interrupted before reconciliation.
                 values.pop(ticker, None)
-                reason = self._inflight_failures.get(ticker, "标的取数预算耗尽，已保留诊断并检查有效历史值")
+                reason = '标的取数超时；' + self._inflight_failures.get(ticker, "已保留诊断并检查有效历史值")
                 latest = self.discovery_diagnostics.get(ticker, {}).get('official_fair_value_date')
-                failures[ticker] = (f"官方公允价值日期 {latest} 的新金额尚未核实；{reason}" if latest else reason)
+                failures[ticker] = (f"官方页面日期 {latest}；{reason}" if latest else reason)
                 self._inflight_failures[ticker] = failures[ticker]
+                self._failed_attempt_at[ticker] = checked_at.astimezone(UTC)
             self._budget.run(
                 f"morningstar.issuer.{ticker}",
                 lambda ticker=ticker, security=security, seconds=seconds: self._fetch_one(
@@ -936,6 +983,11 @@ class MorningstarPublicProvider:
 
     def _fetch_one(self, ticker, security, checked_at, values, failures, seconds):
         """Interleave discovery and independent evidence, with fair issuer budgets."""
+        unchanged = self._unchanged_history(security, checked_at)
+        if unchanged is not None:
+            values[ticker] = unchanged
+            self._inflight_values[ticker] = unchanged
+            return
         secondary_values: dict[str, MorningstarFairValue] = {}
         secondary_failures: dict[str, str] = {}
         if self.secondary_provider is not None:
@@ -1130,7 +1182,7 @@ class MorningstarPublicProvider:
             failures[ticker] = values[ticker].warning or "新金额未核实"
         elif ticker not in values and latest:
             failures[ticker] = (
-                f"官方公允价值日期 {latest} 的新金额尚未核实；{failures.get(ticker, '')}"
+                f"官方页面日期 {latest}，本次金额未读取；{failures.get(ticker, '')}"
             )[:500]
         self.discovery_diagnostics.setdefault(ticker, {})["distributed_report"] = (
             getattr(self.secondary_provider, "discovery_diagnostics", {}).get(ticker)
@@ -1531,6 +1583,9 @@ def refresh_fair_values(
         state_dir=state_dir, checked_at=checked_at, prices=prices, baseline_path=baseline_path
     )
     securities = {ticker: security for ticker, security in SECURITIES.items() if ticker not in excluded_tickers}
+    if isinstance(provider, MorningstarPublicProvider):
+        provider.seed_verified_history({t: v for t, v in previous.items()
+            if max_cache_age is None or checked_at.astimezone(UTC) - _retrieved_at(v) <= max_cache_age})
     try:
         live, failures = provider.fetch_all(securities, checked_at=checked_at)
     except Exception as exc:  # noqa: BLE001
@@ -1572,6 +1627,10 @@ def refresh_fair_values(
             and (max_cache_age is None or age <= max_cache_age)
         ):
             reason = final_failures.get(ticker, "主源本次未返回")
+            discovery = _discovery_record(provider, ticker) or {}
+            latest = discovery.get('official_fair_value_date')
+            if latest and _timestamp(latest).date() > _valuation_time(old).date():
+                reason = f"官方公允价值日期 {latest} 的新金额尚未核实；{reason}"
             accepted[ticker] = replace(
                 old,
                 fallback_used=True,

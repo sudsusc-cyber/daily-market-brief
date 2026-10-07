@@ -1,0 +1,90 @@
+{
+  "macro": [
+    {
+      "original_title": "Oil rises as concerns over Houthi attacks on Saudi Arabia eclipse supply recovery",
+      "original_summary": "Oil rose Wednesday, as concerns over attacks by Yemen's Iran-backed Houthis on Saudi Arabia outweigh a higher crude supply in Middle East.",
+      "excerpt": "Oil rose Wednesday, as concerns over attacks by Yemen's Iran-backed Houthis on Saudi Arabia outweigh a higher crude supply in Middle East.",
+      "validated_text": "油价周三上涨，因对也门伊朗支持的胡塞武装袭击沙特阿拉伯的担忧，超过了中东原油供应增加的影响。",
+      "output_text": "油价周三上涨，因对也门伊朗支持的胡塞武装袭击沙特阿拉伯的担忧，超过了中东原油供应增加的影响。",
+      "published_at": "2026-10-07 02:09:50+00:00",
+      "url": "https://www.cnbc.com/2026/10/07/oil-prices-today-brent-wti-hormuz.html",
+      "source_name": "CNBC",
+      "presentation_speaker": "",
+      "source_published_at": ""
+    },
+    {
+      "original_title": "Latest Oil Market News and Analysis for Oct. 7",
+      "original_summary": "Oil gained as traders weighed increased flows through the Strait of Hormuz against a pickup in Iranian attacks against vessels.",
+      "excerpt": "Latest Oil Market News and Analysis for Oct. 7\nOil gained as traders weighed increased flows through the Strait of Hormuz against a pickup in Iranian attacks against vessels.",
+      "validated_text": "10 月 7 日最新石油市场新闻与分析。油价上涨，交易员在霍尔木兹海峡流量增加与伊朗对船只袭击增多之间权衡。",
+      "output_text": "10 月 7 日最新石油市场新闻与分析。油价上涨，交易员在霍尔木兹海峡流量增加与伊朗对船只袭击增多之间权衡。",
+      "published_at": "2026-10-06 22:02:47+00:00",
+      "url": "https://www.bloomberg.com/news/articles/2026-10-06/latest-oil-market-news-and-analysis-for-oct-7",
+      "source_name": "Bloomberg",
+      "presentation_speaker": "",
+      "source_published_at": ""
+    },
+    {
+      "original_title": "Russia plague: How great is the global risk? Maybe low, but infectious disease experts want more data",
+      "original_summary": "Uncertainty surrounds the death of an employee at a Russian anti-plague institute. Here's what infectious disease experts say about how worried you should be.",
+      "excerpt": "Uncertainty surrounds the death of an employee at a Russian anti-plague institute.",
+      "validated_text": "俄罗斯一家抗鼠疫研究所一名员工的死亡笼罩着不确定性。",
+      "output_text": "俄罗斯一家抗鼠疫研究所一名员工的死亡笼罩着不确定性。",
+      "published_at": "2026-10-06 21:13:30+00:00",
+      "url": "https://www.cnbc.com/make-it/2026/10/06/russia-plague-global-risk.html",
+      "source_name": "CNBC",
+      "presentation_speaker": "",
+      "source_published_at": ""
+    },
+    {
+      "original_title": "Asian Stocks Edge Lower, Bonds Fall as Oil Climbs: Markets Wrap",
+      "original_summary": "Asian stocks failed to join a rally on Wall Street that took it to record highs on optimism over earnings outlook. Treasuries dropped as oil climbed.",
+      "excerpt": "Treasuries dropped as oil climbed.",
+      "validated_text": "Treasuries dropped as oil climbed.",
+      "output_text": "美国国债 dropped as oil climbed.",
+      "published_at": "2026-10-06 22:12:38+00:00",
+      "url": "https://www.bloomberg.com/news/articles/2026-10-06/stock-market-today-dow-s-p-live-updates",
+      "source_name": "Bloomberg",
+      "presentation_speaker": "",
+      "source_published_at": ""
+    }
+  ],
+  "figures": [
+    {
+      "original_title": "Nvidia CEO Jensen Huang Says US Companies Should 'Absolutely' Use Chinese AI Models Despite Bessent’s Sanctions Warning - Stocktwits",
+      "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMi7wFBVV95cUxQVmpnTkVlbWgtcldrX2h6bXZjVHdKcnhvY25fTXJGYzZ1a1VOZXFpa2lyN29tYTVaVUtvOFBMaEtMdzV6eDJhNXljZ1VxN19keE5PSjliR3U2YnBNNXc3NjVLY0xmVmpTYVpiOXZyVEM1aVVqTE9MTUtmYW9hZ2c4LTA4Qmp4X0tSa1MzRWREb3gwOTVJc2VRNmc3MzY3T04yT0dlbXM2LTlYQXBJTUs0RkRUZVB0bmRPdjFEaml3ekl4YmtzNGk1QVIzZjI2cWcyUmEzMGpENGxPZlpiZEV6S3g4TkEtZC12cDk5R1B0NA?oc=5\" target=\"_blank\">Nvidia CEO Jensen Huang Says US Companies Should 'Absolutely' Use Chinese AI Models Despite Bessent’s Sanctions Warning</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">Stocktwits</font>",
+      "excerpt": "Nvidia CEO Jensen Huang Says US Companies Should 'Absolutely' Use Chinese AI Models Despite Bessent’s Sanctions Warning - Stocktwits",
+      "validated_text": "Nvidia CEO Jensen Huang 称美国公司“绝对”应该使用中国 AI 模型，尽管 Bessent 发出制裁警告 - Stocktwits",
+      "output_text": "美国公司“绝对”应该使用中国 AI 模型，尽管 Bessent 发出制裁警告",
+      "published_at": "2026-10-05 19:57:36+00:00",
+      "url": "https://news.google.com/rss/articles/CBMi7wFBVV95cUxQVmpnTkVlbWgtcldrX2h6bXZjVHdKcnhvY25fTXJGYzZ1a1VOZXFpa2lyN29tYTVaVUtvOFBMaEtMdzV6eDJhNXljZ1VxN19keE5PSjliR3U2YnBNNXc3NjVLY0xmVmpTYVpiOXZyVEM1aVVqTE9MTUtmYW9hZ2c4LTA4Qmp4X0tSa1MzRWREb3gwOTVJc2VRNmc3MzY3T04yT0dlbXM2LTlYQXBJTUs0RkRUZVB0bmRPdjFEaml3ekl4YmtzNGk1QVIzZjI2cWcyUmEzMGpENGxPZlpiZEV6S3g4TkEtZC12cDk5R1B0NA?oc=5",
+      "source_name": "Stocktwits",
+      "presentation_speaker": "黄仁勋",
+      "source_published_at": ""
+    },
+    {
+      "original_title": "AMD CEO Lisa Su Says AI Demand Will Stay ‘Very, Very High’ for Years - Advanced Micro Devices (NASDAQ:AMD - Benzinga",
+      "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMimwFBVV95cUxPZFotcXRrTWFUMHNqMzNLc1pHMVlKcnAyODFXbnk2TEhwY050SFBOWF9NbVNXWnV6eXFCX1RTdFA4OEt5ZGJHTWxPUkZVdUpvSktESXdBbUF6SmJmZGFaUHlnQ2ZlbmVyall4S2pqenZDdFpPOFlvZFJYMUE1ZlJDNzVPamJOVnZuS1kwQ3E5RDlRbkNJbkpfelNRYw?oc=5\" target=\"_blank\">AMD CEO Lisa Su Says AI Demand Will Stay ‘Very, Very High’ for Years - Advanced Micro Devices (NASDAQ:AMD</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">Benzinga</font>",
+      "excerpt": "AMD CEO Lisa Su Says AI Demand Will Stay ‘Very, Very High’ for Years - Advanced Micro Devices (NASDAQ:AMD - Benzinga",
+      "validated_text": "AMD CEO Lisa Su 称 AI 需求将在数年内保持“非常非常高” - Advanced Micro Devices (NASDAQ:AMD - Benzinga",
+      "output_text": "AI 需求将在数年内保持“非常非常高” - Advanced Micro Devices (NASDAQ:AMD",
+      "published_at": "2026-10-06 13:39:41+00:00",
+      "url": "https://news.google.com/rss/articles/CBMimwFBVV95cUxPZFotcXRrTWFUMHNqMzNLc1pHMVlKcnAyODFXbnk2TEhwY050SFBOWF9NbVNXWnV6eXFCX1RTdFA4OEt5ZGJHTWxPUkZVdUpvSktESXdBbUF6SmJmZGFaUHlnQ2ZlbmVyall4S2pqenZDdFpPOFlvZFJYMUE1ZlJDNzVPamJOVnZuS1kwQ3E5RDlRbkNJbkpfelNRYw?oc=5",
+      "source_name": "Benzinga",
+      "presentation_speaker": "苏妈",
+      "source_published_at": ""
+    },
+    {
+      "original_title": "OpenAI CEO Sam Altman says people need to 'accept some bad things' for the benefits of AI - NBC News",
+      "original_summary": "<a href=\"https://news.google.com/rss/articles/CBMiygFBVV95cUxQZlk3TTFVR01UZUViRkFrajV5OFpWSnZvNnNFdVdpb1I4Rm9zWmRyTHo2MmZCa1pCTVNTbTUtaGpTSE8tQ1k3SVg4UkZtSUhqblpKWlBWS2VLQ182cExZa0l6NzZBWG4zS0tCbngxT0tuck9LUkk1NHQzejFyTUhQanRCX0QtYnhlSVRiN0RrZ29iYU4yWC05ZHA4VjNwNEZoaVJJQlhYaXgtYlE2UWtHTTlUX2U4OFRkdjA0S0pRczIzb2gtbWZOMV9R?oc=5\" target=\"_blank\">OpenAI CEO Sam Altman says people need to 'accept some bad things' for the benefits of AI</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">NBC News</font>",
+      "excerpt": "OpenAI CEO Sam Altman says people need to 'accept some bad things' for the benefits of AI - NBC News",
+      "validated_text": "OpenAI CEO Sam Altman 表示，为了 AI 带来的好处，人们需要“接受一些坏事” - NBC News",
+      "output_text": "OpenAI CEO 山姆·奥特曼表示，为了 AI 带来的好处，人们需要“接受一些坏事”",
+      "published_at": "2026-10-05 22:07:16+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiygFBVV95cUxQZlk3TTFVR01UZUViRkFrajV5OFpWSnZvNnNFdVdpb1I4Rm9zWmRyTHo2MmZCa1pCTVNTbTUtaGpTSE8tQ1k3SVg4UkZtSUhqblpKWlBWS2VLQ182cExZa0l6NzZBWG4zS0tCbngxT0tuck9LUkk1NHQzejFyTUhQanRCX0QtYnhlSVRiN0RrZ29iYU4yWC05ZHA4VjNwNEZoaVJJQlhYaXgtYlE2UWtHTTlUX2U4OFRkdjA0S0pRczIzb2gtbWZOMV9R?oc=5",
+      "source_name": "NBC News",
+      "presentation_speaker": "奥特曼",
+      "source_published_at": ""
+    }
+  ]
+}
