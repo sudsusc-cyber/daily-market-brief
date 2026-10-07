@@ -66,6 +66,7 @@ EVENTS['launch'] += r'|\b(?:releasing|unveiling|debuting|introduction|roll(?:s|e
 EVENTS['cancel'] += r'|\baxes?\b|砍掉'
 EVENTS['investment'] += r'|\bcapital expenditures?\b'
 EVENTS['announcement'] = r"\bannounc(?:e|es|ed|ing|ement|ements)\b|宣布|公布"
+EVENTS['fundraising'] = r'\bfundraising\b'
 
 
 # Predicate families, shared across sources and all publication sections.
@@ -81,6 +82,12 @@ def normalize_event_text(text: str) -> str:
     Only used for semantic features; immutable source and published text retain
     every word. An investor is a role, not proof of a fresh capital investment.
     """
+    # Raising money is financing, not a rise in prices/revenue. Preserve the
+    # amount and prospective state; normalize the economic action on both sides.
+    text = re.sub(r'\brais(?:e|es|ed|ing)\s+(?=(?:up to\s+)?(?:US\$|\$|€|\d|(?:(?:AI|new|fresh|additional|more)\s+){0,3}(?:money\b|funds?\b|capital\b)|financ\w*\b))', ' fundraising ', text, flags=re.I)
+    text = re.sub(r'\b(?:fundrais(?:e|es|ed|ing)|funding|financing)\b|融资|筹资|募资|筹集(?:资金)?', ' fundraising ', text, flags=re.I)
+    text = re.sub(r'\bSeries\s+[A-Z]\b', lambda m: m[0] + ' fundraising ', text)
+    text = re.sub(r'(?<![A-Za-z])[A-Z]\s*轮(?!换|班)', lambda m: m[0] + ' fundraising ', text)
     # Releasing frozen property is neither a product launch nor a prisoner
     # release. Bind the object symmetrically before the event comparisons.
     text = re.sub(r"\b(?:the )?releas(?:e|es|ed|ing)\s+(?:of\s+)?(?:(?:the|its|their|frozen|blocked|seized|[A-Z][a-z]+)\s+){0,4}(?:assets?|funds?|collateral)\b",

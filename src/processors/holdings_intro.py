@@ -174,6 +174,10 @@ def _signal_errors(text: str, signals: list[Any], recent: list[str]) -> list[str
             return ['signal_state_not_bound']
     else:
         body = text[:-1]
+        for subject, _kind in groups:
+            if '、' in subject:
+                for separator in ('与', '和', '及'):
+                    body = body.replace(subject.replace('、', separator), subject)
         if pending:
             if not body.endswith('，另有数据待核'):
                 return ['pending_signal_omitted']
@@ -306,6 +310,7 @@ def _intro_errors(text: str, context: str, recent: list[str]) -> list[str]:
             or re.search(r'[。！？；]；$', text)):
         errors.append("format_or_length")
     tail = text.replace(context, "", 1)
+    tail = re.sub(r'(?:买入区间|定投|大额买入)(?=从不|并不|需要|有赖于)', '投资纪律', tail)
     # No current portfolio or market facts belong in this literary paragraph.
     if re.search(r"[A-Za-z0-9<>#\n{}]|[%％]|(?:[零〇一二两三四五六七八九十百]+)\s*(?:只|处|地|倍|元|周|日)|"
                  r"今日|本期|当前|目前|其余|各股|标的|持仓|信号|参考线|均线|两地|美股|港股|"
@@ -364,6 +369,14 @@ def write_intro(signals: list[Any], *, client: LLMClient | None = None, history=
         except (ValueError, TypeError, KeyError):
             text, signal_text, modern, errors = '', '', False, ['invalid_prose_json']
         if text and modern:
+            # Accept a naturally composed sentence when its factual clause is
+            # independently identical in meaning to a validated signal. The
+            # model need not use a transport placeholder to earn publication.
+            if _SIGNAL_SLOT not in text:
+                parts = re.split(r'(?<=[。！？；])', text)
+                matched = [part for part in parts if part.strip() and not _signal_errors(part.strip().removesuffix('；').rstrip('。') + '。', signals, recent)]
+                if len(matched) == 1:
+                    text = text.replace(matched[0], _SIGNAL_SLOT + matched[0][-1], 1)
             text_errors = _intro_errors(text.replace(_SIGNAL_SLOT, ''), '', recent)
             text_errors.extend(_signal_slot_errors(text))
             signal_errors = _signal_errors(signal_text, signals, recent)

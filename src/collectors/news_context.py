@@ -33,6 +33,10 @@ _SOURCE_LABELS = {'reuters', 'financial times', 'ft', 'bloomberg', 'benzinga', '
                   'storyboard 18', 'storyboard18', 'livemint'}
 _SOURCE_LABELS.update({'nbc news', 'the guardian', 'guardian', 'fortune', 'forbes',
                        'the verge', 'quartz', 'qz.com'})
+_HOSTS.update({'stocktwits.com', 'www.stocktwits.com', 'moneywise.com', 'www.moneywise.com',
+               'www.businessinsider.com', 'www.wsj.com'})
+_SOURCE_LABELS.update({'stocktwits', 'moneywise', 'moneywise.com', 'business insider',
+                       'wsj', 'wall street journal'})
 _MAX_BYTES = 1_000_000
 
 
@@ -200,8 +204,10 @@ def requires_speaker_date(item):
     source = plain_source(str(getattr(item, 'source', '') or ''))
     def clean(text):
         text = plain_source(str(text or ''))
-        if source:
-            text = re.sub(r'(?:\s*[-–—|]\s*|\s+)' + re.escape(source) + r'\s*$', '', text, flags=re.I)
+        # A renamed source label cannot make a mirrored headline become an
+        # independent summary. Strip recognized publisher credits too.
+        for label in sorted({source, *_SOURCE_LABELS} - {''}, key=len, reverse=True):
+            text = re.sub(r'(?:\s*[-–—|]\s*|\s+)' + re.escape(label) + r'\s*$', '', text, flags=re.I)
         return canonical_fact(text)
     title = clean(getattr(item, 'title', ''))
     summaries = [clean(getattr(item, key, '')) for key in ('snippet', 'summary')]
@@ -209,7 +215,7 @@ def requires_speaker_date(item):
     return bool(title and (not summaries or all(text == title for text in summaries)))
 
 
-def enrich_speaker_context(bundles, *, max_requests=3):
+def enrich_speaker_context(bundles, *, max_requests=6):
     """Recover identities and original dates within one prioritized budget.
 
     A name already present in a mirrored title does not waive date verification.
@@ -223,7 +229,7 @@ def enrich_speaker_context(bundles, *, max_requests=3):
         needs_speaker_context,
     )
 
-    budget = RuntimeBudget(seconds=20)
+    budget = RuntimeBudget(seconds=30)
     cache = {}
     candidates = []
     for bundle in bundles:
@@ -238,6 +244,19 @@ def enrich_speaker_context(bundles, *, max_requests=3):
                 supported = urlsplit(item.url).hostname in _HOSTS or item.source.casefold() in _SOURCE_LABELS
                 candidates.append((not needs_identity, not named, not supported, bundle, item))
     candidates.sort(key=lambda row: row[:3])
+    # Round-robin within priority tiers; one person's many mirrors must not
+    # consume all date/identity recovery opportunities for the whole section.
+    ordered = []
+    for tier in sorted({row[:3] for row in candidates}):
+        grouped = {}
+        for row in candidates:
+            if row[:3] == tier:
+                grouped.setdefault(row[3].person, []).append(row)
+        while any(grouped.values()):
+            for rows in grouped.values():
+                if rows:
+                    ordered.append(rows.pop(0))
+    candidates = ordered
     for date_only, _, _, bundle, item in candidates:
         required = requires_speaker_date(item)
         excerpt = context_excerpt(item, bundle.person, bundle.person_en) if not date_only else ''

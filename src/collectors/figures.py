@@ -131,9 +131,9 @@ _VERB_RE = re.compile(
 def _fetch_google_news(query: str, lang: str = "en") -> list[FigureMention]:
     q = urllib.parse.quote(query)
     if lang == "zh":
-        url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
+        url = f"https://news.google.com/rss/search?q={q}+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
     else:
-        url = f"https://news.google.com/rss/search?q={q}+when:1d&hl=en-US&gl=US&ceid=US:en"
+        url = f"https://news.google.com/rss/search?q={q}+when:7d&hl=en-US&gl=US&ceid=US:en"
     feed = fetch_rss(url)
     items: list[FigureMention] = []
     for e in feed.entries or []:
@@ -293,6 +293,9 @@ def fetch_all(
     延后到邮件成功才提交,失败时下次 run 还能重新评估同批候选。
     """
     start_utc, end_utc = last_24h_window()
+    # Match the editorial seven-day window. Previously a failed yesterday's
+    # translation disappeared from discovery today despite never being sent.
+    start_utc = end_utc - timedelta(days=7)
 
     pushed = _purge_expired(_load_pushed(state_path), end_utc)
     new_pushed = dict(pushed)  # 含已存在 + 本次新增

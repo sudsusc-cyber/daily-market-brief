@@ -580,6 +580,7 @@
                                 line-height:1.8; color:{{ color_ink }}; letter-spacing:0.02em;">
               {{ kp.text | sentence_end | cjk_spaced }}{%- if kp.footnote_index %}<sup><a href="{{ kp.source_url | safe_url }}" target="_blank" rel="noopener" style="color:#0563C1!important;text-decoration:none!important;font-size:11px;font-family:{{ serif_body }};font-style:normal;margin-left:3px;margin-right:2px;">[{{ kp.footnote_index }}]</a></sup>{%- endif %}
             </blockquote>
+            {% if kp.date_note %}<div style="margin:0 0 12px 16px; font-family:{{ serif_body }}; font-size:11px; line-height:1.6; color:{{ color_muted }};">{{ kp.date_note }}</div>{% endif %}
             {% endfor %}
             {# Editorial byline:右对齐,中文署名前接 36px 实线短横(用 inline-block
                border-top 画线,避免 letter-spacing 把 —— 字符撕成两截)。 #}

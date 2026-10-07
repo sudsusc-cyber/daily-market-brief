@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -172,7 +173,8 @@ def apply_morningstar_fair_values(
         if fair_value.stale_cache:
             note = f"{ticker} 沿用 {fair_value.fair_value_updated_at} 报告值"
             if "尚未核实" in (fair_value.warning or ""):
-                note += "（新报告未核实）"
+                newer = re.search(r'(?:官方公允价值日期(?:已更新至)?\s*|较新报告\s*)(\d{4}-\d{2}-\d{2})', fair_value.warning or '')
+                note += f"（{newer[1]} 新金额未核实）" if newer else "（新报告未核实）"
         elif any(word in (fair_value.warning or "") for word in ("冲突", "分歧")):
             note = f"{ticker} 来源分歧，按证据顺序取值"
         else:

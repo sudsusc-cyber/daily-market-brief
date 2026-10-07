@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from dataclasses import asdict, dataclass
 
 from src.processors.announcement_context import (
@@ -158,6 +159,13 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
         source_name = str(getattr(item, "source", "") or "")
         presentation = present(validated, source_name=source_name, original_text=excerpt)
         displayed = presentation.text
+        source_kind = 'analysis' if analysis_source(item.title, str(getattr(item, 'summary', '') or '')) else 'reported'
+        # Keep a realised fact salvaged from a commentary headline as reporting;
+        # attribution belongs on the selected forecast or analytical assertion.
+        if source_kind == 'analysis' and re.search(r'\b(?:bought|purchased|acquired|reported|announced|posted|grew)\b|已(?:买入|收购|公布)|刚刚(?:买入|公布)', excerpt, re.I):
+            source_kind = 'reported'
+        if source_kind == 'analysis':
+            displayed = '作者分析：' + displayed
         if not chinese_prose(displayed) or not complete_excerpt(displayed) or promotional_prose(displayed) or editorial_issue(displayed):
             logger.warning("news.publication_rejected reason=not_complete_chinese")
             continue
@@ -188,7 +196,7 @@ def grounded_text(claim: str, items: list) -> tuple[str, list[dict]]:
                     source_name=source_name,
                     presentation_operations=presentation.operations,
                     publication_path="source_fallback" if fallback else "selected_excerpt",
-                    source_kind="analysis" if analysis_source(item.title, str(getattr(item, "summary", "") or "")) else "reported",
+                    source_kind=source_kind,
                 )
             )
         )

@@ -72,6 +72,8 @@ def editorial_issue(text: str) -> str | None:
 
 def analysis_source(title: str, summary: str = '') -> bool:
     return bool(re.search(
+        r'\b(?:Q[1-4]|quarter|earnings)\s+preview\b|\bI (?:rate|consider|view)\b.{0,80}\b(?:stock|shares?)\b.{0,40}\b(?:buy|sell|hold)\b|财报前瞻|季度前瞻|我(?:认为|给予).{0,30}(?:买入|卖出)'
+        r'|'
         r'\b(?:buy before|stock is a buy|investment case|analyst blog|here.s why.*moat|'
         r'political asset|wish you.*bought)\b|投资逻辑|值得买|分析师博客', title + ' ' + summary, re.I)
         or re.search(r'^(?:.{1,80}\s+)?(?:Analysis|Opinion|Commentary)\s*[:：]|^(?:.{1,40})?(?:分析|评论|观点)[:：]', title, re.I)

@@ -274,6 +274,10 @@ def _rank_candidates(candidates: list[_Candidate]) -> list[_Candidate]:
     for candidate in candidates:
         if not candidate.url:
             continue
+        # A publisher feed also carries wire promotions and podcasts. These
+        # are not issuer valuation reports and must not use the six read slots.
+        if urlparse(candidate.url).path.startswith(('/news/pr-newswire/', '/news/business-wire/', '/podcasts/')):
+            continue
         previous = unique.get(candidate.url)
         if previous is None or (
             previous.known_value is None and candidate.known_value is not None
@@ -281,8 +285,9 @@ def _rank_candidates(candidates: list[_Candidate]) -> list[_Candidate]:
             previous.published_at is None or candidate.published_at > previous.published_at
         )):
             unique[candidate.url] = candidate
-    return sorted(unique.values(),
-        key=lambda item: item.published_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+    return sorted(unique.values(), key=lambda item: (
+        '/company-reports/' in urlparse(item.url).path,
+        item.published_at or datetime.min.replace(tzinfo=UTC)), reverse=True)
 
 
 _REPORT_LINK_RE = re.compile(
@@ -618,11 +623,12 @@ class MorningstarPublicProvider:
         self.discovery_diagnostics: dict[str, dict[str, Any]] = {}
         self._validated_secondary: dict[str, MorningstarFairValue] = {}
         self._inflight_failures: dict[str, str] = {}
+        self._failed_attempt_at: dict[str, datetime] = {}
 
     def _reader_get(self, url: str) -> requests.Response:
         """节流并重试公共文本镜像，避免一封邮件的双读触发临时限流。"""
         response: requests.Response | None = None
-        for attempt in range(4):
+        for attempt in range(2):
             if self._last_reader_request_at is not None:
                 elapsed = time.monotonic() - self._last_reader_request_at
                 if elapsed < self.reader_min_interval:
@@ -631,7 +637,7 @@ class MorningstarPublicProvider:
             self._last_reader_request_at = time.monotonic()
             if response.status_code not in {429, 500, 502, 503, 504}:
                 return response
-            if attempt < 3:
+            if attempt < 1:
                 retry_after = getattr(response, "headers", {}).get("Retry-After")
                 try:
                     wait = float(retry_after) if retry_after else 3.0 * (2**attempt)
@@ -669,6 +675,7 @@ class MorningstarPublicProvider:
             candidates.extend(c for c in quote_candidates if not c.url.endswith("/analysis"))
             latest_date = _quote_fair_value_date(quote.text)
             self.discovery_diagnostics[security.ticker] = {
+                "discovered_at": datetime.now(UTC).isoformat(),
                 "official_fair_value_date": latest_date.date().isoformat() if latest_date else None,
                 "source_url": f"https://{quote_url}",
                 "latest_analysis": [
@@ -848,7 +855,7 @@ class MorningstarPublicProvider:
         self._inflight_values = {}
         self._inflight_failures = {}
         self._validated_secondary = {}
-        self.discovery_diagnostics = {}
+        # Keep discovery for failed issuers during this run's short cooldown.
         return self._budget.run(
             "morningstar",
             lambda: self._fetch_all(securities, checked_at=checked_at),
@@ -872,32 +879,44 @@ class MorningstarPublicProvider:
     ) -> tuple[dict[str, MorningstarFairValue], dict[str, str]]:
         values: dict[str, MorningstarFairValue] = {}
         memo_at = checked_at.astimezone(UTC)
+        failures: dict[str, str] = {}
+        skipped = set()
         if self._memo is not None:
-            memo_at, memo_values, _memo_failures = self._memo
+            memo_at, memo_values, memo_failures = self._memo
             # Reuse only within the exact same observation request. A final check
             # at a later time must discover/read again, even if values are unchanged.
             if checked_at.astimezone(UTC) == memo_at:
                 values = {
                     ticker: value for ticker, value in memo_values.items() if ticker in securities
                 }
-                if set(values) == set(securities):
-                    return values, {}
+                failures.update({t: reason for t, reason in memo_failures.items() if t in securities})
+                if set(securities) <= (set(memo_values) | set(memo_failures)):
+                    return values, failures
+                skipped = set(failures)
             else:
+                # Do not spend the send reserve repeating the same timeout or
+                # rate limit. New runs use a new provider and retry normally.
+                skipped = {t for t, reason in memo_failures.items() if t in securities
+                           and re.search(r'预算|超时|HTTP 429|Too Many Requests|rate.limit', reason, re.I)
+                           and 0 <= (checked_at.astimezone(UTC) - self._failed_attempt_at.get(t, memo_at)).total_seconds() < 900}
+                failures.update({t: memo_failures[t] for t in skipped})
+                values.update({t: memo_values[t] for t in skipped if t in memo_values})
                 memo_at = checked_at.astimezone(UTC)
         pending = {
-            ticker: security for ticker, security in securities.items() if ticker not in values
+            ticker: security for ticker, security in securities.items() if ticker not in values and ticker not in skipped
         }
         # Only publish completed, reconciled observations to the timeout fallback.
         # A signal can interrupt between the primary read and secondary validation.
         self._inflight_values = dict(values)
-        failures: dict[str, str] = {}
         stage_deadline = min(self._budget.deadline, time.monotonic() + self.stage_seconds)
         for index, (ticker, security) in enumerate(pending.items()):
             seconds = max(0.0, (stage_deadline - time.monotonic()) / (len(pending) - index))
             def unavailable(ticker=ticker):
                 # Never publish a candidate interrupted before reconciliation.
                 values.pop(ticker, None)
-                failures[ticker] = "标的取数预算耗尽，已保留诊断并检查有效历史值"
+                reason = self._inflight_failures.get(ticker, "标的取数预算耗尽，已保留诊断并检查有效历史值")
+                latest = self.discovery_diagnostics.get(ticker, {}).get('official_fair_value_date')
+                failures[ticker] = (f"官方公允价值日期 {latest} 的新金额尚未核实；{reason}" if latest else reason)
                 self._inflight_failures[ticker] = failures[ticker]
             self._budget.run(
                 f"morningstar.issuer.{ticker}",
@@ -906,7 +925,12 @@ class MorningstarPublicProvider:
                 seconds=seconds,
                 fallback=unavailable,
             )
-        # 只在同一观测请求内复用；发送前的晚时点复核会重读所有标的。
+        # Values and failures retain their original source clocks and diagnostics.
+        for ticker in pending:
+            if ticker in failures:
+                self._failed_attempt_at[ticker] = checked_at.astimezone(UTC)
+            else:
+                self._failed_attempt_at.pop(ticker, None)
         self._memo = (memo_at, dict(values), dict(failures))
         return values, failures
 
