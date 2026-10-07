@@ -7,8 +7,18 @@ import re
 from urllib.parse import urlsplit
 
 
+def digest_navigation(text: str) -> bool:
+    return bool(re.match(
+        r"^(?:Plus|Also|Additionally|Moreover|In addition)(?:\s*[,：:—-]\s*|\s+)(?:see|read|look|learn|discover|find out|here[’']s (?:what|how|why)|a look at)\b|"
+        r"^(?:此外|另外|还有)\s*[，,：:]?\s*(?:看看|请看|了解|阅读|来看看)",
+        text.strip(), re.I,
+    ))
+
+
 def editorial_issue(text: str) -> str | None:
     text = text.strip()
+    if digest_navigation(text):
+        return 'reader_navigation'
     if re.search(r"\b(?:beware|be wary of)\b.{0,60}\bhype\b|警惕.{0,40}炒作", text, re.I):
         return 'investment_opinion'
     if re.match(r"(?:NEWSLETTER|PODCAST|VIDEO)\s*[:：]", text, re.I) and re.search(r"Q&A|inside|a look|问答|解读", text, re.I):
