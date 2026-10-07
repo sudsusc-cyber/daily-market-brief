@@ -127,7 +127,7 @@ class FigureKeyPoint:
     source_url: str  # 原报道链接
     source_name: str  # 媒体名
     footnote_index: int = 0  # 全章节统一编号([1] [2] ...);0 表示未编号(异常)
-    score: int = 0  # LLM 质量评分 1-5;>=4 才可展示
+    score: int = 0  # 具名且来源绑定通过的具体观点 >=3 可进入排序
     published_at: datetime | None = None
     evidence: list[dict] = field(default_factory=list)  # 原始报道时间,用于限流排序
     history_text: str = ""  # 保留署名前的核验文本，避免版式变动重置新闻去重
@@ -158,6 +158,20 @@ class FigureSummary:
     @property
     def translation_failure_count(self) -> int:
         return sum(reason.endswith("reason=translation_unavailable") for reason in self.content_rejections)
+
+
+def _voice_date_note(item, bindings) -> str:
+    """Prefer the observed publisher date to a newer RSS republication date."""
+    observed = getattr(item, 'source_published_at', '') or item.published_at
+    try:
+        if isinstance(observed, str):
+            observed = datetime.fromisoformat(observed.replace('Z', '+00:00'))
+        note = f"报道日期 {to_beijing(observed):%m-%d}"
+    except (TypeError, ValueError, AttributeError):
+        return ''
+    if any(binding.get('date_basis') == 'recent_reporting' for binding in bindings):
+        note += '；发言日期未独立确认'
+    return note
 
 
 def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
@@ -405,9 +419,7 @@ def _parse_output_result(text: str, items: list[FigureMention], *, person='', pe
                 text=supported, evidence=mapping,
                 source_url=src_item.url, source_name=src_item.source,
                 score=score, published_at=src_item.published_at,
-                date_note=((f"报道日期 {to_beijing(src_item.published_at):%m-%d}"
-                            + ('；发言日期未独立确认' if any(binding.get('date_basis') == 'recent_reporting' for binding in bindings) else ''))
-                           if person else ''),
+                date_note=_voice_date_note(src_item, bindings) if person else '',
             )))
     duplicates = {index for index, count in index_counts.items() if count > 1}
     unique = []
