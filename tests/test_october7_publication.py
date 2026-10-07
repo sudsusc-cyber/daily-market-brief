@@ -108,6 +108,27 @@ def test_specific_reported_voice_survives_model_rejection_with_honest_date_label
     assert 'verified_statement_recovery' in [r['phase'] for r in result.verification_audit]
 
 
+def test_recovery_does_not_override_low_scored_factual_or_editorial_rejection():
+    item = voice()
+    client = SimpleNamespace(chat=lambda *a, **kw: SimpleNamespace(
+        text='▦ 1: no | score=1 | 非本人近期发言', error=None))
+    result = filter_one(FigureBundle('黄仁勋', 'query', 'Jensen Huang', [item]), client=client)
+    assert not result.items
+
+
+def test_wealth_projection_pitch_cannot_become_an_investor_voice():
+    item = FigureMention('Warren Buffett Says Buy This Vanguard Index Fund -- It Could Turn $400 Per Month Into $820,000',
+        'Investors can make a fortune by holding an index fund for decades.',
+        datetime(2026,10,6,tzinfo=UTC), 'https://example.com/pitch', 'Yahoo')
+    client = SimpleNamespace(chat=lambda *a, **kw: (_ for _ in ()).throw(AssertionError('promotion must be removed before model ranking')))
+    assert not filter_one(FigureBundle('巴菲特','query','Warren Buffett',[item]),client=client).items
+    from src.processors.news_selection import meaningful_quote
+
+    item.title = 'Lisa Su says new chips can turn wasted energy into useful computation.'
+    item.snippet = 'AMD announced a technical roadmap.'
+    assert meaningful_quote(item)
+
+
 def test_date_fallback_cannot_publish_known_old_statement_or_wrong_speaker():
     item = voice()
     item.source_published_at = '2026-08-31T00:00:00+00:00'

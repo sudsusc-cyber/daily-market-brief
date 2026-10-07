@@ -528,8 +528,15 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
         # If it rejects every item or fails, try already source-bound statements
         # at ordinary priority. Identity, dates and translations are replayed.
         if not kept:
+            decisions = [decision for record in audit if record.get('phase') == 'selection'
+                         for decision in record.get('decisions', [])]
+            eligible = {d['index'] for d in decisions if str(d.get('score', '')).isdigit() and int(d['score']) >= 3}
+            # Restore ordinary, concrete statements rejected only by ranking.
+            # A score 1/2 factual/editorial rejection is not overridden by a
+            # headline-name regex. Without model output, source verification
+            # remains available for a bounded outage recovery.
             lines = '\n'.join(f"▦ {i}: yes | score=3 | {factual_excerpt(item)}"
-                              for i, item in enumerate(qualified, 1))
+                              for i, item in enumerate(qualified, 1) if not decisions or i in eligible)
             fallback = _parse_output_result(lines, qualified, person=bundle.person, person_en=bundle.person_en)
             if fallback.items:
                 kept = fallback.items
