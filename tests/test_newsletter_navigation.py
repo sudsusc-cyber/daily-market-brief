@@ -41,3 +41,12 @@ def test_also_with_a_real_reporting_predicate_remains_eligible():
     item = MacroNewsItem('Microsoft earnings', datetime(2026, 10, 6, tzinfo=UTC), 'https://example.com/earnings', 'Source', summary=text)
     assert editorial_issue(text) is None
     assert publishable_excerpt(item, text)
+
+
+def test_valid_headline_repeated_inside_navigation_keeps_its_own_provenance():
+    title = 'Microsoft reports revenue growth of 10%.'
+    item = MacroNewsItem(title, datetime(2026, 10, 6, tzinfo=UTC), 'https://example.com/results', 'Source',
+                        summary='Plus, read the full report. ' + title)
+    assert publishable_excerpt(item, title)
+    assert factual_excerpt(item) == title
+    assert title in source_sentences(item)
