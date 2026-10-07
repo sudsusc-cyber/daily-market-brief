@@ -19,7 +19,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 19
+PRESENTATION_VERSION = 20
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -92,6 +92,12 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
         if text != updated:
             operations.append(name)
             text = updated
+
+    if (_version >= 20 and re.match(
+            r"^(?:We are|We're|We’re|There are)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:days?|weeks?|months?)\s+(?:out|away|left)\b",
+            original_text, re.I,
+    ) and re.search(r'[一-鿿]', text)):
+        record('reported_countdown_context', '报道当时称，' + text)
 
     if _version >= 17 and re.match(r'^(?:一个数字|关键数字|数字一览|One Number|By the Numbers|At a Glance)[:：]', text, re.I):
         from src.processors.event_semantics import EVENTS, MODALITY, NEGATION, event_pattern
@@ -402,7 +408,7 @@ def replay_presentation(validated: str, row: dict) -> str:
     if version == 3:
         output = present(validated, source_name=str(row.get("source_name", "")), _version=3).text
         return voice_text(output, str(row.get("presentation_speaker", "")), _version=version) if row.get("presentation_speaker") else output
-    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, PRESENTATION_VERSION):
+    if version in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, PRESENTATION_VERSION):
         output = present(validated, source_name=str(row.get("source_name", "")), original_text=str(row.get("excerpt", "")), _version=version).text
         if version >= 18 and row.get('source_kind') == 'analysis':
             output = '作者分析：' + output
