@@ -443,9 +443,10 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 
 
 def publishable_excerpt(item, text: str) -> bool:
+    title = plain_source(str(getattr(item, 'title', '') or ''))
     for field in ('summary', 'snippet'):
         raw = plain_source(str(getattr(item, field, '') or ''))
-        if digest_navigation(raw) and text in raw:
+        if text != title and digest_navigation(raw) and text in raw:
             return False
     from src.processors.investment_relevance import ambiguous_money_claim, long_term_noise_reason
 
