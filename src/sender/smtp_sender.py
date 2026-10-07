@@ -13,6 +13,7 @@ import contextlib
 import ipaddress
 import logging
 import mimetypes
+import re
 import smtplib
 import socket
 import ssl
@@ -108,6 +109,10 @@ class _PlainTextExtractor(HTMLParser):
 
     _BLOCK_TAGS = {"br", "p", "div", "tr", "h1", "h2", "h3", "li"}
     _HIDDEN_TAGS = {"head", "style", "script", "title"}
+    _VOID_TAGS = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+        "param", "source", "track", "wbr",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -116,9 +121,18 @@ class _PlainTextExtractor(HTMLParser):
         self.links: list[tuple[bool, str]] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
-        if tag in self._HIDDEN_TAGS:
-            self.hidden_tags.append(tag)
         if self.hidden_tags:
+            if tag not in self._VOID_TAGS:
+                self.hidden_tags.append(tag)
+            return
+        attributes = dict(attrs)
+        hidden = tag in self._HIDDEN_TAGS or "hidden" in attributes or re.search(
+            r"(?:^|;)\s*display\s*:\s*none\s*(?:!\s*important\s*)?(?:;|$)",
+            attributes.get("style") or "", re.IGNORECASE,
+        )
+        if hidden:
+            if tag not in self._VOID_TAGS:
+                self.hidden_tags.append(tag)
             return
         if tag == "a":
             from src.processors.html_safe import is_safe_url
@@ -137,8 +151,9 @@ class _PlainTextExtractor(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if self.hidden_tags:
-            if tag == self.hidden_tags[-1]:
-                self.hidden_tags.pop()
+            if tag in self.hidden_tags:
+                index = len(self.hidden_tags) - 1 - self.hidden_tags[::-1].index(tag)
+                del self.hidden_tags[index:]
             return
         if tag == "a" and self.links:
             source, href = self.links.pop()
