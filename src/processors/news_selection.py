@@ -682,6 +682,14 @@ def frontier_candidate(item) -> bool:
 
 def meaningful_quote(item) -> bool:
     text = plain_source(f"{item.title} {item.snippet or ''}")
+    # A named investor in a wealth-building pitch does not make the projected
+    # returns their recent statement. Preserve actual allocation announcements.
+    wealth = re.search(r'\bmake a fortune\b|如何.{0,12}(?:赚|攒到)', text, re.I)
+    projection = re.search(r'\b(?:could turn|can turn|may turn|how to get your)\b|变成', text, re.I)
+    investment = re.search(r'\b(?:funds?|stocks?|shares?|investors?)\b|指数基金|股票|基金', text, re.I)
+    money = re.search(r'\$|\bUSD\b|dollars?|美元|万元', text, re.I)
+    if wealth or (projection and investment and money):
+        return False
     generic = re.search(r'great to see|very excited|very exciting|AI is the future|很棒|很兴奋|AI 是未来', text, re.I)
     return not generic or bool(re.search(r'\d|capex|capital spending|billion|million|资本开支|产能|投资额', text, re.I))
 
