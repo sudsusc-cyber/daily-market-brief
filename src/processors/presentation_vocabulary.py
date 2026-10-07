@@ -70,3 +70,5 @@ _LOCALIZED_TERMS_V9 = {
     "Iraq": "伊拉克", "United Arab Emirates": "阿联酋", "Netherlands": "荷兰",
     "San Francisco": "旧金山", "AI Agent": "AI 智能体", "AI agents": "AI 智能体",
 }
+
+_LOCALIZED_TERMS_V19 = {"Houthi": "胡塞武装", "Houthis": "胡塞武装"}
