@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 12
+_VERSION = 13
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -215,6 +215,14 @@ def _fact_key(row: dict) -> str:
     return hashlib.sha256(canonical_fact(row["excerpt"]).encode()).hexdigest()
 
 
+def _without_background_context(text: str) -> str:
+    clauses = re.split(r"[。；;!?]|(?<!\bInc)\.(?=\s+[A-Z])", text, flags=re.I)
+    return ";".join(re.split(
+        r"此前|先前|以前|曾经|\b(?:previously|historically|formerly)\b",
+        clause, maxsplit=1, flags=re.I,
+    )[0] for clause in clauses)
+
+
 def _rule_for(row: dict) -> WatchRule | None:
     original, text = row["excerpt"], row["output_text"]
     if row.get('presentation_company'):
@@ -228,6 +236,9 @@ def _rule_for(row: dict) -> WatchRule | None:
     negated_change = r"(?:not|never|no longer)\s+(?:\w+\s+){0,2}(?:scrap|cancel|abandon|delay|shelv)|(?:并未|没有|不会|未)(?:放弃|取消|搁置|暂停|推迟)"
     no_construction = r"not (?:currently )?(?:under construction|being built)|并非在建|没有在建|尚未(?:开工|建设)"
     return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)
+                 and (rule.key != "operating-performance" or (
+                     rule.matches(_without_background_context(original))
+                     and rule.matches(_without_background_context(text))))
                  and not (rule.key == 'portfolio-allocation' and re.search(r'\brepurchas\w*|\bbuybacks?\b|\bbuys? back\b|回购', original + ' ' + text, re.I))
                  and ((_ENTITY.search(original) and _ENTITY.search(text))
                       or (rule.sector and (row.get('macro_event') or {}).get('geography')))
