@@ -5,7 +5,7 @@ import re
 from datetime import date, datetime
 
 from src.processors.announcement_context import action_context, requires_action_context
-from src.processors.editorial_evidence import editorial_issue, status_has_scope
+from src.processors.editorial_evidence import digest_navigation, editorial_issue, status_has_scope
 from src.processors.event_semantics import document_types, has_event
 from src.processors.html_safe import strip_all_tags
 from src.processors.technical_context import (
@@ -443,6 +443,10 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 
 
 def publishable_excerpt(item, text: str) -> bool:
+    for field in ('summary', 'snippet'):
+        raw = plain_source(str(getattr(item, field, '') or ''))
+        if digest_navigation(raw) and text in raw:
+            return False
     from src.processors.investment_relevance import ambiguous_money_claim, long_term_noise_reason
 
     # Interview programme descriptions identify topics, not the interviewee's
@@ -606,7 +610,7 @@ def factual_excerpt(item) -> str:
     # A rolling news-page title is navigation, not a fact. Prefer its actual
     # complete summary sentence even if it is not a company earnings item.
     if re.match(r'Latest .*News and Analysis|.*: Markets Wrap$', title, re.I):
-        return next((s for s in sentences(summary) if complete_excerpt(s) and not old_event_excerpt(item, s) and len(s) >= 30), '')
+        return next((s for s in sentences(summary) if publishable_excerpt(item, s) and len(s) >= 30), '')
     if re.search(r'\b(?:Can|Should|Could|Will) .*\?|\b(?:Opportunity|Returns)\?', title, re.I):
         # Do not fill a company slot with a question about investment returns.
         return ''
