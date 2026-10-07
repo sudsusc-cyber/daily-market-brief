@@ -189,7 +189,8 @@ def test_figure_exceptions_are_bounded_and_redacted():
     result = filter_one(figure_bundle([mention(FACT)]), client=llm(RuntimeError('timeout'), RuntimeError('timeout api_key=fake-private-token')))
     assert result.processing_error == 'RuntimeError: timeout api_key=***'
     assert 'fake-private-token' not in result.error
-    assert not result.items
+    assert result.items  # A verified source statement survives ranking failure.
+    assert result.items[0].evidence[0]['speaker_attribution']['person'] == '黄仁勋'
 
 
 def test_interview_reporting_and_weekend_news_do_not_inherit_daily_recap_rule():

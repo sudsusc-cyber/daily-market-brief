@@ -28,7 +28,7 @@ from .extractor import (
 )
 
 logger = logging.getLogger(__name__)
-_VERSION = 11
+_VERSION = 12
 _HISTORY_DAYS = 90
 _SECTION_NAMES = {
     "company_news": "昨日动态",
@@ -67,6 +67,13 @@ class WatchRule:
 # Matching only chooses a question to monitor. It cannot promote a plan to an
 # order, a launch to commercial success, or an application to regulatory approval.
 _RULES = (
+    WatchRule(
+        'portfolio-allocation',
+        r'\b(?:stocks?|shares?|stakes?|holdings?)\b|股票|股份|持股',
+        r'\b(?:buys?|bought|purchas\w*|owns?|holds?|sells?|sold)\b|买入|增持|持有|减持|卖出',
+        '证券投资的长期回报需由持仓与资本配置验证',
+        '持仓比例、投入金额、后续增减持与资本回报。',
+    ),
     WatchRule(
         "product-data-governance",
         r"\b(?:privacy|permissions?|data access|access (?:to )?(?:(?:their|system|personal|user)\s+){0,3}data)\b|隐私|权限|数据访问|访问.{0,8}数据",
@@ -221,6 +228,7 @@ def _rule_for(row: dict) -> WatchRule | None:
     negated_change = r"(?:not|never|no longer)\s+(?:\w+\s+){0,2}(?:scrap|cancel|abandon|delay|shelv)|(?:并未|没有|不会|未)(?:放弃|取消|搁置|暂停|推迟)"
     no_construction = r"not (?:currently )?(?:under construction|being built)|并非在建|没有在建|尚未(?:开工|建设)"
     return next((rule for rule in _RULES if rule.matches(original) and rule.matches(text)
+                 and not (rule.key == 'portfolio-allocation' and re.search(r'\brepurchas\w*|\bbuybacks?\b|\bbuys? back\b|回购', original + ' ' + text, re.I))
                  and ((_ENTITY.search(original) and _ENTITY.search(text))
                       or (rule.sector and (row.get('macro_event') or {}).get('geography')))
                  and not (rule.key == "infrastructure-investment" and (

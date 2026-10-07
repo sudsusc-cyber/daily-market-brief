@@ -193,7 +193,7 @@ def test_role_identity_recovery_precedes_named_date_fetches_in_shared_budget(mon
             return dated_html(role, body='Acme CEO Jane Smith warned export controls could create rivals.')
         return dated_html(by_url[url])
     monkeypatch.setattr(news_context, '_fetch', fetch)
-    news_context.enrich_speaker_context([FigureBundle('Jane Smith', 'query', items=[*named, role])])
+    news_context.enrich_speaker_context([FigureBundle('Jane Smith', 'query', items=[*named, role])], max_requests=3)
     assert calls[0].endswith('/role') and len(calls) == 3
     assert role.speaker_context_diagnostic == 'source_identity_bound'
     assert named[-1].speaker_context_diagnostic == 'source_date_unverified:request_limit'

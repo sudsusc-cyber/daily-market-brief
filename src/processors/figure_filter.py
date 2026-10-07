@@ -36,6 +36,7 @@ from src.processors.source_grounding import (
     grounded_text,
     publication_diagnostic,
 )
+from src.utils.dates import to_beijing
 from src.utils.news_facts import content_key, equivalent
 from src.utils.secrets import redact_secrets
 
@@ -130,6 +131,7 @@ class FigureKeyPoint:
     published_at: datetime | None = None
     evidence: list[dict] = field(default_factory=list)  # 原始报道时间,用于限流排序
     history_text: str = ""  # 保留署名前的核验文本，避免版式变动重置新闻去重
+    date_note: str = ""
 
 
 @dataclass
@@ -177,13 +179,15 @@ def assign_footnotes(summaries: list[FigureSummary]) -> list[FigureFootnote]:
 
 _TASK_INSTRUCTION = """\
 任务:对下面"{PERSON}的候选发言列表"做三件事:
-1. **质量门槛(严判!)**:判断每条是否真的是**该{PERSON}本人本周(过去 7 天内)的公开发声**
+1. **人物与观点核验**:判断每条是否为媒体明确归属于**该{PERSON}本人的近期公开观点**
    (直接引语 / 演讲 / 采访 / 正式声明 / 公开信 / 媒体明确归属于本人的转述)。无需逐字引号；可靠报道中“某人表示/预计/宣布”也是发言。不得仅因没有逐字原话而淘汰，但人物身份、实际观点及近期性必须有来源支持。下列情况一律 no:
    - **历史发言追忆/旧闻回顾**(关键!):任何"X 年 X 月某场会议曾说""19 年股东大会
      表示""巴菲特 2019 年的判断""老黄当年讲过"——历史发言不是当前发声,一律 no。
      即使现在某媒体重新引用过去年份的旧话,也是 no。年份只是经营数据的比较基线时，
      不能据此判为旧发言。**只接受过去 7 天内本人
-     新发声**。
+     新发声**；若原文明确署名、只是原发布日期未能补取，不要据此否决：
+     程序会区分“发言日期已核实”和“近期媒体报道、发言日期未独立确认”。
+     明确的旧发言仍淘汰。
    - **年终回顾/盘点文章**:"2024 年最经典的 5 句话""年度发言精选" — 一律 no
    - **公司官方说法/产品发布稿**冒充人物发言(如"NVIDIA 称 DLSS 5 是…",这是公司
      口径不是黄仁勋个人)
@@ -205,8 +209,8 @@ _TASK_INSTRUCTION = """\
   例:明确 AI capex 方向、先进制程需求判断、并购意图、资本配置战略转向、监管立场改变。
 - **4 分**:有明确方向、新信息、具体约束或可验证判断,值得日报展示。
   例:下季度指引、新产品路线图时间、具体产能数字、客户结构变化。
-- **3 分**:真实发言,但信息普通,只是背景信息,不默认展示。
-  例:复述财报数字但没有新判断、一般性行业评论。
+- **3 分**:真实且有具体对象或判断，信息普通也可以展示，由排序决定版面。
+  例:针对特定产品、需求、竞争或经营约束的普通行业评论。
 - **2 分**:真实但偏 PR、泛泛而谈、宣传意味强,不展示。
   例:"我们很兴奋""客户需求强劲""AI 是未来"等空泛口号。
 - **1 分**:无效、旧闻、二手转述、标题党、人物花边、语录合集,不展示。
@@ -368,7 +372,7 @@ def _parse_output_result(text: str, items: list[FigureMention], *, person='', pe
             logger.info("figure_filter.invalid_score score=%d text=%s", score, body[:60])
             invalid_yes = True
             continue
-        if score < 4:
+        if score < (3 if person else 4):
             logger.info("figure_filter.low_score score=%d text=%s", score, body[:60])
             continue
         # A model merging indexes does not prove that their facts are equal.
@@ -391,7 +395,7 @@ def _parse_output_result(text: str, items: list[FigureMention], *, person='', pe
             if person:
                 from src.processors.speaker_attribution import attribution, source_date_error
 
-                bindings = [attribution(src_item, person, person_en, excerpt=row['excerpt']) for row in mapping]
+                bindings = [attribution(src_item, person, person_en, excerpt=row['excerpt'], allow_recent_reporting=True) for row in mapping]
                 if not all(bindings):
                     rejected_indexes[source_index] = source_date_error(src_item) or 'speaker_identity_unverified'
                     continue
@@ -401,6 +405,9 @@ def _parse_output_result(text: str, items: list[FigureMention], *, person='', pe
                 text=supported, evidence=mapping,
                 source_url=src_item.url, source_name=src_item.source,
                 score=score, published_at=src_item.published_at,
+                date_note=((f"报道日期 {to_beijing(src_item.published_at):%m-%d}"
+                            + ('；发言日期未独立确认' if any(binding.get('date_basis') == 'recent_reporting' for binding in bindings) else ''))
+                           if person else ''),
             )))
     duplicates = {index for index, count in index_counts.items() if count > 1}
     unique = []
@@ -504,6 +511,17 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
     recovery_attempted = False
 
     def result(processing_error=None):
+        nonlocal kept
+        # The model ranks useful statements; it is not the sole admission gate.
+        # If it rejects every item or fails, try already source-bound statements
+        # at ordinary priority. Identity, dates and translations are replayed.
+        if not kept:
+            lines = '\n'.join(f"▦ {i}: yes | score=3 | {factual_excerpt(item)}"
+                              for i, item in enumerate(qualified, 1))
+            fallback = _parse_output_result(lines, qualified, person=bundle.person, person_en=bundle.person_en)
+            if fallback.items:
+                kept = fallback.items
+                audit.append({'phase': 'verified_statement_recovery', 'recovered': len(kept)})
         for point in kept:
             point.history_text = '；'.join(dict.fromkeys(row.get('validated_text', row['output_text']) for row in point.evidence))
             for row in point.evidence:
@@ -570,7 +588,8 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
                 "figure_filter.ok person=%s qualified=%d kept=%d attempt=%d",
                 bundle.person, len(qualified), len(parsed.items), attempt,
             )
-            if not kept and _backfill and recovery_budget.selection_calls > 0 and len(ranked) > max_items:
+            completed = result()
+            if not completed.items and _backfill and recovery_budget.selection_calls > 0 and len(ranked) > max_items:
                 from src.collectors.news_context import enrich_speaker_context
                 recovery_budget.selection_calls -= 1
                 following = FigureBundle(bundle.person, bundle.query, bundle.person_en,
@@ -578,12 +597,12 @@ def filter_one(bundle: FigureBundle, *, client: LLMClient, max_items: int = 5, h
                 enrich_speaker_context([following], max_requests=2)
                 next_result = filter_one(following, client=client, max_items=max_items,
                                          history=history, recovery_budget=recovery_budget, _backfill=False)
-                previous = result()
+                previous = completed
                 next_result.verification_audit = [*previous.verification_audit,
                     {'phase': 'candidate_backfill', 'candidates': len(following.items)}, *next_result.verification_audit]
                 next_result.content_rejections = [*previous.content_rejections, *next_result.content_rejections]
                 return next_result
-            return result()
+            return completed
 
         last_error = (
             "IncompleteOrInvalidOutput: "

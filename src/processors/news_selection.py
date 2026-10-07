@@ -70,6 +70,13 @@ def complete_excerpt(text: str, source_name: str = '') -> bool:
         return False
     if source_name:
         text = re.sub(r'(?:\s+[-–—|]\s*|\s{2,})' + re.escape(source_name) + r'\s*$', '', text, flags=re.I)
+    tail = text.rstrip('。.!！?？ ”’"\'')
+    # Paid standfirsts can end mid-word without an ellipsis. Do not guess the
+    # missing predicate, or publish a short untranslated tail as Chinese prose.
+    if re.search(r'\b(?:revenue|income|profits?|earnings|sales|growth)\s+[a-z]{1,2}$', tail) and not re.search(r'\bup$', tail):
+        return False
+    if re.search(r'[一-鿿].*\s[a-z]{1,2}$', tail) and not re.search(r'\d\s*(?:nm|mm|cm|km|kg|ms|ml)$', tail):
+        return False
     # A possessive cut off at the feed boundary is not a closing quotation.
     # Keep genuine quoted sentences and names with an internal apostrophe.
     if (re.search(r"[A-RT-Za-rt-z0-9]['’]\s*[.!?。]?\s*$", text)
@@ -256,7 +263,7 @@ def holding_in_excerpt(text: str, ticker: str) -> bool:
 
 def dependent_excerpt(text: str) -> bool:
     """A relief/reaction clause needs the adjacent event it refers to."""
-    return bool(re.match(r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Today|Yesterday|This|That|It)\b.{0,45}\b(?:relief|respite|reaction|reprieve)\b|(?:周[一二三四五六日]|这|其|昨日|今日).{0,25}(?:缓解|喘息|反应)", text, re.I))
+    return bool(re.match(r"(?:These|Those|The)\s+(?:attacks?|deals?|transactions?|moves?|measures?|decisions?)\b|(?:这些|上述|该笔|这一)(?:袭击|交易|措施|决定)|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Today|Yesterday|This|That|It)\b.{0,45}\b(?:relief|respite|reaction|reprieve)\b|(?:周[一二三四五六日]|这|其|昨日|今日).{0,25}(?:缓解|喘息|反应)", text, re.I))
 
 
 def editorial_headline_excerpt(text: str) -> str:
@@ -469,10 +476,13 @@ def macro_geography_context(item) -> str:
     from src.collectors.macro_news import MacroNewsItem
 
     title_quantities = isinstance(item, MacroNewsItem) and bool(re.search(r'\d', title)) and not re.search(r'\d', summary)
-    context_needed = bool(missing or (title_event.family != 'unknown' and (referential or title_quantities)))
+    context_needed = bool(missing or title_quantities or referential or dependent_excerpt(summary))
     combined = title + '\n' + summary
     if (context_needed and len(combined) <= 900
-            and publishable_excerpt(item, title) and publishable_excerpt(item, summary)
+            and publishable_excerpt(item, title)
+            and (publishable_excerpt(item, summary) or (dependent_excerpt(summary)
+                 and complete_excerpt(summary) and not editorial_issue(summary)
+                 and not promotional_prose(summary)))
             and publishable_excerpt(item, combined)):
         return combined
     return ''

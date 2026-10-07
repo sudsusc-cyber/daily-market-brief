@@ -124,7 +124,8 @@ def _verified_grounding_row(obj, row) -> tuple[str, str] | None:
         if binding is None and row.get('presentation_version') in range(1, 16):
             binding = attribution(source, row.get('presentation_speaker', ''), excerpt=excerpt)
         if (not isinstance(binding, dict) or row.get('presentation_speaker') != binding.get('person')
-                or attribution(source, binding.get('person', ''), binding.get('person_en', ''), excerpt=excerpt) != binding):
+                or attribution(source, binding.get('person', ''), binding.get('person_en', ''), excerpt=excerpt,
+                               allow_recent_reporting=binding.get('date_basis') == 'recent_reporting') != binding):
             return None
     complete = any(canonical_fact(excerpt) == canonical_fact(sentence) for sentence in source_sentences(source))
     validated = str(row.get("validated_text", output))

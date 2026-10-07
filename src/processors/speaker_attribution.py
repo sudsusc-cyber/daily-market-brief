@@ -124,9 +124,27 @@ def source_date_error(item):
     return ''
 
 
-def attribution(item, person, person_en='', *, excerpt=None):
+def attribution(item, person, person_en='', *, excerpt=None, allow_recent_reporting=False):
     """Replayable proof from the actual claim. No translations or office lookup."""
-    if source_date_error(item):
+    date_error = source_date_error(item)
+    report_basis = None
+    if date_error == 'speaker_date_unverified' and allow_recent_reporting:
+        from urllib.parse import urlsplit
+
+        from src.collectors.news_context import _HOSTS, _SOURCE_LABELS
+
+        parsed = urlsplit(str(getattr(item, 'url', '')))
+        source = str(getattr(item, 'source', '')).casefold()
+        feed = getattr(item, 'published_at', None)
+        try:
+            feed = datetime.fromisoformat(feed.replace('Z', '+00:00')) if isinstance(feed, str) else feed
+            if (isinstance(feed, datetime) and feed.tzinfo is not None
+                    and parsed.scheme == 'https'
+                    and (parsed.hostname in _HOSTS or (parsed.hostname == 'news.google.com' and source in _SOURCE_LABELS))):
+                report_basis = {'date_basis': 'recent_reporting', 'reported_at': feed.isoformat()}
+        except (TypeError, ValueError):
+            pass
+    if date_error and not report_basis:
         return None
     fields = [(field, plain_source(getattr(item, field, '') or ''))
               for field in ('title', 'snippet', 'summary', 'source_body')]
@@ -135,11 +153,11 @@ def attribution(item, person, person_en='', *, excerpt=None):
         if text and _named_speech(text, person, person_en) and not _old_speech(item, text):
             return {'person': person, 'person_en': person_en, 'kind': 'named_speech',
                     'field': 'original_summary' if field in ('snippet', 'summary') else field,
-                    'excerpt': text}
+                    'excerpt': text, **(report_basis or {})}
         # Newspaper prose normally introduces a full name once and then uses a
         # surname. Resolve it only within this source, with no competing person
         # of that surname; never use the search alias or current office-holder.
-        if not text or _old_speech(item, text):
+        if report_basis or not text or _old_speech(item, text):
             continue
         raw = '\n'.join(value for _, value in fields)
         for full in _aliases(person, person_en):
