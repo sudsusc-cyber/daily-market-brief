@@ -19,7 +19,7 @@ from src.processors.presentation_vocabulary import (
     COMPANY_DISPLAY_NAMES,
 )
 
-PRESENTATION_VERSION = 20
+PRESENTATION_VERSION = 21
 # Exchange identifiers and listing suffixes are a grammar, independent of issuers.
 _EXCHANGES = r"NASDAQ(?:GS|GM|CM)?|NYSE(?:ARCA|AMERICAN)?|AMEX|HKEX|SEHK|LSE|XNAS|XNYS|XHKG|SSE|SZSE|TSX|ASX|TSE|XETRA|EURONEXT"
 _QUALIFIED = re.compile(
@@ -92,6 +92,13 @@ def present(text: str, *, source_name: str = "", original_text: str = "", _versi
         if text != updated:
             operations.append(name)
             text = updated
+
+    if _version >= 21:
+        # The source uses Riyadh both for the city and metonymically for the
+        # Saudi-led coalition. Preserve the latter relationship in Chinese.
+        record('riyadh_led_coalition', re.sub(r'\s*\bRiyadh\s+领导的', '沙特领导的', text, flags=re.I))
+        record('riyadh_city', re.sub(r'\bRiyadh\b\s*(?=的)', '利雅得', text, flags=re.I))
+        record('riyadh_city', re.sub(r'\bRiyadh\b', '利雅得', text, flags=re.I))
 
     if (_version >= 20 and re.match(
             r"^(?:We are|We're|We’re|There are)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:days?|weeks?|months?)\s+(?:out|away|left)\b",

@@ -19,6 +19,8 @@ def editorial_issue(text: str) -> str | None:
     text = text.strip()
     if digest_navigation(text):
         return 'reader_navigation'
+    if re.search(r'\bchart of the day\b|今日图表', text, re.I) and not re.search(r'\d', text):
+        return 'chart_teaser_without_fact'
     if re.search(r"\b(?:beware|be wary of)\b.{0,60}\bhype\b|警惕.{0,40}炒作", text, re.I):
         return 'investment_opinion'
     if re.match(r"(?:NEWSLETTER|PODCAST|VIDEO)\s*[:：]", text, re.I) and re.search(r"Q&A|inside|a look|问答|解读", text, re.I):

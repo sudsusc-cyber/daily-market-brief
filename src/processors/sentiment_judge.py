@@ -350,6 +350,11 @@ def _argument_errors(text: str, bundle: SentimentBundle, verdict: str) -> list[s
                "DXY": r"DXY|美元指数", "高收益债利差": r"高收益债|信用利差", "Shiller PE": r"Shiller|席勒"}
     scored = score_sentiment(bundle)
     weights = {name: weight for name, _, weight in (scored or {}).get('breakdown', [])}
+    primary_levels = {name: value for name, value, _ in (scored or {}).get('breakdown', [])
+                      if name in _PRIMARY_METRICS}
+    if (re.search(r'(?:CNN.{0,80}VIX|VIX.{0,80}CNN).{0,30}均处中性', text, re.I)
+            and any(not 40 <= value < 60 for value in primary_levels.values())):
+        errors.append('primary_levels_not_both_neutral')
     def verified_role(match):
         role, raw = match[1], match[2]
         value = float(raw)
