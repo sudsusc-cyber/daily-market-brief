@@ -7,7 +7,12 @@ from bs4 import BeautifulSoup
 from src.collectors.figures import FigureBundle, FigureMention
 from src.collectors.sentiment import SentimentBundle, SentimentMetric
 from src.processors.figure_filter import FigureSummary, _parse_output, assign_footnotes
-from src.processors.news_presentation import publication_text
+from src.processors.news_presentation import (
+    company_body,
+    present,
+    publication_text,
+    replay_presentation,
+)
 from src.processors.source_grounding import grounded_text
 from src.processors.thesis.extractor import _grounding_material
 from src.renderer.render import render_email
@@ -26,11 +31,21 @@ NOW = datetime(2026, 9, 26, 7, tzinfo=UTC)
     ('Windows Report', 'Windows Report 报道了 Xbox 消息', 'Windows Report 报道了 Xbox 消息'),
     ('', 'Apple 宣布计划（金额 1,000 美元，预计明年）', 'Apple 宣布计划（金额 1,000 美元，预计明年）'),
     ('Yahoo', 'Microsoft (NasdaqGS:MSFT) 计划投资 100 亿美元', 'Microsoft 计划投资 100 亿美元'),
+    ('Yahoo', 'Microsoft（MSFT:NASDAQ）发布了 Maia 300', 'Microsoft发布了 Maia 300'),
+    ('Yahoo', 'Apple (AAPL:NYSE) 发布了新产品', 'Apple 发布了新产品'),
     ('Yahoo', 'Mastercard (MA) 刚刚启用稳定币结算', 'Mastercard 刚刚启用稳定币结算'),
     ('Yahoo', '人工智能 (AI) 收入增长 25%', '人工智能 (AI) 收入增长 25%'),
 ])
 def test_presentation_removes_only_listing_and_publisher_metadata(source, sentence, expected):
     assert publication_text(sentence, source_name=source) == expected
+
+
+def test_reversed_listing_does_not_lead_company_news_summary():
+    validated = 'Microsoft（MSFT:NASDAQ）于 10 月 12 日周一发布了 Maia 300，这是其自研 AI 芯片的下一代产品。'
+    clean = present(validated).text
+    assert company_body(clean, 'MSFT') == '于 10 月 12 日周一发布了 Maia 300，这是其自研 AI 芯片的下一代产品。'
+    assert replay_presentation(validated, {'presentation_version': 21, 'presentation_company': 'MSFT'}) == '（MSFT:NASDAQ）于 10 月 12 日周一发布了 Maia 300，这是其自研 AI 芯片的下一代产品。'
+    assert publication_text('人工智能 (AI) 产品推动研发。') == '人工智能 (AI) 产品推动研发。'
 
 
 def test_qualcomm_prose_keeps_full_verified_translation_and_raw_evidence():
