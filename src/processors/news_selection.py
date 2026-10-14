@@ -116,6 +116,7 @@ _PRICE_EDITORIAL = re.compile(
 _BUSINESS_FACT = re.compile(
     r'\b(?:reported?.*(?:results|earnings|revenue)|earnings|revenue|sales|renew\w*.*(?:licen\w*|agreement)'
     r'|partner(?:s|ed|ing)? with|(?:plans?|will|agrees? to) invest|announced|introduc\w*|appoint\w*|acqui\w*|merger|launch\w*'
+    r'|(?:secur\w*|sign\w*)\b.{0,50}\b(?:supply\s+)?contracts?\b'
     r'|(?:updates?|updated|changes?|changed|revises?|revised|restricts?|restricted)\b.{0,65}(?:operating system|software|privacy|permissions?|pricing|fees|terms|data access|access to data)'
     r'|updates?\b.{0,50}\b(?:notify|alert|inform)\b.{0,30}\b(?:users|customers)'
     r'|(?:prepares?|preparing|plans?)\b.{0,65}\b(?:product|smart.home|software|device|platform)\b.{0,30}\b(?:launch|expansion|release)'
@@ -444,6 +445,16 @@ def undated_immediate_leadership_change(item, text: str) -> bool:
 
 def publishable_excerpt(item, text: str) -> bool:
     title = plain_source(str(getattr(item, 'title', '') or ''))
+    # An exact first sentence can still reverse the source's meaning when the
+    # next sentence reports that the announced action immediately failed.
+    # Keep the complete source span (and a checked translation of it) or omit
+    # this item; publishing the first sentence alone states the opposite event.
+    summary = plain_source(str(getattr(item, 'summary', '') or ''))
+    summary_parts = sentences(summary)
+    if (len(summary_parts) > 1 and text == summary_parts[0]
+            and re.search(r'\b(?:truce|cease[ -]?fire|agreement)\b|停火|协议', text, re.I)
+            and re.search(r'\b(?:violat\w*|breach\w*|brok(?:e|en)|collaps\w*|fail\w*)\b|违反|破裂|失效', summary_parts[1], re.I)):
+        return False
     for field in ('summary', 'snippet'):
         raw = plain_source(str(getattr(item, field, '') or ''))
         if text != title and digest_navigation(raw) and text in raw:
